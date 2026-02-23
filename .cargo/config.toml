@@ -1,0 +1,2 @@
+[alias]
+cov = "llvm-cov --html --ignore-filename-regex '(\\.cargo|smithay|target|/build/)'"
