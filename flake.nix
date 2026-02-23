@@ -97,6 +97,8 @@
 
             shellHook = ''
               export SHELL="${pkgs.bashInteractive}/bin/bash"
+              export LLVM_COV="${pkgs.rustc.llvmPackages.llvm}/bin/llvm-cov"
+              export LLVM_PROFDATA="${pkgs.rustc.llvmPackages.llvm}/bin/llvm-profdata"
             '';
           };
         }
