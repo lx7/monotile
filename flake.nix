@@ -79,6 +79,7 @@
         in {
           default = pkgs.mkShell {
             nativeBuildInputs = with pkgs; [
+              bashInteractive
               cargo
               rustfmt
               clippy
@@ -93,6 +94,10 @@
               LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath deps;
               RUST_BACKTRACE = "1";
             };
+
+            shellHook = ''
+              export SHELL="${pkgs.bashInteractive}/bin/bash"
+            '';
           };
         }
       );
