@@ -14,8 +14,6 @@ macro_rules! forward_gesture {
     };
 }
 
-pub(crate) use forward_gesture;
-
 pub mod move_grab;
 pub use move_grab::MoveSurfaceGrab;
 

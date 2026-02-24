@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Based on smithay's smallvil example (MIT licensed)
 
-use crate::{Monotile, grabs::forward_gesture, shell::WindowId};
+use crate::{Monotile, shell::WindowId};
 use smithay::{
     input::pointer::*,
     reexports::wayland_server::protocol::wl_surface::WlSurface,
