@@ -44,7 +44,13 @@ render_elements! {
     SolidColor=SolidColorRenderElement,
 }
 
-pub fn compile_shaders(renderer: &mut GlowRenderer) -> (GlesPixelProgram, GlesTexProgram) {
+#[derive(Debug)]
+pub struct Shaders {
+    pub deco: GlesPixelProgram,
+    pub clip: GlesTexProgram,
+}
+
+pub fn compile_shaders(renderer: &mut GlowRenderer) -> Shaders {
     let gles: &mut GlesRenderer = renderer.borrow_mut();
 
     // TODO: optimize shader structure
@@ -75,7 +81,7 @@ pub fn compile_shaders(renderer: &mut GlowRenderer) -> (GlesPixelProgram, GlesTe
             ],
         )
         .expect("clip shader");
-    (deco, clip)
+    Shaders { deco, clip }
 }
 
 fn layer_elements(
@@ -144,8 +150,7 @@ pub fn render_output<'a>(
     age: usize,
     windows: Vec<&WindowElement>,
     output: &Output,
-    deco_shader: &GlesPixelProgram,
-    clip_shader: &GlesTexProgram,
+    shaders: &Shaders,
 ) -> RenderResult<'a> {
     let sigma = SHADOW_SOFTNESS / 2.0;
     let blur = (sigma * 3.0).ceil();
@@ -219,7 +224,7 @@ pub fn render_output<'a>(
         let pad_yf = pad_y as f32;
 
         let deco = PixelShaderElement::new(
-            deco_shader.clone(),
+            shaders.deco.clone(),
             Rectangle::new(
                 (win.loc.x - pad_x, win.loc.y - pad_y).into(),
                 (win.size.w + 2 * pad_x, win.size.h + 2 * pad_y).into(),
@@ -253,7 +258,7 @@ pub fn render_output<'a>(
         elems.extend(surfs.into_iter().map(|s| {
             MonotileElement::Clipped(ClippedSurface::new(
                 s,
-                clip_shader.clone(),
+                shaders.clip.clone(),
                 win,
                 radius,
                 scale,

@@ -3,11 +3,7 @@
 use crate::{Monotile, state::State};
 use smithay::{
     backend::{
-        renderer::{
-            damage::OutputDamageTracker,
-            gles::{GlesPixelProgram, GlesTexProgram},
-            glow::GlowRenderer,
-        },
+        renderer::{damage::OutputDamageTracker, glow::GlowRenderer},
         winit::{self, WinitEvent, WinitGraphicsBackend},
     },
     desktop::layer_map_for_output,
@@ -22,8 +18,7 @@ pub struct WinitState {
     pub backend: WinitGraphicsBackend<GlowRenderer>,
     pub output: Output,
     pub damage_tracker: OutputDamageTracker,
-    pub deco_shader: GlesPixelProgram,
-    pub clip_shader: GlesTexProgram,
+    pub shaders: crate::render::Shaders,
 }
 
 impl WinitState {
@@ -40,8 +35,7 @@ impl WinitState {
             age,
             windows,
             &self.output,
-            &self.deco_shader,
-            &self.clip_shader,
+            &self.shaders,
         )?;
 
         std::mem::drop(fb);
@@ -82,7 +76,7 @@ pub fn init(
     monotile: &mut Monotile,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (mut backend, winit) = winit::init()?;
-    let (deco_shader, clip_shader) = crate::render::compile_shaders(backend.renderer());
+    let shaders = crate::render::compile_shaders(backend.renderer());
 
     let mode = Mode {
         size: backend.window_size(),
@@ -118,8 +112,7 @@ pub fn init(
         backend,
         output,
         damage_tracker,
-        deco_shader,
-        clip_shader,
+        shaders,
     });
 
     event_loop
