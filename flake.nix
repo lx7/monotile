@@ -80,6 +80,7 @@
           default = pkgs.mkShell {
             nativeBuildInputs = with pkgs; [
               bashInteractive
+              rustc
               cargo
               rustfmt
               clippy
