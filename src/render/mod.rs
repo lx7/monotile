@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
+mod border;
 pub mod clipped_surface;
 mod shaders;
 
@@ -46,6 +47,7 @@ render_elements! {
 
 #[derive(Debug)]
 pub struct Shaders {
+    pub border: GlesPixelProgram,
     pub deco: GlesPixelProgram,
     pub clip: GlesTexProgram,
 }
@@ -53,7 +55,19 @@ pub struct Shaders {
 pub fn compile_shaders(renderer: &mut GlowRenderer) -> Shaders {
     let gles: &mut GlesRenderer = renderer.borrow_mut();
 
-    // TODO: optimize shader structure
+    let border = gles
+        .compile_custom_pixel_shader(
+            shaders::BORDER_FRAG,
+            &[
+                UniformName::new("border_size", UniformType::_2f),
+                UniformName::new("piece_offset", UniformType::_2f),
+                UniformName::new("border_width", UniformType::_1f),
+                UniformName::new("border_color", UniformType::_4f),
+                UniformName::new("outer_radius", UniformType::_1f),
+                UniformName::new("scale", UniformType::_1f),
+            ],
+        )
+        .expect("border shader");
     let deco = gles
         .compile_custom_pixel_shader(
             shaders::DECORATION_FRAG,
@@ -81,7 +95,7 @@ pub fn compile_shaders(renderer: &mut GlowRenderer) -> Shaders {
             ],
         )
         .expect("clip shader");
-    Shaders { deco, clip }
+    Shaders { border, deco, clip }
 }
 
 fn layer_elements(
@@ -202,7 +216,7 @@ pub fn render_output<'a>(
             continue;
         }
 
-        let border_color = if we.focused {
+        let color = if we.focused {
             FOCUS_COLOR
         } else {
             BORDER_COLOR
@@ -213,9 +227,9 @@ pub fn render_output<'a>(
             TILED_RADIUS
         };
         let border_width = if we.floating && !we.focused {
-            0.0
+            0
         } else {
-            BORDER_WIDTH as f32
+            BORDER_WIDTH
         };
         let shadow_sigma = if we.floating { sigma } else { 0.0 };
         let win_w = win.size.w as f32;
@@ -223,6 +237,32 @@ pub fn render_output<'a>(
         let pad_xf = pad_x as f32;
         let pad_yf = pad_y as f32;
 
+        // surfaces (clipped for rounding)
+        elems.extend(surfs.into_iter().map(|s| {
+            MonotileElement::Clipped(ClippedSurface::new(
+                s,
+                shaders.clip.clone(),
+                win,
+                radius,
+                scale,
+            ))
+        }));
+
+        // border (8 pieces)
+        if border_width > 0 {
+            for piece in border::border_elements(
+                &shaders.border,
+                win,
+                radius,
+                border_width,
+                color,
+                SCALE as f32,
+            ) {
+                elems.push(MonotileElement::Decoration(piece));
+            }
+        }
+
+        // shadow + bg (still from decoration shader, border_width=0)
         let deco = PixelShaderElement::new(
             shaders.deco.clone(),
             Rectangle::new(
@@ -232,8 +272,8 @@ pub fn render_output<'a>(
             None,
             1.0,
             vec![
-                Uniform::new("border_width", border_width),
-                Uniform::new("border_color", border_color),
+                Uniform::new("border_width", 0.0_f32),
+                Uniform::new("border_color", [0.0_f32; 4]),
                 Uniform::new("radius", radius),
                 Uniform::new("shadow_sigma", shadow_sigma),
                 Uniform::new("shadow_color", SHADOW_COLOR),
@@ -254,16 +294,6 @@ pub fn render_output<'a>(
             ],
             Kind::Unspecified,
         );
-
-        elems.extend(surfs.into_iter().map(|s| {
-            MonotileElement::Clipped(ClippedSurface::new(
-                s,
-                shaders.clip.clone(),
-                win,
-                radius,
-                scale,
-            ))
-        }));
         elems.push(MonotileElement::Decoration(deco));
     }
 
