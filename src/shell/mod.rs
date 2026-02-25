@@ -407,7 +407,7 @@ impl Monitor {
 
         // windows
         if let Some(we) = self.window_under(pos) {
-            let loc = we.geo().loc;
+            let loc = we.geo().loc - we.window.geometry().loc;
             let rel = pos - loc.to_f64();
             if let Some((s, point)) = we.window.surface_under(rel, WindowSurfaceType::ALL) {
                 return Some((s, (point + loc).to_f64()));
