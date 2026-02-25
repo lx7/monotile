@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-pub const BORDER_FRAG: &str = include_str!("border.frag");
-pub const DECORATION_FRAG: &str = include_str!("decoration.frag");
+pub const ROUNDED_RECT_FRAG: &str = include_str!("rounded_rect.frag");
+pub const SHADOW_FRAG: &str = include_str!("shadow.frag");
 pub const CLIPPED_SURFACE_FRAG: &str = include_str!("clipped_surface.frag");

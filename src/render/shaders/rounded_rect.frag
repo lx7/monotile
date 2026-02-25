@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Border ring shader — renders one of 8 pieces (4 corners + 4 edges)
 // Rounding technique based on niri (GPL-3.0) https://github.com/YaLTeR/niri
 
 precision highp float;
@@ -12,15 +11,14 @@ varying vec2 v_coords;
 uniform float tint;
 #endif
 
-uniform vec2  border_size;
-uniform vec2  piece_offset;
+uniform vec2  outer_size;
 uniform float border_width;
-uniform vec4  border_color;
 uniform float outer_radius;
+uniform vec4  border_color;
+uniform vec2  piece_offset;
 uniform float scale;
 
-float rounding_alpha(vec2 p, vec2 sz, float r,
-                     float half_px) {
+float rounding_alpha(vec2 p, vec2 sz, float r, float half_px) {
     if (r <= 0.0) return 1.0;
 
     vec2 c;
@@ -43,16 +41,17 @@ void main() {
     vec2 px = v_coords * size + piece_offset;
 
     // outer shape
-    float outer = rounding_alpha(px, border_size, outer_radius, half_px);
+    float outer = rounding_alpha(px, outer_size, outer_radius, half_px);
 
-    // inner shape
-    float inner_r = max(0.0, outer_radius - border_width);
-    vec2 ip = px - vec2(border_width);
-    vec2 isz = border_size - 2.0 * border_width;
+    // border_width == creates a filled rounded rect
     float inner = 0.0;
-
-    if (ip.x >= 0.0 && ip.x <= isz.x && ip.y >= 0.0 && ip.y <= isz.y)
-        inner = rounding_alpha(ip, isz, inner_r, half_px);
+    if (border_width > 0.0) {
+        float inner_r = max(0.0, outer_radius - border_width);
+        vec2 ip = px - vec2(border_width);
+        vec2 isz = outer_size - 2.0 * border_width;
+        if (ip.x >= 0.0 && ip.x <= isz.x && ip.y >= 0.0 && ip.y <= isz.y)
+            inner = rounding_alpha(ip, isz, inner_r, half_px);
+    }
 
     float ring = outer * (1.0 - inner);
     vec4 color = border_color * ring;

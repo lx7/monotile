@@ -8,7 +8,7 @@ use smithay::{
     utils::{Logical, Rectangle},
 };
 
-pub fn border_elements(
+pub fn elements(
     shader: &GlesPixelProgram,
     win: Rectangle<i32, Logical>,
     radius: f32,
@@ -31,7 +31,7 @@ pub fn border_elements(
     let oy = y - bw;
     let bw_total = w + 2 * bw;
     let bh_total = h + 2 * bw;
-    let border_size = (bw_total as f32, bh_total as f32);
+    let outer_size = (bw_total as f32, bh_total as f32);
 
     #[rustfmt::skip]
     // (x, y, width, height)
@@ -62,11 +62,11 @@ pub fn border_elements(
             None,
             1.0,
             vec![
-                Uniform::new("border_size", border_size),
-                Uniform::new("piece_offset", offset),
+                Uniform::new("outer_size", outer_size),
                 Uniform::new("border_width", border_width as f32),
-                Uniform::new("border_color", color),
                 Uniform::new("outer_radius", outer_r),
+                Uniform::new("border_color", color),
+                Uniform::new("piece_offset", offset),
                 Uniform::new("scale", scale),
             ],
             Kind::Unspecified,

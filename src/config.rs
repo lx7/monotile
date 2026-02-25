@@ -28,13 +28,13 @@ pub const BORDER_COLOR: [f32; 4] = color(0x444444ff);
 pub const FOCUS_COLOR: [f32; 4] = color(0x458588ff);
 pub const URGENT_COLOR: [f32; 4] = color(0xff0000ff);
 
-pub const FLOATING_RADIUS: f32 = 8.0;
+pub const FLOATING_RADIUS: f32 = 12.0;
 pub const TILED_RADIUS: f32 = 0.0;
 
 // Shadow
-pub const SHADOW_SOFTNESS: f32 = 25.0;
-pub const SHADOW_SPREAD: f32 = 5.0;
-pub const SHADOW_OFFSET: (f32, f32) = (0.0, 5.0);
+pub const SHADOW_SOFTNESS: i32 = 25;
+pub const SHADOW_SPREAD: i32 = 5;
+pub const SHADOW_OFFSET: (i32, i32) = (0, 5);
 pub const SHADOW_COLOR: [f32; 4] = color(0x00000073);
 
 /// Tag configuration

@@ -54,7 +54,8 @@ impl ClippedSurface {
 
         let uniforms = vec![
             Uniform::new("geo_size", (geo.size.w as f32, geo.size.h as f32)),
-            Uniform::new("radius", radius),
+            Uniform::new("inner_radius", radius),
+            Uniform::new("scale", scale.x as f32),
             Uniform::new(
                 "input_to_geo",
                 UniformValue::Matrix3x3 {
@@ -71,6 +72,20 @@ impl ClippedSurface {
             radius,
             uniforms,
         }
+    }
+
+    pub fn will_clip(
+        inner: &WaylandSurfaceRenderElement<GlowRenderer>,
+        geo: Rectangle<i32, Logical>,
+        radius: f32,
+        scale: Scale<f64>,
+    ) -> bool {
+        if radius > 0.0 {
+            return true;
+        }
+        let phys: Rectangle<i32, Physical> = geo.to_f64().to_physical_precise_round(scale);
+        let elem = inner.geometry(scale);
+        !phys.contains_rect(elem)
     }
 
     fn clip_rect(&self, scale: Scale<f64>) -> Rectangle<i32, Physical> {

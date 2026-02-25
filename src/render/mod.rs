@@ -11,8 +11,7 @@ use smithay::{
         RendererSuper,
         damage::{OutputDamageTracker, RenderOutputResult},
         element::{
-            Id, Kind, render_elements,
-            solid::SolidColorRenderElement,
+            Kind, render_elements,
             surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
         },
         gles::{
@@ -20,7 +19,6 @@ use smithay::{
             UniformType, element::PixelShaderElement,
         },
         glow::GlowRenderer,
-        utils::CommitCounter,
     },
     desktop::{PopupManager, layer_map_for_output},
     output::Output,
@@ -42,60 +40,58 @@ render_elements! {
     Surface=WaylandSurfaceRenderElement<GlowRenderer>,
     Clipped=ClippedSurface,
     Decoration=PixelShaderElement,
-    SolidColor=SolidColorRenderElement,
 }
 
 #[derive(Debug)]
 pub struct Shaders {
-    pub border: GlesPixelProgram,
-    pub deco: GlesPixelProgram,
+    pub rect: GlesPixelProgram,
+    pub shadow: GlesPixelProgram,
     pub clip: GlesTexProgram,
 }
 
 pub fn compile_shaders(renderer: &mut GlowRenderer) -> Shaders {
     let gles: &mut GlesRenderer = renderer.borrow_mut();
 
-    let border = gles
+    let rect = gles
         .compile_custom_pixel_shader(
-            shaders::BORDER_FRAG,
+            shaders::ROUNDED_RECT_FRAG,
             &[
-                UniformName::new("border_size", UniformType::_2f),
-                UniformName::new("piece_offset", UniformType::_2f),
+                UniformName::new("outer_size", UniformType::_2f),
                 UniformName::new("border_width", UniformType::_1f),
                 UniformName::new("border_color", UniformType::_4f),
                 UniformName::new("outer_radius", UniformType::_1f),
+                UniformName::new("piece_offset", UniformType::_2f),
                 UniformName::new("scale", UniformType::_1f),
             ],
         )
-        .expect("border shader");
-    let deco = gles
+        .expect("rounded rectangle shader");
+    let shadow = gles
         .compile_custom_pixel_shader(
-            shaders::DECORATION_FRAG,
+            shaders::SHADOW_FRAG,
             &[
-                UniformName::new("border_width", UniformType::_1f),
-                UniformName::new("border_color", UniformType::_4f),
-                UniformName::new("radius", UniformType::_1f),
-                UniformName::new("shadow_sigma", UniformType::_1f),
-                UniformName::new("shadow_color", UniformType::_4f),
-                UniformName::new("bg_color", UniformType::_4f),
-                UniformName::new("shadow_box_size", UniformType::_2f),
-                UniformName::new("shadow_box_offset", UniformType::_2f),
                 UniformName::new("win_size", UniformType::_2f),
                 UniformName::new("win_offset", UniformType::_2f),
+                UniformName::new("outer_radius", UniformType::_1f),
+                UniformName::new("shadow_box_size", UniformType::_2f),
+                UniformName::new("shadow_box_offset", UniformType::_2f),
+                UniformName::new("shadow_sigma", UniformType::_1f),
+                UniformName::new("shadow_color", UniformType::_4f),
+                UniformName::new("scale", UniformType::_1f),
             ],
         )
-        .expect("decoration shader");
+        .expect("shadow shader");
     let clip = gles
         .compile_custom_texture_shader(
             shaders::CLIPPED_SURFACE_FRAG,
             &[
                 UniformName::new("geo_size", UniformType::_2f),
-                UniformName::new("radius", UniformType::_1f),
+                UniformName::new("inner_radius", UniformType::_1f),
+                UniformName::new("scale", UniformType::_1f),
                 UniformName::new("input_to_geo", UniformType::Matrix3x3),
             ],
         )
         .expect("clip shader");
-    Shaders { border, deco, clip }
+    Shaders { rect, shadow, clip }
 }
 
 fn layer_elements(
@@ -166,14 +162,13 @@ pub fn render_output<'a>(
     output: &Output,
     shaders: &Shaders,
 ) -> RenderResult<'a> {
-    let sigma = SHADOW_SOFTNESS / 2.0;
-    let blur = (sigma * 3.0).ceil();
-    let pad_x = (BORDER_WIDTH as f32 + blur + SHADOW_SPREAD + SHADOW_OFFSET.0.abs()).ceil() as i32;
-    let pad_y = (BORDER_WIDTH as f32 + blur + SHADOW_SPREAD + SHADOW_OFFSET.1.abs()).ceil() as i32;
+    let sigma = SHADOW_SOFTNESS as f32 / 2.0;
+    let blur = (sigma * 3.0).ceil() as i32;
+    let pad_x = BORDER_WIDTH + blur + SHADOW_SPREAD + SHADOW_OFFSET.0.abs();
+    let pad_y = BORDER_WIDTH + blur + SHADOW_SPREAD + SHADOW_OFFSET.1.abs();
     let scale = Scale::from(SCALE);
 
     let tiled = windows.iter().filter(|w| !w.floating).count();
-    let solo = !SINGLE_BORDER && tiled == 1;
 
     let mut elems = Vec::new();
 
@@ -191,6 +186,8 @@ pub fn render_output<'a>(
         let win = we.geo();
         let buf = we.window.geometry();
         let wl = we.window.wl_surface().unwrap();
+        let single_no_border = !SINGLE_BORDER && tiled == 1 && !we.floating;
+
         let surfs = render_elements_from_surface_tree(
             renderer,
             &wl,
@@ -203,98 +200,92 @@ pub fn render_output<'a>(
         // popups (unclipped, on top of window)
         elems.extend(popup_elements(renderer, &wl, win.loc - buf.loc));
 
-        // solo tiled: no decoration, just bg
-        if solo && !we.floating {
-            elems.extend(surfs.into_iter().map(MonotileElement::Surface));
-            elems.push(MonotileElement::SolidColor(SolidColorRenderElement::new(
-                Id::new(),
-                win.to_physical_precise_round(scale),
-                CommitCounter::default(),
-                ROOT_COLOR,
-                Kind::Unspecified,
-            )));
-            continue;
+        #[rustfmt::skip]
+        let (color, radius, bw) = match (we.floating, we.focused) {
+            (true,  true)  => (FOCUS_COLOR,  FLOATING_RADIUS, BORDER_WIDTH),
+            (true,  false) => (BORDER_COLOR, FLOATING_RADIUS, 0),
+            (false, true)  => (FOCUS_COLOR,  TILED_RADIUS,    BORDER_WIDTH),
+            (false, false) => (BORDER_COLOR, TILED_RADIUS,    BORDER_WIDTH),
+        };
+
+        // surfaces
+        for s in surfs {
+            if single_no_border || !ClippedSurface::will_clip(&s, win, radius, scale) {
+                elems.push(MonotileElement::Surface(s));
+            } else {
+                elems.push(MonotileElement::Clipped(ClippedSurface::new(
+                    s,
+                    shaders.clip.clone(),
+                    win,
+                    radius,
+                    scale,
+                )));
+            }
         }
 
-        let color = if we.focused {
-            FOCUS_COLOR
-        } else {
-            BORDER_COLOR
-        };
-        let radius = if we.floating {
-            FLOATING_RADIUS
-        } else {
-            TILED_RADIUS
-        };
-        let border_width = if we.floating && !we.focused {
-            0
-        } else {
-            BORDER_WIDTH
-        };
-        let shadow_sigma = if we.floating { sigma } else { 0.0 };
-        let win_w = win.size.w as f32;
-        let win_h = win.size.h as f32;
-        let pad_xf = pad_x as f32;
-        let pad_yf = pad_y as f32;
-
-        // surfaces (clipped for rounding)
-        elems.extend(surfs.into_iter().map(|s| {
-            MonotileElement::Clipped(ClippedSurface::new(
-                s,
-                shaders.clip.clone(),
-                win,
-                radius,
-                scale,
-            ))
-        }));
-
         // border (8 pieces)
-        if border_width > 0 {
-            for piece in border::border_elements(
-                &shaders.border,
-                win,
-                radius,
-                border_width,
-                color,
-                SCALE as f32,
-            ) {
+        if bw > 0 && !single_no_border {
+            for piece in border::elements(&shaders.rect, win, radius, bw, color, SCALE as f32) {
                 elems.push(MonotileElement::Decoration(piece));
             }
         }
 
-        // shadow + bg (still from decoration shader, border_width=0)
-        let deco = PixelShaderElement::new(
-            shaders.deco.clone(),
-            Rectangle::new(
-                (win.loc.x - pad_x, win.loc.y - pad_y).into(),
-                (win.size.w + 2 * pad_x, win.size.h + 2 * pad_y).into(),
-            ),
+        // background
+        let bg = PixelShaderElement::new(
+            shaders.rect.clone(),
+            win,
             None,
             1.0,
             vec![
-                Uniform::new("border_width", 0.0_f32),
-                Uniform::new("border_color", [0.0_f32; 4]),
-                Uniform::new("radius", radius),
-                Uniform::new("shadow_sigma", shadow_sigma),
-                Uniform::new("shadow_color", SHADOW_COLOR),
-                Uniform::new("bg_color", ROOT_COLOR),
-                Uniform::new(
-                    "shadow_box_size",
-                    (win_w + 2.0 * SHADOW_SPREAD, win_h + 2.0 * SHADOW_SPREAD),
-                ),
-                Uniform::new(
-                    "shadow_box_offset",
-                    (
-                        pad_xf - SHADOW_SPREAD + SHADOW_OFFSET.0,
-                        pad_yf - SHADOW_SPREAD + SHADOW_OFFSET.1,
-                    ),
-                ),
-                Uniform::new("win_size", (win_w, win_h)),
-                Uniform::new("win_offset", (pad_xf, pad_yf)),
+                Uniform::new("outer_size", (win.size.w as f32, win.size.h as f32)),
+                Uniform::new("border_width", 0.0f32),
+                Uniform::new("outer_radius", radius),
+                Uniform::new("border_color", ROOT_COLOR),
+                Uniform::new("piece_offset", (0.0f32, 0.0f32)),
+                Uniform::new("scale", SCALE as f32),
             ],
             Kind::Unspecified,
         );
-        elems.push(MonotileElement::Decoration(deco));
+        elems.push(MonotileElement::Decoration(bg));
+
+        // shadow (floating only)
+        if we.floating {
+            let outer_r = radius + bw as f32;
+
+            let shadow = PixelShaderElement::new(
+                shaders.shadow.clone(),
+                Rectangle::new(
+                    (win.loc.x - pad_x, win.loc.y - pad_y).into(),
+                    (win.size.w + 2 * pad_x, win.size.h + 2 * pad_y).into(),
+                ),
+                None,
+                1.0,
+                vec![
+                    Uniform::new("win_size", (win.size.w as f32, win.size.h as f32)),
+                    Uniform::new("win_offset", (pad_x as f32, pad_y as f32)),
+                    Uniform::new("outer_radius", outer_r),
+                    Uniform::new(
+                        "shadow_box_size",
+                        (
+                            (win.size.w + 2 * SHADOW_SPREAD) as f32,
+                            (win.size.h + 2 * SHADOW_SPREAD) as f32,
+                        ),
+                    ),
+                    Uniform::new(
+                        "shadow_box_offset",
+                        (
+                            (pad_x - SHADOW_SPREAD + SHADOW_OFFSET.0) as f32,
+                            (pad_y - SHADOW_SPREAD + SHADOW_OFFSET.1) as f32,
+                        ),
+                    ),
+                    Uniform::new("shadow_sigma", sigma),
+                    Uniform::new("shadow_color", SHADOW_COLOR),
+                    Uniform::new("scale", SCALE as f32),
+                ],
+                Kind::Unspecified,
+            );
+            elems.push(MonotileElement::Decoration(shadow));
+        }
     }
 
     // bottom + background layers (below windows)
