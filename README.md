@@ -2,6 +2,11 @@
 
 A minimalist tiling Wayland compositor in Rust.
 
+> [!IMPORTANT]
+> monotile is under active development and not yet ready for daily use.
+> There is no DRM backend yet. monotile currently runs nested inside another
+> Wayland compositor using the winit backend.
+
 ## Build
 
 ### NixOS
