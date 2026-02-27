@@ -8,15 +8,13 @@ use std::borrow::BorrowMut;
 
 use smithay::{
     backend::renderer::{
-        RendererSuper,
-        damage::{OutputDamageTracker, RenderOutputResult},
         element::{
             Kind, render_elements,
             surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
         },
         gles::{
-            GlesPixelProgram, GlesRenderer, GlesTarget, GlesTexProgram, Uniform, UniformName,
-            UniformType, element::PixelShaderElement,
+            GlesPixelProgram, GlesRenderer, GlesTexProgram, Uniform, UniformName, UniformType,
+            element::PixelShaderElement,
         },
         glow::GlowRenderer,
     },
@@ -29,11 +27,6 @@ use smithay::{
 
 use crate::{config::*, shell::WindowElement};
 use clipped_surface::ClippedSurface;
-
-type RenderResult<'a> = Result<
-    RenderOutputResult<'a>,
-    smithay::backend::renderer::damage::Error<<GlowRenderer as RendererSuper>::Error>,
->;
 
 render_elements! {
     pub MonotileElement<=GlowRenderer>;
@@ -153,15 +146,12 @@ fn popup_elements(
     elems
 }
 
-pub fn render_output<'a>(
+pub fn output_elements(
     renderer: &mut GlowRenderer,
-    target: &mut GlesTarget<'_>,
-    tracker: &'a mut OutputDamageTracker,
-    age: usize,
     windows: Vec<&WindowElement>,
     output: &Output,
     shaders: &Shaders,
-) -> RenderResult<'a> {
+) -> Vec<MonotileElement> {
     let sigma = SHADOW_SOFTNESS as f32 / 2.0;
     let blur = (sigma * 3.0).ceil() as i32;
     let pad_x = BORDER_WIDTH + blur + SHADOW_SPREAD + SHADOW_OFFSET.0.abs();
@@ -295,5 +285,5 @@ pub fn render_output<'a>(
         &[Layer::Bottom, Layer::Background],
     ));
 
-    tracker.render_output(renderer, target, age, &elems, BG_COLOR)
+    elems
 }

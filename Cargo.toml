@@ -18,11 +18,21 @@ git = "https://github.com/Smithay/smithay.git"
 rev = "14a2009cd"
 default-features = false
 features = [
+    "backend_drm",
+    "backend_egl",
+    "backend_gbm",
+    "backend_libinput",
+    "backend_session_libseat",
+    "backend_udev",
     "backend_winit",
     "wayland_frontend",
     "desktop",
     "renderer_glow",
 ]
+
+[dependencies.smithay-drm-extras]
+git = "https://github.com/Smithay/smithay.git"
+rev = "14a2009cd"
 
 [dev-dependencies]
 wayland-client = "0.31"

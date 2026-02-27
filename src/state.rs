@@ -22,6 +22,7 @@ use smithay::{
     utils::SERIAL_COUNTER,
     wayland::{
         compositor::{CompositorClientState, CompositorState},
+        dmabuf::{DmabufGlobal, DmabufState},
         output::OutputManagerState,
         selection::data_device::DataDeviceState,
         shell::{
@@ -110,6 +111,8 @@ pub struct State {
     pub output_manager_state: OutputManagerState,
     pub seat_state: SeatState<Monotile>,
     pub data_device_state: DataDeviceState,
+    pub dmabuf_state: DmabufState,
+    pub dmabuf_global: Option<DmabufGlobal>,
     pub popups: PopupManager,
     pub seat: Seat<Monotile>,
     pub monitors: Vec<Monitor>,
@@ -130,8 +133,7 @@ impl State {
         let data_device_state = DataDeviceState::new::<Monotile>(&dh);
 
         let mut seat_state = SeatState::new();
-        // TODO: get seat name from backend
-        let mut seat = seat_state.new_wl_seat(&dh, "winit");
+        let mut seat = seat_state.new_wl_seat(&dh, "seat0");
         seat.add_keyboard(
             Default::default(),
             crate::config::REPEAT_DELAY,
@@ -154,6 +156,8 @@ impl State {
             output_manager_state,
             seat_state,
             data_device_state,
+            dmabuf_state: DmabufState::new(),
+            dmabuf_global: None,
             popups: PopupManager::default(),
             seat,
             monitors: Vec::new(),

@@ -27,19 +27,17 @@ impl WinitState {
         let (renderer, mut fb) = self.backend.bind()?;
 
         let windows: Vec<_> = state.mon().visible_windows().collect();
-
-        let result = crate::render::render_output(
+        let elems = crate::render::output_elements(renderer, windows, &self.output, &self.shaders);
+        let rendered = self.damage_tracker.render_output(
             renderer,
             &mut fb,
-            &mut self.damage_tracker,
             age,
-            windows,
-            &self.output,
-            &self.shaders,
+            &elems,
+            crate::config::BG_COLOR,
         )?;
 
         std::mem::drop(fb);
-        self.backend.submit(result.damage.map(|x| x.as_slice()))?;
+        self.backend.submit(rendered.damage.map(|x| x.as_slice()))?;
 
         let elapsed = state.start_time.elapsed();
         let output = self.output.clone();
