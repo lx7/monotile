@@ -2,6 +2,7 @@
 // Based on smithay's smallvil example (MIT licensed)
 
 mod compositor;
+mod dmabuf;
 mod layer_shell;
 mod xdg_shell;
 
