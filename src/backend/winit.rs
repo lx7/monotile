@@ -11,7 +11,6 @@ use smithay::{
     reexports::calloop::EventLoop,
     utils::Transform,
 };
-use std::time::Duration;
 
 #[derive(Debug)]
 pub struct WinitState {
@@ -39,30 +38,13 @@ impl WinitState {
         std::mem::drop(fb);
         self.backend.submit(rendered.damage.map(|x| x.as_slice()))?;
 
-        let elapsed = state.start_time.elapsed();
-        let output = self.output.clone();
-
-        // frame callbacks for windows
-        // TODO: convenience method in Monitor?
-        for we in state.mon().visible_windows() {
-            we.window
-                .send_frame(&output, elapsed, Some(Duration::ZERO), |_, _| {
-                    Some(output.clone())
-                });
-        }
-
-        // frame callbacks for layer surfaces
-        // TODO: convenience method in Monitor?
-        let mut map = layer_map_for_output(&output);
-        for layer in map.layers() {
-            layer.send_frame(&output, elapsed, Some(Duration::ZERO), |_, _| {
-                Some(output.clone())
-            });
-        }
-
-        state.popups.cleanup();
-        map.cleanup();
-        drop(map);
+        let mon = &state.monitors[state.active_monitor];
+        crate::render::send_frame_callbacks(
+            mon.visible_windows(),
+            &self.output,
+            state.start_time.elapsed(),
+            &mut state.popups,
+        );
 
         self.backend.window().request_redraw();
         Ok(())
