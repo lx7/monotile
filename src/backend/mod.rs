@@ -17,12 +17,14 @@ pub enum Backend {
 }
 
 impl Backend {
-    pub fn schedule_render(&mut self, _output: &Output) {
+    pub fn schedule_render(&mut self, output: &Output) {
         match self {
             Backend::Winit(_) => {
                 // no-op: winit renders continuously via input/redraw events
             }
-            Backend::Drm(drm) => drm.schedule_render(_output),
+            Backend::Drm(drm) => {
+                drm.schedule_render(output);
+            }
             Backend::Unset => {} // no-op (tests)
         }
     }
