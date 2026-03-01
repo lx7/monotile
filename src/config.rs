@@ -186,8 +186,7 @@ pub fn key_bindings() -> Vec<Key> {
         key!(LOGO, KEY_period, KeyAction::FocusMon(1)),
         key!(LOGO | SHIFT, KEY_less, KeyAction::TagMon(-1)),
         key!(LOGO | SHIFT, KEY_greater, KeyAction::TagMon(1)),
-        // Quit compositor
-        key!(CTRL | ALT, KEY_Terminate_Server, KeyAction::Quit),
+        key!(CTRL | ALT, KEY_BackSpace, KeyAction::Quit),
     ];
 
     keys.extend(tagkeys(KEY_1, 0));
@@ -221,3 +220,5 @@ pub const MOUSE_BINDINGS: &[MouseButton] = &[
     key!(LOGO, BTN_MIDDLE, MouseAction::ToggleFloating),
     key!(LOGO, BTN_RIGHT, MouseAction::Resize),
 ];
+
+pub const AUTOSTART: &[(&str, &[&str])] = &[("foot", &[])];

@@ -7,6 +7,7 @@ pub mod handlers;
 pub mod input;
 pub mod render;
 pub mod shell;
+pub mod spawn;
 pub mod state;
 
 #[cfg(test)]

@@ -5,8 +5,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (mut event_loop, mut monotile) = monotile::Monotile::new();
 
-    // TODO: implement drm backend
-    monotile::backend::winit::init(&mut event_loop, &mut monotile)?;
+    if std::env::var_os("WAYLAND_DISPLAY").is_some() || std::env::var_os("DISPLAY").is_some() {
+        monotile::backend::winit::init(&mut event_loop, &mut monotile)?;
+    } else {
+        monotile::backend::drm::init(&mut event_loop, &mut monotile)?;
+    }
 
     unsafe {
         std::env::remove_var("DISPLAY");
@@ -15,10 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::env::set_var("XDG_CURRENT_DESKTOP", "monotile");
     }
 
-    // TODO: implement autostart
-    std::process::Command::new(monotile::config::DEFAULT_TERMINAL)
-        .spawn()
-        .ok();
+    monotile::spawn::autostart(monotile::config::AUTOSTART);
 
     event_loop.run(None, &mut monotile, |monotile| {
         monotile.state.flush_clients()
