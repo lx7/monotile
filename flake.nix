@@ -80,6 +80,8 @@
           ];
         in {
           default = pkgs.mkShell {
+            hardeningDisable = [ "fortify" ];
+
             nativeBuildInputs = with pkgs; [
               bashInteractive
               rustc
