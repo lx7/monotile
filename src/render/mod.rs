@@ -5,6 +5,7 @@ pub mod clipped_surface;
 mod shaders;
 
 use std::borrow::BorrowMut;
+use std::time::Duration;
 
 use smithay::{
     backend::renderer::{
@@ -286,4 +287,24 @@ pub fn output_elements(
     ));
 
     elems
+}
+
+pub fn send_frame_callbacks<'a>(
+    windows: impl Iterator<Item = &'a WindowElement>,
+    output: &Output,
+    elapsed: Duration,
+    popups: &mut PopupManager,
+) {
+    // TODO: use predicted frame timing instead of ZERO
+    let time = Some(Duration::ZERO);
+    for we in windows {
+        we.window
+            .send_frame(output, elapsed, time, |_, _| Some(output.clone()));
+    }
+    let mut map = layer_map_for_output(output);
+    for layer in map.layers() {
+        layer.send_frame(output, elapsed, time, |_, _| Some(output.clone()));
+    }
+    popups.cleanup();
+    map.cleanup();
 }
