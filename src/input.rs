@@ -4,11 +4,12 @@ use crate::{
     Monotile,
     config::*,
     grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
+    spawn::spawn,
 };
 use smithay::{
     backend::input::{
         AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent,
-        KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
+        KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
     },
     input::{
         keyboard::{FilterResult, Keysym, ModifiersState},
@@ -84,8 +85,27 @@ impl Monotile {
                     self.handle_action(action);
                 }
             }
-            // TODO: handle PointerMotion when DRM backend is implemented
-            InputEvent::PointerMotion { .. } => {}
+            InputEvent::PointerMotion { event, .. } => {
+                let geo = self.state.mon().output_geometry();
+                let pos = pointer.current_location() + event.delta();
+                let pos = pos.constrain(geo.to_f64());
+
+                if FOCUS_FOLLOWS_CURSOR && let Some(we) = self.state.mon().window_under(pos) {
+                    self.set_focus(Some(we.id));
+                }
+                let target = self.state.mon().surface_under(pos);
+
+                pointer.motion(
+                    self,
+                    target,
+                    &MotionEvent {
+                        location: pos,
+                        serial,
+                        time: event.time_msec(),
+                    },
+                );
+                pointer.frame(self);
+            }
             InputEvent::PointerMotionAbsolute { event, .. } => {
                 let output_geo = self.state.mon().output_geometry();
                 let pos = event.position_transformed(output_geo.size) + output_geo.loc.to_f64();
@@ -201,9 +221,7 @@ impl Monotile {
 
         match action {
             Quit => self.state.loop_signal.stop(),
-            Spawn(cmd, args) => {
-                std::process::Command::new(cmd).args(args).spawn().ok();
-            }
+            Spawn(cmd, args) => spawn(cmd, args),
             FocusStack(delta) => {
                 if let Some(id) = self.state.mon().tag().focus_cycle(delta) {
                     self.set_focus(Some(id));
