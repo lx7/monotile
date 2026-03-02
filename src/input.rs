@@ -243,6 +243,7 @@ impl Monotile {
             ToggleFullscreen | FocusMon(_) | TagMon(_) => {}
         }
         self.update_focus();
+        self.backend.schedule_render(&self.state.mon().output);
     }
 
     fn handle_mouse_action(
