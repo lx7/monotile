@@ -105,6 +105,7 @@ impl Monotile {
                     },
                 );
                 pointer.frame(self);
+                self.backend.schedule_render(&self.state.mon().output);
             }
             InputEvent::PointerMotionAbsolute { event, .. } => {
                 let output_geo = self.state.mon().output_geometry();
@@ -126,6 +127,7 @@ impl Monotile {
                     },
                 );
                 pointer.frame(self);
+                self.backend.schedule_render(&self.state.mon().output);
             }
             InputEvent::PointerButton { event, .. } => {
                 let button = event.button_code();

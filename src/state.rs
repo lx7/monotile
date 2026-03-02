@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use crate::{
-    backend::Backend,
-    shell::{Monitor, WindowId},
-};
+use std::{ffi::OsString, os::unix::net::UnixStream, sync::Arc};
+
 use smithay::{
     desktop::{PopupManager, Window},
     input::{Seat, SeatState},
@@ -22,6 +20,7 @@ use smithay::{
     utils::SERIAL_COUNTER,
     wayland::{
         compositor::{CompositorClientState, CompositorState},
+        cursor_shape::CursorShapeManagerState,
         dmabuf::{DmabufGlobal, DmabufState},
         output::OutputManagerState,
         selection::data_device::DataDeviceState,
@@ -34,7 +33,12 @@ use smithay::{
         socket::ListeningSocketSource,
     },
 };
-use std::{ffi::OsString, os::unix::net::UnixStream, sync::Arc};
+
+use crate::{
+    backend::Backend,
+    render::cursor::CursorManager,
+    shell::{Monitor, WindowId},
+};
 
 pub struct Monotile {
     pub backend: Backend,
@@ -115,6 +119,8 @@ pub struct State {
     pub dmabuf_global: Option<DmabufGlobal>,
     pub popups: PopupManager,
     pub seat: Seat<Monotile>,
+    pub cursor_shape_state: CursorShapeManagerState,
+    pub cursor: CursorManager,
     pub monitors: Vec<Monitor>,
     pub active_monitor: usize,
     pub pending: Vec<Window>,
@@ -142,6 +148,9 @@ impl State {
         .unwrap();
         seat.add_pointer();
 
+        let cursor_shape_state = CursorShapeManagerState::new::<Monotile>(&dh);
+        let cursor = CursorManager::new();
+
         Self {
             start_time: std::time::Instant::now(),
             socket: OsString::new(),
@@ -160,6 +169,8 @@ impl State {
             dmabuf_global: None,
             popups: PopupManager::default(),
             seat,
+            cursor_shape_state,
+            cursor,
             monitors: Vec::new(),
             active_monitor: 0,
             pending: Vec::new(),

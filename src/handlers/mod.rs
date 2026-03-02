@@ -8,11 +8,11 @@ mod xdg_shell;
 
 use crate::Monotile;
 use smithay::{
-    delegate_data_device, delegate_output, delegate_seat,
+    delegate_cursor_shape, delegate_data_device, delegate_output, delegate_seat,
     input::{
         Seat, SeatHandler, SeatState,
         dnd::{DnDGrab, DndGrabHandler, GrabType, Source},
-        pointer::Focus,
+        pointer::{CursorImageStatus, Focus},
     },
     reexports::wayland_server::{Resource, protocol::wl_surface::WlSurface},
     utils::Serial,
@@ -36,12 +36,9 @@ impl SeatHandler for Monotile {
         &mut self.state.seat_state
     }
 
-    fn cursor_image(
-        &mut self,
-        _seat: &Seat<Self>,
-        _image: smithay::input::pointer::CursorImageStatus,
-    ) {
-        // TODO: implement cursor_image()
+    fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
+        self.state.cursor.status = image;
+        self.backend.schedule_render(&self.state.mon().output);
     }
 
     // update data device (clipboard) access when the focus changes
@@ -94,3 +91,6 @@ impl WaylandDndGrabHandler for Monotile {
 
 impl OutputHandler for Monotile {}
 delegate_output!(Monotile);
+
+impl smithay::wayland::tablet_manager::TabletSeatHandler for Monotile {}
+delegate_cursor_shape!(Monotile);

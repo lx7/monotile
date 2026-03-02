@@ -836,6 +836,7 @@ dependencies = [
  "wayland-backend",
  "wayland-client",
  "wayland-protocols",
+ "xcursor",
 ]
 
 [[package]]

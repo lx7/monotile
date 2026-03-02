@@ -2,6 +2,7 @@
 
 mod border;
 pub mod clipped_surface;
+pub mod cursor;
 mod shaders;
 
 use std::borrow::BorrowMut;
@@ -11,6 +12,7 @@ use smithay::{
     backend::renderer::{
         element::{
             Kind, render_elements,
+            memory::MemoryRenderBufferRenderElement,
             surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
         },
         gles::{
@@ -34,6 +36,7 @@ render_elements! {
     Surface=WaylandSurfaceRenderElement<GlowRenderer>,
     Clipped=ClippedSurface,
     Decoration=PixelShaderElement,
+    Memory=MemoryRenderBufferRenderElement<GlowRenderer>,
 }
 
 #[derive(Debug)]

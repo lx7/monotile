@@ -121,19 +121,23 @@ impl DrmState {
             return;
         };
 
+        let ptr = state.seat.get_pointer().unwrap();
+        let pos = ptr.current_location();
+        let mut elems = state.cursor.elements(&mut self.renderer, pos);
+
         let windows: Vec<_> = mon.visible_windows().collect();
-        let elems = crate::render::output_elements(
+        elems.extend(crate::render::output_elements(
             &mut self.renderer,
             windows,
             &surface.output,
             &self.shaders,
-        );
+        ));
 
         let result = match surface.compositor.render_frame(
             &mut self.renderer,
             &elems,
             crate::config::BG_COLOR,
-            FrameFlags::empty(),
+            FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT,
         ) {
             Ok(result) => result,
             Err(err) => {
