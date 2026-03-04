@@ -125,11 +125,9 @@ impl DrmState {
         let pos = ptr.current_location();
         let mut elems = state.cursor.elements(&mut self.renderer, pos);
 
-        let windows: Vec<_> = mon.visible_windows().collect();
         elems.extend(crate::render::output_elements(
             &mut self.renderer,
-            windows,
-            &surface.output,
+            mon,
             &self.shaders,
         ));
 
@@ -137,7 +135,7 @@ impl DrmState {
             &mut self.renderer,
             &elems,
             crate::config::BG_COLOR,
-            FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT,
+            FrameFlags::DEFAULT | FrameFlags::ALLOW_PRIMARY_PLANE_SCANOUT_ANY,
         ) {
             Ok(result) => result,
             Err(err) => {

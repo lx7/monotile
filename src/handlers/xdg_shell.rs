@@ -11,7 +11,7 @@ use smithay::{
     reexports::{
         wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode,
         wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::OrgKdeKwinServerDecoration,
-        wayland_server::protocol::{wl_seat, wl_surface::WlSurface},
+        wayland_server::protocol::{wl_output, wl_seat, wl_surface::WlSurface},
     },
     utils::Serial,
     wayland::{
@@ -89,6 +89,25 @@ impl XdgShellHandler for Monotile {
         _edges: smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge,
     ) {
         // ignored, compositor controls window resizing
+    }
+
+    fn fullscreen_request(&mut self, surface: ToplevelSurface, _output: Option<wl_output::WlOutput>) {
+        if let Some(id) = self.state.mon().find_by_surface(surface.wl_surface()) {
+            self.state.mon_mut().set_fullscreen(id, true);
+            self.update_focus();
+        } else {
+            surface.send_pending_configure();
+        }
+    }
+
+    fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
+        if let Some(id) = self.state.mon().find_by_surface(surface.wl_surface()) {
+            self.state.mon_mut().set_fullscreen(id, false);
+            self.update_focus();
+            self.backend.schedule_render(&self.state.mon().output);
+        } else {
+            surface.send_pending_configure();
+        }
     }
 
     fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {

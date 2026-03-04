@@ -28,7 +28,7 @@ pub const BORDER_COLOR: [f32; 4] = color(0x444444ff);
 pub const FOCUS_COLOR: [f32; 4] = color(0x458588ff);
 pub const URGENT_COLOR: [f32; 4] = color(0xff0000ff);
 
-pub const FLOATING_RADIUS: f32 = 12.0;
+pub const FLOATING_RADIUS: f32 = 6.0;
 pub const TILED_RADIUS: f32 = 0.0;
 
 // Shadow

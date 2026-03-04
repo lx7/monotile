@@ -25,8 +25,7 @@ impl WinitState {
         let age = self.backend.buffer_age().unwrap_or(0);
         let (renderer, mut fb) = self.backend.bind()?;
 
-        let windows: Vec<_> = state.mon().visible_windows().collect();
-        let elems = crate::render::output_elements(renderer, windows, &self.output, &self.shaders);
+        let elems = crate::render::output_elements(renderer, state.mon(), &self.shaders);
         let rendered = self.damage_tracker.render_output(
             renderer,
             &mut fb,

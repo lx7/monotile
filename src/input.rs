@@ -221,29 +221,72 @@ impl Monotile {
     pub fn handle_action(&mut self, action: KeyAction) {
         use KeyAction::*;
 
-        match action {
-            Quit => self.state.loop_signal.stop(),
-            Spawn(cmd, args) => spawn(cmd, args),
+        let render = match action {
+            Quit => {
+                self.state.loop_signal.stop();
+                false
+            }
+            Spawn(cmd, args) => {
+                spawn(cmd, args);
+                false
+            }
             FocusStack(delta) => {
                 if let Some(id) = self.state.mon().tag().focus_cycle(delta) {
                     self.set_focus(Some(id));
                 }
+                true
             }
-            View(usize::MAX) => self.state.mon_mut().toggle_prev_tag(),
-            View(tag) => self.state.mon_mut().set_active_tag(tag),
-            Tag(tag) => self.state.mon_mut().move_active_to_tag(tag),
-            ToggleTag(tag) => self.state.mon_mut().toggle_active_tag(tag),
-            KillClient => self.state.mon_mut().kill_active(),
-            ToggleFloating => self.state.mon_mut().toggle_active_floating(),
-            MoveStack(delta) => self.state.mon_mut().move_in_stack(delta),
-            Zoom => self.state.mon_mut().zoom(),
-            IncNMaster(delta) => self.state.mon_mut().adjust_nmaster(delta),
-            SetMFact(delta) => self.state.mon_mut().adjust_mfact(delta),
-            // TODO: implement fullscreen and multi-monitor
-            ToggleFullscreen | FocusMon(_) | TagMon(_) => {}
-        }
+            View(usize::MAX) => {
+                self.state.mon_mut().toggle_prev_tag();
+                true
+            }
+            View(tag) => {
+                self.state.mon_mut().set_active_tag(tag);
+                true
+            }
+            Tag(tag) => {
+                self.state.mon_mut().move_active_to_tag(tag);
+                true
+            }
+            ToggleTag(tag) => {
+                self.state.mon_mut().toggle_active_tag(tag);
+                true
+            }
+            KillClient => {
+                self.state.mon_mut().kill_active();
+                false
+            }
+            ToggleFloating => {
+                self.state.mon_mut().toggle_active_floating();
+                false
+            }
+            MoveStack(delta) => {
+                self.state.mon_mut().move_in_stack(delta);
+                false
+            }
+            Zoom => {
+                self.state.mon_mut().zoom();
+                false
+            }
+            IncNMaster(delta) => {
+                self.state.mon_mut().adjust_nmaster(delta);
+                false
+            }
+            SetMFact(delta) => {
+                self.state.mon_mut().adjust_mfact(delta);
+                false
+            }
+            ToggleFullscreen => {
+                self.state.mon_mut().toggle_active_fullscreen();
+                false
+            }
+            // TODO: implement multi-monitor
+            FocusMon(_) | TagMon(_) => false,
+        };
         self.update_focus();
-        self.backend.schedule_render(&self.state.mon().output);
+        if render {
+            self.backend.schedule_render(&self.state.mon().output);
+        }
     }
 
     fn handle_mouse_action(

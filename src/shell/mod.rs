@@ -12,7 +12,10 @@ use slotmap::{SlotMap, new_key_type};
 use smithay::{
     desktop::{Window, WindowSurfaceType, layer_map_for_output},
     output::Output,
-    reexports::wayland_server::protocol::wl_surface::WlSurface,
+    reexports::{
+        wayland_protocols::xdg::shell::server::xdg_toplevel,
+        wayland_server::protocol::wl_surface::WlSurface,
+    },
     utils::{Logical, Point, Rectangle},
     wayland::{
         compositor::with_states,
@@ -36,12 +39,16 @@ pub struct WindowElement {
     pub tiled_geo: Rectangle<i32, Logical>,
     pub float_geo: Rectangle<i32, Logical>,
     pub floating: bool,
+    pub fullscreen: bool,
     pub focused: bool,
+    fullscreen_geo: Rectangle<i32, Logical>,
 }
 
 impl WindowElement {
     pub fn geo(&self) -> Rectangle<i32, Logical> {
-        if self.floating {
+        if self.fullscreen {
+            self.fullscreen_geo
+        } else if self.floating {
             self.float_geo
         } else {
             self.tiled_geo
@@ -53,6 +60,34 @@ impl WindowElement {
         self.window.set_activated(focused);
         if let Some(tl) = self.window.toplevel() {
             tl.send_pending_configure();
+        }
+    }
+
+    pub fn set_fullscreen(&mut self, fs: bool, output_geo: Rectangle<i32, Logical>) {
+        self.fullscreen = fs;
+        self.fullscreen_geo = output_geo;
+        let Some(tl) = self.window.toplevel() else {
+            return;
+        };
+        let size = self.geo().size;
+        tl.with_pending_state(|s| {
+            if fs {
+                s.states.set(xdg_toplevel::State::Fullscreen);
+            } else {
+                s.states.unset(xdg_toplevel::State::Fullscreen);
+            }
+            s.size = Some(size);
+        });
+        tl.send_pending_configure();
+    }
+
+    pub fn set_floating(&mut self, floating: bool) {
+        self.floating = floating;
+        if floating {
+            if let Some(tl) = self.window.toplevel() {
+                tl.with_pending_state(|s| s.size = Some(self.float_geo.size));
+                tl.send_pending_configure();
+            }
         }
     }
 }
@@ -86,6 +121,7 @@ pub struct Tag {
     pub floating: Vec<WindowId>,
     pub focus_stack: Vec<WindowId>,
     pub layout: TilingLayout,
+    pub fullscreen: Option<WindowId>,
 }
 
 impl Tag {
@@ -97,6 +133,9 @@ impl Tag {
         self.tiled.retain(|&wid| wid != id);
         self.floating.retain(|&wid| wid != id);
         self.focus_stack.retain(|&wid| wid != id);
+        if self.fullscreen == Some(id) {
+            self.fullscreen = None;
+        }
     }
 
     fn add(&mut self, id: WindowId, floating: bool) {
@@ -212,7 +251,9 @@ impl Monitor {
             tiled_geo: Rectangle::default(),
             float_geo,
             floating,
+            fullscreen: false,
             focused: false,
+            fullscreen_geo: Rectangle::default(),
         });
 
         self.tag_mut().add(id, floating);
@@ -274,7 +315,11 @@ impl Monitor {
             return;
         }
         let Some(id) = self.active_id() else { return };
-        let floating = self.windows.get(id).is_some_and(|we| we.floating);
+        let Some(we) = self.windows.get(id) else { return };
+        let floating = we.floating;
+
+        self.set_fullscreen(id, false);
+
         for t in &mut self.tags {
             t.remove(id);
         }
@@ -301,17 +346,14 @@ impl Monitor {
     }
 
     pub fn set_floating(&mut self, id: WindowId, floating: bool) {
+        self.set_fullscreen(id, false);
         let Some(we) = self.windows.get_mut(id) else {
             return;
         };
         if we.floating == floating {
             return;
         }
-        we.floating = floating;
-        if floating && let Some(tl) = we.window.toplevel() {
-            tl.with_pending_state(|s| s.size = Some(we.float_geo.size));
-            tl.send_pending_configure();
-        }
+        we.set_floating(floating);
         for tag in &mut self.tags {
             if tag.contains(id) {
                 tag.add(id, floating);
@@ -327,6 +369,24 @@ impl Monitor {
         };
         let floating = !we.floating;
         self.set_floating(id, floating);
+    }
+
+    pub fn set_fullscreen(&mut self, id: WindowId, fs: bool) {
+        let geo = self.output_geometry();
+        let Some(we) = self.windows.get_mut(id) else {
+            return;
+        };
+        we.set_fullscreen(fs, geo);
+        self.tag_mut().fullscreen = if fs { Some(id) } else { None };
+        if !fs {
+            self.recompute_layout();
+        }
+    }
+
+    pub fn toggle_active_fullscreen(&mut self) {
+        let Some(id) = self.active_id() else { return };
+        let fs = !self.windows.get(id).is_some_and(|we| we.fullscreen);
+        self.set_fullscreen(id, fs);
     }
 
     pub fn kill_active(&self) {
@@ -358,10 +418,14 @@ impl Monitor {
 
     // === Queries ===
 
-    pub fn visible_windows(&self) -> impl Iterator<Item = &WindowElement> {
+    pub fn visible_windows(&self) -> Vec<&WindowElement> {
+        if let Some(id) = self.tag().fullscreen {
+            return self.windows.get(id).into_iter().collect();
+        }
         self.tag()
             .window_ids()
-            .filter_map(move |id| self.windows.get(id))
+            .filter_map(|id| self.windows.get(id))
+            .collect()
     }
 
     pub fn find_window_by_surface(&self, surface: &WlSurface) -> Option<&WindowElement> {
@@ -377,6 +441,9 @@ impl Monitor {
     }
 
     pub fn window_under(&self, pos: Point<f64, Logical>) -> Option<&WindowElement> {
+        if let Some(id) = self.tag().fullscreen {
+            return self.windows.get(id);
+        }
         for id in self.tag().window_ids().rev() {
             if let Some(we) = self.windows.get(id)
                 && we.geo().to_f64().contains(pos)
