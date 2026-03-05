@@ -31,7 +31,7 @@ use smithay::{
 
 use crate::{
     config::*,
-    shell::{Monitor, WindowElement},
+    shell::{Monitor, WindowElement, Windows},
 };
 use clipped_surface::ClippedSurface;
 
@@ -161,13 +161,14 @@ fn popup_elements(
 pub fn output_elements(
     renderer: &mut GlowRenderer,
     mon: &Monitor,
+    ws: &Windows,
     shaders: &Shaders,
 ) -> Vec<MonotileElement> {
     let output = &mon.output;
     let scale = Scale::from(SCALE);
     let mut elems = Vec::new();
 
-    if let Some(we) = mon.tag().fullscreen.and_then(|id| mon.get(id)) {
+    if let Some(we) = mon.tag().fullscreen.and_then(|id| ws.get(id)) {
         elems.extend(layer_popup_elements(renderer, output, &[Layer::Overlay]));
         elems.extend(layer_elements(renderer, output, &[Layer::Overlay]));
 
@@ -199,7 +200,7 @@ pub fn output_elements(
         let pad_x = BORDER_WIDTH + blur + SHADOW_SPREAD + SHADOW_OFFSET.0.abs();
         let pad_y = BORDER_WIDTH + blur + SHADOW_SPREAD + SHADOW_OFFSET.1.abs();
 
-        let windows = mon.visible_windows();
+        let windows = ws.visible(mon.tag());
         let tiled = windows.iter().filter(|w| !w.floating).count();
 
         for we in windows.iter().rev() {

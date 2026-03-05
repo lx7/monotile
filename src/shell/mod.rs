@@ -1,16 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! This module is the core window management abstraction that handles:
-//! - Window lifecycle (map, unmap, get)
-//! - Per-monitor tags (similar to workspaces)
-//! - Tiling layout computation
-//! - Window queries (visible, under cursor, etc.)
 mod layout;
 pub use layout::TilingLayout;
 
+use std::ops::{Deref, DerefMut};
+
 use slotmap::{SlotMap, new_key_type};
 use smithay::{
-    desktop::{Window, WindowSurfaceType, layer_map_for_output},
+    desktop::{Window, layer_map_for_output},
     output::Output,
     reexports::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
@@ -63,32 +60,40 @@ impl WindowElement {
         }
     }
 
-    pub fn set_fullscreen(&mut self, fs: bool, output_geo: Rectangle<i32, Logical>) {
-        self.fullscreen = fs;
-        self.fullscreen_geo = output_geo;
-        let Some(tl) = self.window.toplevel() else {
-            return;
-        };
-        let size = self.geo().size;
-        tl.with_pending_state(|s| {
-            if fs {
-                s.states.set(xdg_toplevel::State::Fullscreen);
-            } else {
-                s.states.unset(xdg_toplevel::State::Fullscreen);
-            }
-            s.size = Some(size);
-        });
-        tl.send_pending_configure();
+    pub fn set_fullscreen(&mut self, geo: Option<Rectangle<i32, Logical>>) {
+        self.fullscreen = geo.is_some();
+        if let Some(g) = geo {
+            self.fullscreen_geo = g;
+        }
+        if let Some(tl) = self.window.toplevel() {
+            tl.with_pending_state(|s| {
+                if self.fullscreen {
+                    s.states.set(xdg_toplevel::State::Fullscreen);
+                } else {
+                    s.states.unset(xdg_toplevel::State::Fullscreen);
+                }
+            });
+        }
     }
 
     pub fn set_floating(&mut self, floating: bool) {
         self.floating = floating;
-        if floating {
-            if let Some(tl) = self.window.toplevel() {
-                tl.with_pending_state(|s| s.size = Some(self.float_geo.size));
-                tl.send_pending_configure();
-            }
+        self.fullscreen = false;
+        if let Some(tl) = self.window.toplevel() {
+            tl.with_pending_state(|s| {
+                s.states.unset(xdg_toplevel::State::Fullscreen);
+            });
         }
+    }
+
+    pub fn configure(&self) {
+        let Some(tl) = self.window.toplevel() else {
+            return;
+        };
+        tl.with_pending_state(|s| {
+            s.size = Some(self.geo().size);
+        });
+        tl.send_pending_configure();
     }
 }
 
@@ -116,6 +121,64 @@ pub fn should_float(tl: &ToplevelSurface) -> bool {
 }
 
 #[derive(Debug, Default)]
+pub struct Windows(pub SlotMap<WindowId, WindowElement>);
+
+impl Deref for Windows {
+    type Target = SlotMap<WindowId, WindowElement>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Windows {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Windows {
+    pub fn unfocus_all(&mut self) {
+        for we in self.values_mut() {
+            if we.focused {
+                we.set_focused(false);
+            }
+        }
+    }
+
+    pub fn find_by_surface(&self, surface: &WlSurface) -> Option<WindowId> {
+        for we in self.values() {
+            if let Some(tl) = we.window.toplevel() {
+                if tl.wl_surface() == surface {
+                    return Some(we.id);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn visible(&self, tag: &Tag) -> Vec<&WindowElement> {
+        if let Some(id) = tag.fullscreen {
+            return self.get(id).into_iter().collect();
+        }
+        tag.window_ids().filter_map(|id| self.get(id)).collect()
+    }
+
+    pub fn window_under(&self, tag: &Tag, pos: Point<f64, Logical>) -> Option<&WindowElement> {
+        if let Some(id) = tag.fullscreen {
+            return self.get(id);
+        }
+        for id in tag.window_ids().rev() {
+            if let Some(we) = self.get(id)
+                && we.geo().to_f64().contains(pos)
+            {
+                return Some(we);
+            }
+        }
+        None
+    }
+}
+
+#[derive(Debug, Default)]
 pub struct Tag {
     pub tiled: Vec<WindowId>,
     pub floating: Vec<WindowId>,
@@ -126,7 +189,7 @@ pub struct Tag {
 
 impl Tag {
     fn contains(&self, id: WindowId) -> bool {
-        self.tiled.contains(&id) || self.floating.contains(&id)
+        self.focus_stack.contains(&id)
     }
 
     fn remove(&mut self, id: WindowId) {
@@ -138,22 +201,35 @@ impl Tag {
         }
     }
 
-    fn add(&mut self, id: WindowId, floating: bool) {
+    fn add(&mut self, id: WindowId) {
         self.remove(id);
-        if floating {
-            self.floating.push(id);
-        } else {
-            self.tiled.push(id);
-        }
         self.focus_stack.insert(0, id);
     }
 
-    /// Get all window IDs in render order (tiled first, then floating)
     pub fn window_ids(&self) -> impl DoubleEndedIterator<Item = WindowId> + '_ {
         self.tiled.iter().chain(self.floating.iter()).copied()
     }
 
-    /// Raise floating window to top of z-order
+    pub fn focus(&mut self, id: WindowId) {
+        self.focus_stack.retain(|&x| x != id);
+        self.focus_stack.insert(0, id);
+    }
+
+    pub fn focus_cycle(&self, delta: i32) -> Option<WindowId> {
+        let pos = self.focused_tiled_pos()?;
+        let next = (pos as i32 + delta).rem_euclid(self.tiled.len() as i32) as usize;
+        Some(self.tiled[next])
+    }
+
+    pub fn focused_id(&self) -> Option<WindowId> {
+        self.focus_stack.first().copied()
+    }
+
+    fn focused_tiled_pos(&self) -> Option<usize> {
+        let current = self.focused_id()?;
+        self.tiled.iter().position(|&id| id == current)
+    }
+
     pub fn raise(&mut self, id: WindowId) {
         if let Some(pos) = self.floating.iter().position(|&wid| wid == id) {
             let id = self.floating.remove(pos);
@@ -161,16 +237,16 @@ impl Tag {
         }
     }
 
-    pub fn move_in_stack(&mut self, current: WindowId, delta: i32) {
-        let Some(pos) = self.tiled.iter().position(|&id| id == current) else {
+    pub fn move_in_stack(&mut self, delta: i32) {
+        let Some(pos) = self.focused_tiled_pos() else {
             return;
         };
         let next = (pos as i32 + delta).rem_euclid(self.tiled.len() as i32) as usize;
         self.tiled.swap(pos, next);
     }
 
-    pub fn zoom(&mut self, current: WindowId) {
-        let Some(pos) = self.tiled.iter().position(|&id| id == current) else {
+    pub fn zoom(&mut self) {
+        let Some(pos) = self.focused_tiled_pos() else {
             return;
         };
         if pos > 0 {
@@ -185,30 +261,19 @@ impl Tag {
     pub fn adjust_nmaster(&mut self, delta: i32) {
         self.layout.master_count = (self.layout.master_count as i32 + delta).max(1) as usize;
     }
-
-    pub fn focus_cycle(&self, delta: i32) -> Option<WindowId> {
-        let current = *self.focus_stack.first()?;
-        let pos = self.tiled.iter().position(|&id| id == current)?;
-        let next = (pos as i32 + delta).rem_euclid(self.tiled.len() as i32) as usize;
-        Some(self.tiled[next])
-    }
 }
 
-/// Per-monitor state with independent tag and window storage
 #[derive(Debug)]
 pub struct Monitor {
-    windows: SlotMap<WindowId, WindowElement>,
     pub output: Output,
     pub tags: [Tag; TAGCOUNT],
     pub active_tag: usize,
     pub prev_tag: usize,
 }
 
-// TODO: review methods. Do window queries and layout delegates belong here?
 impl Monitor {
     pub fn new(output: Output) -> Self {
         Self {
-            windows: SlotMap::with_key(),
             output,
             tags: [(); TAGCOUNT].map(|_| Tag::default()),
             active_tag: 0,
@@ -224,9 +289,7 @@ impl Monitor {
         &mut self.tags[self.active_tag]
     }
 
-    // === Window lifecycle ===
-
-    pub fn map(&mut self, window: Window, floating: bool) -> WindowId {
+    pub fn map(&mut self, ws: &mut Windows, window: Window, floating: bool) -> WindowId {
         let area = layer_map_for_output(&self.output).non_exclusive_zone();
         let size = window.geometry().size;
 
@@ -245,7 +308,7 @@ impl Monitor {
         let y = area.loc.y + (area.size.h - fh) / 2;
         let float_geo = Rectangle::new((x, y).into(), (fw, fh).into());
 
-        let id = self.windows.insert_with_key(|id| WindowElement {
+        let id = ws.insert_with_key(|id| WindowElement {
             id,
             window,
             tiled_geo: Rectangle::default(),
@@ -256,146 +319,49 @@ impl Monitor {
             fullscreen_geo: Rectangle::default(),
         });
 
-        self.tag_mut().add(id, floating);
-        self.recompute_layout();
+        self.tag_mut().add(id);
         id
     }
 
-    pub fn unmap(&mut self, id: WindowId) {
+    pub fn unmap(&mut self, ws: &mut Windows, id: WindowId) {
         for tag in &mut self.tags {
             tag.remove(id);
         }
-        self.windows.remove(id);
-        self.recompute_layout();
+        ws.remove(id);
     }
 
-    pub fn get(&self, id: WindowId) -> Option<&WindowElement> {
-        self.windows.get(id)
-    }
-
-    pub fn get_mut(&mut self, id: WindowId) -> Option<&mut WindowElement> {
-        self.windows.get_mut(id)
-    }
-
-    // === Activation / Focus stack ===
-
-    /// Get currently active window (front of focus stack)
-    pub fn focused_window(&self) -> Option<&WindowElement> {
-        let id = *self.tag().focus_stack.first()?;
-        self.windows.get(id)
-    }
-
-    /// Set focus to a window (or clear focus). Handles unfocus/focus/activate/focus stack.
-    pub fn set_focus(&mut self, id: Option<WindowId>) -> Option<WlSurface> {
-        for we in self.windows.values_mut() {
-            if we.focused {
-                we.set_focused(false);
-            }
-        }
-        if let Some(id) = id
-            && let Some(we) = self.windows.get_mut(id)
-        {
-            we.set_focused(true);
-            let stack = &mut self.tags[self.active_tag].focus_stack;
-            stack.retain(|&x| x != id);
-            stack.insert(0, id);
-            return we.window.toplevel().map(|tl| tl.wl_surface().clone());
-        }
-        None
-    }
-
-    // === Window operations (active) ===
-
-    pub fn active_id(&self) -> Option<WindowId> {
-        self.tag().focus_stack.first().copied()
-    }
-
-    pub fn move_active_to_tag(&mut self, tag: usize) {
+    pub fn move_to_tag(&mut self, ws: &mut Windows, tag: usize) {
         if tag >= TAGCOUNT {
             return;
         }
-        let Some(id) = self.active_id() else { return };
-        let Some(we) = self.windows.get(id) else { return };
-        let floating = we.floating;
-
-        self.set_fullscreen(id, false);
-
+        let Some(id) = self.tag().focused_id() else {
+            return;
+        };
+        if let Some(we) = ws.get_mut(id) {
+            we.set_fullscreen(None);
+        }
         for t in &mut self.tags {
             t.remove(id);
         }
-        self.tags[tag].add(id, floating);
-        self.recompute_layout();
+        self.tags[tag].add(id);
     }
 
-    pub fn toggle_active_tag(&mut self, tag: usize) {
+    pub fn toggle_tag(&mut self, tag: usize) {
         if tag >= TAGCOUNT {
             return;
         }
-        let Some(id) = self.active_id() else { return };
-        let floating = self.windows.get(id).is_some_and(|we| we.floating);
-
+        let Some(id) = self.tag().focused_id() else {
+            return;
+        };
         if self.tags[tag].contains(id) {
             let count = self.tags.iter().filter(|t| t.contains(id)).count();
             if count > 1 {
                 self.tags[tag].remove(id);
             }
         } else {
-            self.tags[tag].add(id, floating);
-        }
-        self.recompute_layout();
-    }
-
-    pub fn set_floating(&mut self, id: WindowId, floating: bool) {
-        self.set_fullscreen(id, false);
-        let Some(we) = self.windows.get_mut(id) else {
-            return;
-        };
-        if we.floating == floating {
-            return;
-        }
-        we.set_floating(floating);
-        for tag in &mut self.tags {
-            if tag.contains(id) {
-                tag.add(id, floating);
-            }
-        }
-        self.recompute_layout();
-    }
-
-    pub fn toggle_active_floating(&mut self) {
-        let Some(id) = self.active_id() else { return };
-        let Some(we) = self.windows.get(id) else {
-            return;
-        };
-        let floating = !we.floating;
-        self.set_floating(id, floating);
-    }
-
-    pub fn set_fullscreen(&mut self, id: WindowId, fs: bool) {
-        let geo = self.output_geometry();
-        let Some(we) = self.windows.get_mut(id) else {
-            return;
-        };
-        we.set_fullscreen(fs, geo);
-        self.tag_mut().fullscreen = if fs { Some(id) } else { None };
-        if !fs {
-            self.recompute_layout();
+            self.tags[tag].add(id);
         }
     }
-
-    pub fn toggle_active_fullscreen(&mut self) {
-        let Some(id) = self.active_id() else { return };
-        let fs = !self.windows.get(id).is_some_and(|we| we.fullscreen);
-        self.set_fullscreen(id, fs);
-    }
-
-    pub fn kill_active(&self) {
-        if let Some(tl) = self.focused_window().and_then(|we| we.window.toplevel()) {
-            tl.send_close();
-        }
-    }
-
-    // === Tag management ===
 
     pub fn set_active_tag(&mut self, tag: usize) {
         if tag >= TAGCOUNT {
@@ -403,12 +369,10 @@ impl Monitor {
         }
         self.prev_tag = self.active_tag;
         self.active_tag = tag;
-        self.recompute_layout();
     }
 
     pub fn toggle_prev_tag(&mut self) {
         std::mem::swap(&mut self.active_tag, &mut self.prev_tag);
-        self.recompute_layout();
     }
 
     pub fn output_geometry(&self) -> Rectangle<i32, Logical> {
@@ -416,98 +380,40 @@ impl Monitor {
         Rectangle::new((0, 0).into(), size.to_logical(1))
     }
 
-    // === Queries ===
+    pub fn recompute_layout(&mut self, ws: &mut Windows) {
+        let tag = &mut self.tags[self.active_tag];
 
-    pub fn visible_windows(&self) -> Vec<&WindowElement> {
-        if let Some(id) = self.tag().fullscreen {
-            return self.windows.get(id).into_iter().collect();
-        }
-        self.tag()
-            .window_ids()
-            .filter_map(|id| self.windows.get(id))
-            .collect()
-    }
+        tag.tiled
+            .retain(|&id| ws.get(id).is_some_and(|we| !we.floating));
 
-    pub fn find_window_by_surface(&self, surface: &WlSurface) -> Option<&WindowElement> {
-        self.windows.values().find(|we| {
-            we.window
-                .toplevel()
-                .is_some_and(|tl| tl.wl_surface() == surface)
-        })
-    }
+        tag.floating
+            .retain(|&id| ws.get(id).is_some_and(|we| we.floating));
 
-    pub fn find_by_surface(&self, surface: &WlSurface) -> Option<WindowId> {
-        self.find_window_by_surface(surface).map(|we| we.id)
-    }
-
-    pub fn window_under(&self, pos: Point<f64, Logical>) -> Option<&WindowElement> {
-        if let Some(id) = self.tag().fullscreen {
-            return self.windows.get(id);
-        }
-        for id in self.tag().window_ids().rev() {
-            if let Some(we) = self.windows.get(id)
-                && we.geo().to_f64().contains(pos)
-            {
-                return Some(we);
+        for &id in &tag.focus_stack {
+            let Some(we) = ws.get(id) else { continue };
+            if we.floating {
+                if !tag.floating.contains(&id) {
+                    tag.floating.push(id);
+                }
+            } else if !tag.tiled.contains(&id) {
+                tag.tiled.push(id);
             }
         }
-        None
-    }
+        tag.fullscreen = tag
+            .focus_stack
+            .iter()
+            .copied()
+            .find(|&id| ws.get(id).is_some_and(|we| we.fullscreen));
 
-    pub fn surface_under(
-        &self,
-        pos: Point<f64, Logical>,
-    ) -> Option<(WlSurface, Point<f64, Logical>)> {
-        let map = layer_map_for_output(&self.output);
-        let layer_hit = |layer| {
-            let layer = map.layer_under(layer, pos)?;
-            let geo = map.layer_geometry(layer).unwrap();
-            let rel = pos - geo.loc.to_f64();
-            let (s, point) = layer.surface_under(rel, WindowSurfaceType::ALL)?;
-            Some((s, (point + geo.loc).to_f64()))
-        };
-
-        // overlay / top layers
-        if let Some(hit) = layer_hit(Layer::Overlay).or_else(|| layer_hit(Layer::Top)) {
-            return Some(hit);
-        }
-
-        // windows
-        if let Some(we) = self.window_under(pos) {
-            let loc = we.geo().loc - we.window.geometry().loc;
-            let rel = pos - loc.to_f64();
-            if let Some((s, point)) = we.window.surface_under(rel, WindowSurfaceType::ALL) {
-                return Some((s, (point + loc).to_f64()));
-            }
-        }
-
-        // bottom / background layers
-        layer_hit(Layer::Bottom).or_else(|| layer_hit(Layer::Background))
-    }
-
-    // === Layout ===
-
-    /// Recompute layout for active tag
-    pub fn recompute_layout(&mut self) {
         let geo = layer_map_for_output(&self.output).non_exclusive_zone();
-        let tag = self.tag();
         let rects = tag.layout.compute_rects(tag.tiled.len(), geo);
-        let tiled = tag.tiled.clone();
-        for (id, rect) in tiled.iter().zip(rects) {
-            let Some(we) = self.windows.get_mut(*id) else {
-                continue;
-            };
-            we.tiled_geo = rect;
-            if let Some(tl) = we.window.toplevel() {
-                tl.with_pending_state(|s| {
-                    s.size = Some(rect.size);
-                });
-                tl.send_pending_configure();
+        for (&id, rect) in tag.tiled.iter().zip(rects) {
+            if let Some(we) = ws.get_mut(id) {
+                we.tiled_geo = rect;
             }
         }
     }
 
-    /// Find exclusive-keyboard layer surface (lock screens, launchers)
     pub fn exclusive_layer_surface(&self) -> Option<WlSurface> {
         let map = layer_map_for_output(&self.output);
         for l in [Layer::Overlay, Layer::Top] {
@@ -518,35 +424,5 @@ impl Monitor {
             }
         }
         None
-    }
-
-    /// Move focused window up/down in the tiled stack
-    pub fn move_in_stack(&mut self, delta: i32) {
-        let Some(&current) = self.tag().focus_stack.first() else {
-            return;
-        };
-        self.tag_mut().move_in_stack(current, delta);
-        self.recompute_layout();
-    }
-
-    /// Swap focused window with master (first tiled window)
-    pub fn zoom(&mut self) {
-        let Some(&current) = self.tag().focus_stack.first() else {
-            return;
-        };
-        self.tag_mut().zoom(current);
-        self.recompute_layout();
-    }
-
-    /// Adjust master factor for current tag
-    pub fn adjust_mfact(&mut self, delta: f32) {
-        self.tag_mut().adjust_mfact(delta);
-        self.recompute_layout();
-    }
-
-    /// Adjust master count for current tag
-    pub fn adjust_nmaster(&mut self, delta: i32) {
-        self.tag_mut().adjust_nmaster(delta);
-        self.recompute_layout();
     }
 }

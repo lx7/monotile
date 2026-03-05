@@ -40,9 +40,9 @@ impl XdgShellHandler for Monotile {
         self.state
             .pending
             .retain(|w| w.toplevel().is_none_or(|tl| tl.wl_surface() != wl));
-        if let Some(id) = self.state.mon().find_by_surface(wl) {
-            self.state.mon_mut().unmap(id);
-            self.update_focus();
+        if let Some(id) = self.state.windows.find_by_surface(wl) {
+            self.state.unmap(id);
+            self.recompute_layout();
             self.backend.schedule_render(&self.state.mon().output);
         }
     }
@@ -70,10 +70,11 @@ impl XdgShellHandler for Monotile {
     fn parent_changed(&mut self, surface: ToplevelSurface) {
         // for mapped windows that get a parent set late
         let wl = surface.wl_surface();
-        if let Some(id) = self.state.mon().find_by_surface(wl)
+        if let Some(id) = self.state.windows.find_by_surface(wl)
             && surface.parent().is_some()
         {
-            self.state.mon_mut().set_floating(id, true);
+            self.state.windows[id].set_floating(true);
+            self.recompute_layout();
         }
     }
 
@@ -92,18 +93,19 @@ impl XdgShellHandler for Monotile {
     }
 
     fn fullscreen_request(&mut self, surface: ToplevelSurface, _output: Option<wl_output::WlOutput>) {
-        if let Some(id) = self.state.mon().find_by_surface(surface.wl_surface()) {
-            self.state.mon_mut().set_fullscreen(id, true);
-            self.update_focus();
+        if let Some(id) = self.state.windows.find_by_surface(surface.wl_surface()) {
+            let geo = self.state.mon().output_geometry();
+            self.state.windows[id].set_fullscreen(Some(geo));
+            self.recompute_layout();
         } else {
             surface.send_pending_configure();
         }
     }
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
-        if let Some(id) = self.state.mon().find_by_surface(surface.wl_surface()) {
-            self.state.mon_mut().set_fullscreen(id, false);
-            self.update_focus();
+        if let Some(id) = self.state.windows.find_by_surface(surface.wl_surface()) {
+            self.state.windows[id].set_fullscreen(None);
+            self.recompute_layout();
             self.backend.schedule_render(&self.state.mon().output);
         } else {
             surface.send_pending_configure();
@@ -164,7 +166,7 @@ pub fn handle_commit(state: &mut crate::state::State, surface: &WlSurface) -> bo
                 let floating = should_float(&tl);
                 let window = state.pending.remove(idx);
                 window.on_commit();
-                state.mon_mut().map(window, floating);
+                state.map(window, floating);
                 mapped = true;
             }
         }
@@ -206,10 +208,11 @@ impl Monotile {
 
         // constraint rect depends on whether parent is a window or layer surface
         let popup_offset = get_popup_toplevel_coords(&kind);
+        let parent = self.state.windows.find_by_surface(&root)
+            .and_then(|id| self.state.windows.get(id));
         let mon = self.state.mon();
-        let parent_window = mon.find_window_by_surface(&root);
 
-        let parent_loc = if let Some(we) = parent_window {
+        let parent_loc = if let Some(we) = parent {
             we.geo().loc
         } else {
             let map = layer_map_for_output(&mon.output);

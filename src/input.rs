@@ -90,10 +90,13 @@ impl Monotile {
                 let pos = pointer.current_location() + event.delta();
                 let pos = pos.constrain(geo.to_f64());
 
-                if FOCUS_FOLLOWS_CURSOR && let Some(we) = self.state.mon().window_under(pos) {
-                    self.set_focus(Some(we.id));
+                if FOCUS_FOLLOWS_CURSOR {
+                    let tag = self.state.mon().tag();
+                    if let Some(we) = self.state.windows.window_under(tag, pos) {
+                        self.set_focus(Some(we.id));
+                    }
                 }
-                let target = self.state.mon().surface_under(pos);
+                let target = self.state.surface_under(pos);
 
                 pointer.motion(
                     self,
@@ -111,10 +114,13 @@ impl Monotile {
                 let output_geo = self.state.mon().output_geometry();
                 let pos = event.position_transformed(output_geo.size) + output_geo.loc.to_f64();
 
-                if FOCUS_FOLLOWS_CURSOR && let Some(we) = self.state.mon().window_under(pos) {
-                    self.set_focus(Some(we.id));
+                if FOCUS_FOLLOWS_CURSOR {
+                    let tag = self.state.mon().tag();
+                    if let Some(we) = self.state.windows.window_under(tag, pos) {
+                        self.set_focus(Some(we.id));
+                    }
                 }
-                let target = self.state.mon().surface_under(pos);
+                let target = self.state.surface_under(pos);
 
                 // forward event to target surface
                 pointer.motion(
@@ -150,7 +156,8 @@ impl Monotile {
                     }
 
                     // raise window and focus
-                    if let Some(we) = self.state.mon().window_under(pointer.current_location()) {
+                    let tag = self.state.mon().tag();
+                    if let Some(we) = self.state.windows.window_under(tag, pointer.current_location()) {
                         let id = we.id;
                         self.state.mon_mut().tag_mut().raise(id);
                         self.set_focus(Some(id));
@@ -221,72 +228,71 @@ impl Monotile {
     pub fn handle_action(&mut self, action: KeyAction) {
         use KeyAction::*;
 
-        let render = match action {
+        match action {
             Quit => {
                 self.state.loop_signal.stop();
-                false
             }
             Spawn(cmd, args) => {
                 spawn(cmd, args);
-                false
             }
             FocusStack(delta) => {
                 if let Some(id) = self.state.mon().tag().focus_cycle(delta) {
                     self.set_focus(Some(id));
                 }
-                true
             }
             View(usize::MAX) => {
                 self.state.mon_mut().toggle_prev_tag();
-                true
             }
             View(tag) => {
                 self.state.mon_mut().set_active_tag(tag);
-                true
             }
             Tag(tag) => {
-                self.state.mon_mut().move_active_to_tag(tag);
-                true
+                let mon = &mut self.state.monitors[self.state.active_monitor];
+                mon.move_to_tag(&mut self.state.windows, tag);
             }
             ToggleTag(tag) => {
-                self.state.mon_mut().toggle_active_tag(tag);
-                true
+                self.state.mon_mut().toggle_tag(tag);
             }
             KillClient => {
-                self.state.mon_mut().kill_active();
-                false
+                if let Some(id) = self.state.mon().tag().focused_id()
+                    && let Some(tl) = self.state.windows[id].window.toplevel()
+                {
+                    tl.send_close();
+                }
             }
             ToggleFloating => {
-                self.state.mon_mut().toggle_active_floating();
-                false
+                if let Some(id) = self.state.mon().tag().focused_id() {
+                    let floating = !self.state.windows[id].floating;
+                    self.state.windows[id].set_floating(floating);
+                }
             }
             MoveStack(delta) => {
-                self.state.mon_mut().move_in_stack(delta);
-                false
+                self.state.mon_mut().tag_mut().move_in_stack(delta);
             }
             Zoom => {
-                self.state.mon_mut().zoom();
-                false
+                self.state.mon_mut().tag_mut().zoom();
             }
             IncNMaster(delta) => {
-                self.state.mon_mut().adjust_nmaster(delta);
-                false
+                self.state.mon_mut().tag_mut().adjust_nmaster(delta);
             }
             SetMFact(delta) => {
-                self.state.mon_mut().adjust_mfact(delta);
-                false
+                self.state.mon_mut().tag_mut().adjust_mfact(delta);
             }
             ToggleFullscreen => {
-                self.state.mon_mut().toggle_active_fullscreen();
-                false
+                if let Some(id) = self.state.mon().tag().focused_id() {
+                    let geo = if self.state.windows[id].fullscreen {
+                        None
+                    } else {
+                        Some(self.state.mon().output_geometry())
+                    };
+                    self.state.windows[id].set_fullscreen(geo);
+                }
             }
             // TODO: implement multi-monitor
-            FocusMon(_) | TagMon(_) => false,
-        };
-        self.update_focus();
-        if render {
-            self.backend.schedule_render(&self.state.mon().output);
+            FocusMon(_) | TagMon(_) => {}
         }
+        self.recompute_layout();
+        self.backend.schedule_render(&self.state.mon().output);
     }
 
     fn handle_mouse_action(
@@ -296,15 +302,15 @@ impl Monotile {
         pos: Point<f64, Logical>,
         serial: smithay::utils::Serial,
     ) {
-        let we = self.state.mon().window_under(pos);
-        let we = match we {
+        let tag = self.state.mon().tag();
+        let we = match self.state.windows.window_under(tag, pos) {
             Some(we) if we.floating => we,
             _ => return,
         };
         let id = we.id;
         let geo = we.geo();
         let start = GrabStartData {
-            focus: self.state.mon().surface_under(pos),
+            focus: self.state.surface_under(pos),
             button: btn,
             location: pos,
         };

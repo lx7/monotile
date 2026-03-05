@@ -25,7 +25,7 @@ impl PointerGrab<Monotile> for MoveSurfaceGrab {
         // While the grab is active, no client has pointer focus
         handle.motion(monotile, None, event);
 
-        if let Some(we) = monotile.state.mon_mut().get_mut(self.window_id) {
+        if let Some(we) = monotile.state.windows.get_mut(self.window_id) {
             let delta = event.location - self.start_data.location;
             we.float_geo.loc = (self.initial_location.to_f64() + delta).to_i32_round();
         }

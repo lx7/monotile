@@ -42,7 +42,7 @@ impl PointerGrab<Monotile> for ResizeSurfaceGrab {
     ) {
         handle.motion(monotile, None, event);
 
-        let Some(we) = monotile.state.mon_mut().get_mut(self.window_id) else {
+        let Some(we) = monotile.state.windows.get_mut(self.window_id) else {
             return;
         };
 
@@ -92,7 +92,7 @@ impl PointerGrab<Monotile> for ResizeSurfaceGrab {
         if !handle.current_pressed().contains(&self.start_data.button) {
             handle.unset_grab(self, monotile, event.serial, event.time, true);
 
-            if let Some(we) = monotile.state.mon().get(self.window_id) {
+            if let Some(we) = monotile.state.windows.get(self.window_id) {
                 let xdg = we.window.toplevel().unwrap();
                 xdg.with_pending_state(|state| {
                     state.states.unset(xdg_toplevel::State::Resizing);

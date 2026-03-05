@@ -9,7 +9,7 @@ fn open_window(f: &mut Fixture, c: usize) -> usize {
     f.client_mut(c).ack_and_commit(w);
     f.roundtrip(c);
     assert!(
-        f.mt.state.mon().active_id().is_some(),
+        f.mt.state.mon().tag().focused_id().is_some(),
         "window {w} should be mapped after open_window",
     );
     w
@@ -25,7 +25,7 @@ fn two_windows() {
 
     let w2 = open_window(&mut f, c);
     assert_eq!(
-        f.mt.state.mon().visible_windows().count(),
+        f.mt.state.windows.visible(f.mt.state.mon().tag()).len(),
         2,
         "compositor should have 2 visible windows",
     );
@@ -58,7 +58,11 @@ fn close_window() {
     let w2 = open_window(&mut f, c);
 
     // close the active window (w2) via the server
-    f.mt.state.mon().kill_active();
+    if let Some(id) = f.mt.state.mon().tag().focused_id() {
+        if let Some(tl) = f.mt.state.windows[id].window.toplevel() {
+            tl.send_close();
+        }
+    }
     f.roundtrip(c);
 
     let ws = f.client(c).window(w2);
@@ -73,7 +77,8 @@ fn tag_switch() {
     let w = open_window(&mut f, c);
     f.client_mut(c).take_configures(w); // drain
 
-    f.mt.state.mon_mut().set_active_tag(1);
+    let mon = &mut f.mt.state.monitors[f.mt.state.active_monitor];
+    mon.set_active_tag(&mut f.mt.state.windows, 1);
     f.roundtrip(c);
 
     // window is on tag 0, not visible on tag 1
@@ -85,15 +90,16 @@ fn tag_switch() {
         cfgs.len(),
     );
     assert_eq!(
-        f.mt.state.mon().visible_windows().count(),
+        f.mt.state.windows.visible(f.mt.state.mon().tag()).len(),
         0,
         "tag 1 should have no visible windows",
     );
 
-    // switch back — window should be visible again
-    f.mt.state.mon_mut().set_active_tag(0);
+    // switch back - window should be visible again
+    let mon = &mut f.mt.state.monitors[f.mt.state.active_monitor];
+    mon.set_active_tag(&mut f.mt.state.windows, 0);
     assert_eq!(
-        f.mt.state.mon().visible_windows().count(),
+        f.mt.state.windows.visible(f.mt.state.mon().tag()).len(),
         1,
         "tag 0 should have 1 visible window",
     );
@@ -188,13 +194,13 @@ fn focus_after_remove() {
     f.client_mut(c).take_configures(w1);
 
     // remove the active window and re-sync focus
-    let active = f.mt.state.mon().active_id().unwrap();
-    f.mt.state.mon_mut().unmap(active);
+    let active = f.mt.state.mon().tag().focused_id().unwrap();
+    f.mt.state.unmap(active);
     f.mt.update_focus();
     f.roundtrip(c);
 
     assert_eq!(
-        f.mt.state.mon().visible_windows().count(),
+        f.mt.state.windows.visible(f.mt.state.mon().tag()).len(),
         1,
         "should have 1 visible window after remove",
     );
@@ -212,11 +218,15 @@ fn float_geo_preserved_across_toggle() {
     let w = open_window(&mut f, c);
     f.client_mut(c).take_configures(w);
 
-    let id = f.mt.state.mon().active_id().unwrap();
+    let id = f.mt.state.mon().tag().focused_id().unwrap();
 
     // toggle to floating, should get a centered float_geo
-    f.mt.state.mon_mut().toggle_active_floating();
-    let geo1 = f.mt.state.mon().get(id).unwrap().float_geo;
+    {
+        let floating = !f.mt.state.windows[id].floating;
+        let mon = &mut f.mt.state.monitors[f.mt.state.active_monitor];
+        mon.set_floating(&mut f.mt.state.windows, id, floating);
+    }
+    let geo1 = f.mt.state.windows[id].float_geo;
     assert!(
         geo1.size.w > 0 && geo1.size.h > 0,
         "float_geo should have nonzero size"
@@ -224,13 +234,21 @@ fn float_geo_preserved_across_toggle() {
 
     // modify float_geo to simulate a move
     let moved = Rectangle::new((100, 200).into(), geo1.size);
-    f.mt.state.mon_mut().get_mut(id).unwrap().float_geo = moved;
+    f.mt.state.windows[id].float_geo = moved;
 
     // toggle to tiled and back to floating
-    f.mt.state.mon_mut().toggle_active_floating();
-    f.mt.state.mon_mut().toggle_active_floating();
+    {
+        let floating = !f.mt.state.windows[id].floating;
+        let mon = &mut f.mt.state.monitors[f.mt.state.active_monitor];
+        mon.set_floating(&mut f.mt.state.windows, id, floating);
+    }
+    {
+        let floating = !f.mt.state.windows[id].floating;
+        let mon = &mut f.mt.state.monitors[f.mt.state.active_monitor];
+        mon.set_floating(&mut f.mt.state.windows, id, floating);
+    }
 
-    let geo2 = f.mt.state.mon().get(id).unwrap().float_geo;
+    let geo2 = f.mt.state.windows[id].float_geo;
     assert_eq!(
         geo2, moved,
         "float_geo should be preserved across tiled round-trip"

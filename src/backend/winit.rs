@@ -25,7 +25,9 @@ impl WinitState {
         let age = self.backend.buffer_age().unwrap_or(0);
         let (renderer, mut fb) = self.backend.bind()?;
 
-        let elems = crate::render::output_elements(renderer, state.mon(), &self.shaders);
+        let elems = crate::render::output_elements(
+            renderer, state.mon(), &state.windows, &self.shaders,
+        );
         let rendered = self.damage_tracker.render_output(
             renderer,
             &mut fb,
@@ -39,7 +41,7 @@ impl WinitState {
 
         let mon = &state.monitors[state.active_monitor];
         crate::render::send_frame_callbacks(
-            mon.visible_windows(),
+            state.windows.visible(mon.tag()),
             &self.output,
             state.start_time.elapsed(),
             &mut state.popups,
@@ -109,7 +111,7 @@ pub fn init(
                         None,
                     );
                     layer_map_for_output(&monotile.backend.winit().output).arrange();
-                    monotile.state.mon_mut().recompute_layout();
+                    monotile.recompute_layout();
                 }
                 WinitEvent::Input(event) => monotile.process_input_event(event),
                 WinitEvent::Redraw => {

@@ -39,15 +39,15 @@ impl CompositorHandler for Monotile {
             while let Some(parent) = get_parent(&root) {
                 root = parent;
             }
-            if let Some(we) = self.state.mon().find_window_by_surface(&root) {
-                we.window.on_commit();
+            if let Some(id) = self.state.windows.find_by_surface(&root) {
+                self.state.windows[id].window.on_commit();
             }
         };
 
         let window_mapped = xdg_shell::handle_commit(&mut self.state, surface);
         let layer_changed = self.handle_layer_commit(surface);
         if window_mapped || layer_changed {
-            self.update_focus();
+            self.recompute_layout();
         }
 
         self.backend.schedule_render(&self.state.mon().output);
@@ -69,9 +69,6 @@ impl Monotile {
         }
         let changed = map.arrange();
         drop(map);
-        if changed {
-            self.state.mon_mut().recompute_layout();
-        }
         changed
     }
 }

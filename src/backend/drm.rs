@@ -128,6 +128,7 @@ impl DrmState {
         elems.extend(crate::render::output_elements(
             &mut self.renderer,
             mon,
+            &state.windows,
             &self.shaders,
         ));
 
@@ -155,7 +156,7 @@ impl DrmState {
         surface.render = RenderState::WaitingForVBlank;
 
         crate::render::send_frame_callbacks(
-            mon.visible_windows(),
+            state.windows.visible(mon.tag()),
             &surface.output,
             state.start_time.elapsed(),
             &mut state.popups,

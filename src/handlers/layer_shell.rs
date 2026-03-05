@@ -54,8 +54,7 @@ impl WlrLayerShellHandler for Monotile {
             map.unmap_layer(&layer);
         }
         drop(map);
-        self.state.mon_mut().recompute_layout();
-        self.update_focus();
+        self.recompute_layout();
     }
 }
 

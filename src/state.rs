@@ -3,7 +3,7 @@
 use std::{ffi::OsString, os::unix::net::UnixStream, sync::Arc};
 
 use smithay::{
-    desktop::{PopupManager, Window},
+    desktop::{PopupManager, Window, WindowSurfaceType, layer_map_for_output},
     input::{Seat, SeatState},
     output::Output,
     reexports::{
@@ -17,7 +17,7 @@ use smithay::{
             protocol::wl_surface::WlSurface,
         },
     },
-    utils::SERIAL_COUNTER,
+    utils::{Logical, Point, SERIAL_COUNTER},
     wayland::{
         compositor::{CompositorClientState, CompositorState},
         cursor_shape::CursorShapeManagerState,
@@ -26,7 +26,7 @@ use smithay::{
         selection::data_device::DataDeviceState,
         shell::{
             kde::decoration::KdeDecorationState,
-            wlr_layer::WlrLayerShellState,
+            wlr_layer::{Layer, WlrLayerShellState},
             xdg::{ToplevelSurface, XdgShellState, decoration::XdgDecorationState},
         },
         shm::ShmState,
@@ -37,7 +37,7 @@ use smithay::{
 use crate::{
     backend::Backend,
     render::cursor::CursorManager,
-    shell::{Monitor, WindowId},
+    shell::{Monitor, WindowId, Windows},
 };
 
 pub struct Monotile {
@@ -81,26 +81,45 @@ impl Monotile {
         )
     }
 
-    // TODO: move to shell?
-    pub fn update_focus(&mut self) {
-        self.set_focus(self.state.mon().active_id());
+    pub fn recompute_layout(&mut self) {
+        let mon = &mut self.state.monitors[self.state.active_monitor];
+        mon.recompute_layout(&mut self.state.windows);
+        for we in self.state.windows.visible(mon.tag()) {
+            we.configure();
+        }
+        self.update_focus();
     }
 
-    // TODO: move to shell?
+    pub fn update_focus(&mut self) {
+        self.set_focus(self.state.mon().tag().focused_id());
+    }
+
     pub fn set_focus(&mut self, id: Option<WindowId>) {
-        let target = if let Some(surface) = self.state.mon().exclusive_layer_surface() {
-            self.state.mon_mut().set_focus(None);
-            Some(surface)
-        } else {
-            self.state.mon_mut().set_focus(id)
-        };
+        self.state.windows.unfocus_all();
+
+        if let Some(surface) = self.state.mon().exclusive_layer_surface() {
+            if let Some(kb) = self.state.seat.get_keyboard() {
+                kb.set_focus(self, Some(surface), SERIAL_COUNTER.next_serial());
+            }
+            return;
+        }
+
+        let target = id
+            .and_then(|id| {
+                self.state.mon_mut().tag_mut().focus(id);
+                self.state.windows.get_mut(id)
+            })
+            .and_then(|we| {
+                we.set_focused(true);
+                we.window.toplevel().map(|tl| tl.wl_surface().clone())
+            });
+
         if let Some(kb) = self.state.seat.get_keyboard() {
             kb.set_focus(self, target, SERIAL_COUNTER.next_serial());
         }
     }
 }
 
-/// Core compositor state (everything except backend)
 pub struct State {
     pub start_time: std::time::Instant,
     pub socket: OsString,
@@ -121,6 +140,7 @@ pub struct State {
     pub seat: Seat<Monotile>,
     pub cursor_shape_state: CursorShapeManagerState,
     pub cursor: CursorManager,
+    pub windows: Windows,
     pub monitors: Vec<Monitor>,
     pub active_monitor: usize,
     pub pending: Vec<Window>,
@@ -171,6 +191,7 @@ impl State {
             seat,
             cursor_shape_state,
             cursor,
+            windows: Windows::default(),
             monitors: Vec::new(),
             active_monitor: 0,
             pending: Vec::new(),
@@ -178,19 +199,58 @@ impl State {
         }
     }
 
-    // TODO: move to shell?
     pub fn mon(&self) -> &Monitor {
         &self.monitors[self.active_monitor]
     }
 
-    // TODO: move to shell?
     pub fn mon_mut(&mut self) -> &mut Monitor {
         &mut self.monitors[self.active_monitor]
     }
 
-    // TODO: move to shell?
     pub fn add_monitor(&mut self, output: Output) {
         self.monitors.push(Monitor::new(output));
+    }
+
+    pub fn map(&mut self, window: Window, floating: bool) -> WindowId {
+        let mon = &mut self.monitors[self.active_monitor];
+        mon.map(&mut self.windows, window, floating)
+    }
+
+    pub fn unmap(&mut self, id: WindowId) {
+        let mon = &mut self.monitors[self.active_monitor];
+        mon.unmap(&mut self.windows, id)
+    }
+
+    pub fn surface_under(
+        &self,
+        pos: Point<f64, Logical>,
+    ) -> Option<(WlSurface, Point<f64, Logical>)> {
+        let mon = self.mon();
+        let map = layer_map_for_output(&mon.output);
+        let layer_hit = |layer| {
+            let layer = map.layer_under(layer, pos)?;
+            let geo = map.layer_geometry(layer).unwrap();
+            let rel = pos - geo.loc.to_f64();
+            let (s, point) = layer.surface_under(rel, WindowSurfaceType::ALL)?;
+            Some((s, (point + geo.loc).to_f64()))
+        };
+
+        // overlay / top layers
+        if let Some(hit) = layer_hit(Layer::Overlay).or_else(|| layer_hit(Layer::Top)) {
+            return Some(hit);
+        }
+
+        // windows
+        if let Some(we) = self.windows.window_under(mon.tag(), pos) {
+            let loc = we.geo().loc - we.window.geometry().loc;
+            let rel = pos - loc.to_f64();
+            if let Some((s, point)) = we.window.surface_under(rel, WindowSurfaceType::ALL) {
+                return Some((s, (point + loc).to_f64()));
+            }
+        }
+
+        // bottom / background layers
+        layer_hit(Layer::Bottom).or_else(|| layer_hit(Layer::Background))
     }
 
     pub fn find_pending(&self, surface: &WlSurface) -> Option<(usize, ToplevelSurface)> {
