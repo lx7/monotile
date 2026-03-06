@@ -4,6 +4,7 @@ mod layout;
 pub use layout::TilingLayout;
 
 use std::ops::{Deref, DerefMut};
+use std::time::{Duration, Instant};
 
 use slotmap::{SlotMap, new_key_type};
 use smithay::{
@@ -13,7 +14,7 @@ use smithay::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::protocol::wl_surface::WlSurface,
     },
-    utils::{Logical, Point, Rectangle},
+    utils::{Logical, Point, Rectangle, Size},
     wayland::{
         compositor::with_states,
         shell::{
@@ -39,6 +40,7 @@ pub struct WindowElement {
     pub fullscreen: bool,
     pub focused: bool,
     fullscreen_geo: Rectangle<i32, Logical>,
+    pre_resize_buf: Option<(Size<i32, Logical>, Instant)>,
 }
 
 impl WindowElement {
@@ -86,14 +88,31 @@ impl WindowElement {
         }
     }
 
-    pub fn configure(&self) {
+    pub fn configure(&mut self) {
         let Some(tl) = self.window.toplevel() else {
             return;
         };
         tl.with_pending_state(|s| {
             s.size = Some(self.geo().size);
         });
-        tl.send_pending_configure();
+        if tl.send_pending_configure().is_some() {
+            self.pre_resize_buf = Some((self.window.geometry().size, Instant::now()));
+        }
+    }
+
+    pub fn on_commit(&mut self) {
+        self.window.on_commit();
+        if let Some((old, _)) = self.pre_resize_buf {
+            let buf = self.window.geometry().size;
+            if buf != old || buf == self.geo().size {
+                self.pre_resize_buf = None;
+            }
+        }
+    }
+
+    pub fn has_pending_resize(&self) -> bool {
+        self.pre_resize_buf
+            .is_some_and(|(_, t)| t.elapsed() < Duration::from_millis(300))
     }
 }
 
@@ -161,6 +180,21 @@ impl Windows {
             return self.get(id).into_iter().collect();
         }
         tag.window_ids().filter_map(|id| self.get(id)).collect()
+    }
+
+    pub fn configure_visible(&mut self, tag: &Tag) {
+        let ids: Vec<_> = self.visible(tag).iter().map(|we| we.id).collect();
+        for id in ids {
+            if let Some(we) = self.get_mut(id) {
+                we.configure();
+            }
+        }
+    }
+
+    pub fn any_pending_resize(&self, tag: &Tag) -> bool {
+        self.visible(tag)
+            .iter()
+            .any(|we| !we.floating && we.has_pending_resize())
     }
 
     pub fn window_under(&self, tag: &Tag, pos: Point<f64, Logical>) -> Option<&WindowElement> {
@@ -317,6 +351,7 @@ impl Monitor {
             fullscreen: false,
             focused: false,
             fullscreen_geo: Rectangle::default(),
+            pre_resize_buf: None,
         });
 
         self.tag_mut().add(id);

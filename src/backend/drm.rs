@@ -38,7 +38,7 @@ use smithay_drm_extras::{
 
 use tracing::{error, info, warn};
 
-use crate::{Monotile, render::Shaders, state::State};
+use crate::{Monotile, render::Shaders, render::send_frame_callbacks, state::State};
 
 type Allocator = GbmAllocator<DrmDeviceFd>;
 type Exporter = GbmFramebufferExporter<DrmDeviceFd>;
@@ -120,6 +120,17 @@ impl DrmState {
         let Some(mon) = state.monitors.iter().find(|m| m.output == surface.output) else {
             return;
         };
+
+        // skip frame if a tiled window has a pending resize (no flicker)
+        if state.windows.any_pending_resize(mon.tag()) {
+            send_frame_callbacks(
+                state.windows.visible(mon.tag()),
+                &surface.output,
+                state.start_time.elapsed(),
+                &mut state.popups,
+            );
+            return;
+        }
 
         let ptr = state.seat.get_pointer().unwrap();
         let pos = ptr.current_location();

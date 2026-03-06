@@ -84,9 +84,7 @@ impl Monotile {
     pub fn recompute_layout(&mut self) {
         let mon = &mut self.state.monitors[self.state.active_monitor];
         mon.recompute_layout(&mut self.state.windows);
-        for we in self.state.windows.visible(mon.tag()) {
-            we.configure();
-        }
+        self.state.windows.configure_visible(mon.tag());
         self.update_focus();
     }
 

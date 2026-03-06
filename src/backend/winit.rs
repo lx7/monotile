@@ -22,12 +22,24 @@ pub struct WinitState {
 
 impl WinitState {
     pub fn render(&mut self, state: &mut State) -> Result<(), Box<dyn std::error::Error>> {
+        // skip frame if a tiled window has a pending resize (no flicker)
+        if state.windows.any_pending_resize(state.mon().tag()) {
+            let mon = state.mon();
+            crate::render::send_frame_callbacks(
+                state.windows.visible(mon.tag()),
+                &self.output,
+                state.start_time.elapsed(),
+                &mut state.popups,
+            );
+            self.backend.window().request_redraw();
+            return Ok(());
+        }
+
         let age = self.backend.buffer_age().unwrap_or(0);
         let (renderer, mut fb) = self.backend.bind()?;
 
-        let elems = crate::render::output_elements(
-            renderer, state.mon(), &state.windows, &self.shaders,
-        );
+        let elems =
+            crate::render::output_elements(renderer, state.mon(), &state.windows, &self.shaders);
         let rendered = self.damage_tracker.render_output(
             renderer,
             &mut fb,

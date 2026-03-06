@@ -40,7 +40,7 @@ impl CompositorHandler for Monotile {
                 root = parent;
             }
             if let Some(id) = self.state.windows.find_by_surface(&root) {
-                self.state.windows[id].window.on_commit();
+                self.state.windows[id].on_commit();
             }
         };
 
