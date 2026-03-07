@@ -4,7 +4,7 @@ use std::{ffi::OsString, os::unix::net::UnixStream, sync::Arc};
 
 use smithay::{
     desktop::{PopupManager, Window, WindowSurfaceType, layer_map_for_output},
-    input::{Seat, SeatState},
+    input::{Seat, SeatState, keyboard::XkbConfig},
     output::Output,
     reexports::{
         calloop::{
@@ -36,6 +36,7 @@ use smithay::{
 
 use crate::{
     backend::Backend,
+    config,
     render::cursor::CursorManager,
     shell::{Monitor, WindowId, Windows},
 };
@@ -142,7 +143,7 @@ pub struct State {
     pub monitors: Vec<Monitor>,
     pub active_monitor: usize,
     pub pending: Vec<Window>,
-    pub key_bindings: Vec<crate::config::Key>,
+    pub key_bindings: Vec<config::Key>,
 }
 
 impl State {
@@ -159,9 +160,14 @@ impl State {
         let mut seat_state = SeatState::new();
         let mut seat = seat_state.new_wl_seat(&dh, "seat0");
         seat.add_keyboard(
-            Default::default(),
-            crate::config::REPEAT_DELAY,
-            crate::config::REPEAT_RATE,
+            XkbConfig {
+                layout: config::KEYBOARD_LAYOUT,
+                variant: config::KEYBOARD_VARIANT,
+                options: config::KEYBOARD_OPTIONS.map(String::from),
+                ..Default::default()
+            },
+            config::REPEAT_DELAY,
+            config::REPEAT_RATE,
         )
         .unwrap();
         seat.add_pointer();
@@ -193,7 +199,7 @@ impl State {
             monitors: Vec::new(),
             active_monitor: 0,
             pending: Vec::new(),
-            key_bindings: crate::config::key_bindings(),
+            key_bindings: config::key_bindings(),
         }
     }
 

@@ -63,6 +63,10 @@ pub const DISABLE_WHILE_TYPING: bool = true;
 pub const LEFT_HANDED: bool = false;
 pub const MIDDLE_BUTTON_EMULATION: bool = false;
 pub const ACCEL_SPEED: f64 = 0.4;
+// pub const ACCEL_PROFILE: AccelProfile = Adaptive;
+// pub const CLICK_METHOD: ClickMethod = ButtonAreas;
+// pub const SCROLL_METHOD: ScrollMethod = TwoFinger;
+// pub const TAP_BUTTON_MAP: TapButtonMap = LeftRightMiddle;
 
 /// Default terminal
 pub const DEFAULT_TERMINAL: &str = "foot";
