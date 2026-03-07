@@ -15,6 +15,7 @@ use smithay::{
             exporter::gbm::GbmFramebufferExporter,
         },
         egl::{EGLContext, EGLDisplay},
+        input::InputEvent,
         libinput::{LibinputInputBackend, LibinputSessionInterface},
         renderer::{ImportDma, glow::GlowRenderer},
         session::{Event as SessionEvent, Session, libseat::LibSeatSession},
@@ -403,7 +404,10 @@ pub fn init(
         }
     })?;
 
-    loop_handle.insert_source(LibinputInputBackend::new(libinput), |event, _, mt| {
+    loop_handle.insert_source(LibinputInputBackend::new(libinput), |mut event, _, mt| {
+        if let InputEvent::DeviceAdded { ref mut device } = event {
+            crate::input::configure_device(device);
+        }
         mt.process_input_event(event);
     })?;
 

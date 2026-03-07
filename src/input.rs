@@ -8,13 +8,15 @@ use crate::{
 };
 use smithay::{
     backend::input::{
-        AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent,
-        KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
+        AbsolutePositionEvent, Axis, AxisSource, ButtonState, DeviceCapability, Event,
+        InputBackend, InputEvent, KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
+        PointerMotionEvent,
     },
     input::{
         keyboard::{FilterResult, Keysym, ModifiersState},
         pointer::{AxisFrame, ButtonEvent, Focus, GrabStartData, MotionEvent},
     },
+    reexports::input::Device,
     utils::{Logical, Point, SERIAL_COUNTER},
 };
 
@@ -157,7 +159,11 @@ impl Monotile {
 
                     // raise window and focus
                     let tag = self.state.mon().tag();
-                    if let Some(we) = self.state.windows.window_under(tag, pointer.current_location()) {
+                    if let Some(we) = self
+                        .state
+                        .windows
+                        .window_under(tag, pointer.current_location())
+                    {
                         let id = we.id;
                         self.state.mon_mut().tag_mut().raise(id);
                         self.set_focus(Some(id));
@@ -333,5 +339,26 @@ impl Monotile {
                 // TODO: implement ToggleFloating
             }
         }
+    }
+}
+
+pub fn configure_device(dev: &mut Device) {
+    let is_touchpad = dev.config_tap_finger_count() > 0;
+    let is_mouse = !is_touchpad && dev.has_capability(DeviceCapability::Pointer.into());
+
+    if is_touchpad {
+        let _ = dev.config_accel_set_speed(ACCEL_SPEED);
+        let _ = dev.config_tap_set_enabled(TAP_TO_CLICK);
+        let _ = dev.config_tap_set_drag_enabled(TAP_AND_DRAG);
+        let _ = dev.config_tap_set_drag_lock_enabled(DRAG_LOCK);
+        let _ = dev.config_scroll_set_natural_scroll_enabled(NATURAL_SCROLL);
+        let _ = dev.config_dwt_set_enabled(DISABLE_WHILE_TYPING);
+        let _ = dev.config_left_handed_set(LEFT_HANDED);
+        let _ = dev.config_middle_emulation_set_enabled(MIDDLE_BUTTON_EMULATION);
+    } else if is_mouse {
+        let _ = dev.config_accel_set_speed(ACCEL_SPEED);
+        let _ = dev.config_scroll_set_natural_scroll_enabled(NATURAL_SCROLL);
+        let _ = dev.config_left_handed_set(LEFT_HANDED);
+        let _ = dev.config_middle_emulation_set_enabled(MIDDLE_BUTTON_EMULATION);
     }
 }
