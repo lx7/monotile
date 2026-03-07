@@ -20,11 +20,11 @@ pub fn spawn(cmd: &str, args: &[String], log: bool) {
         .stderr(if log { Stdio::inherit() } else { Stdio::null() });
     match proc.spawn() {
         Ok(mut child) => {
-            tracing::info!("spawned {cmd}");
+            tracing::info!("{cmd} {}", args.join(" "));
             std::thread::spawn(move || {
                 let _ = child.wait();
             });
         }
-        Err(err) => tracing::error!("failed to spawn {cmd}: {err}"),
+        Err(err) => tracing::error!("failed to start {cmd}: {err}"),
     }
 }

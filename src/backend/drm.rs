@@ -225,7 +225,7 @@ fn connector_connected(
         connector.interface().as_str(),
         connector.interface_id()
     );
-    info!("Connected: {}", name);
+    info!("connected: {name}");
 
     let di = display_info::for_connector(&drm.drm, connector.handle());
     let (make, model, serial) = if let Some(di) = &di {
@@ -248,6 +248,9 @@ fn connector_connected(
         warn!("connector {name} has no modes, skipping");
         return;
     };
+
+    let (mw, mh) = (mode.size().0, mode.size().1);
+    info!("  mode: {mw}x{mh}@{}Hz {make} {model}", mode.vrefresh());
 
     // TODO: output positioning
     let (output_w, output_h) = connector.size().unwrap_or((0, 0));
@@ -307,7 +310,7 @@ fn connector_connected(
 
 fn connector_disconnected(drm: &mut DrmState, state: &mut State, crtc: crtc::Handle) {
     if let Some(surface) = drm.surfaces.remove(&crtc) {
-        info!("Disconnected: {}", surface.output.name());
+        info!("disconnected: {}", surface.output.name());
         state.monitors.retain(|m| m.output != surface.output);
         if state.active_monitor >= state.monitors.len() && !state.monitors.is_empty() {
             state.active_monitor = state.monitors.len() - 1;

@@ -5,6 +5,7 @@ use monotile::{
     config::{self, Args},
     spawn,
 };
+use tracing::info;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_logging();
@@ -14,8 +15,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (mut event_loop, mut monotile) = Monotile::new(config);
 
     if std::env::var_os("WAYLAND_DISPLAY").is_some() || std::env::var_os("DISPLAY").is_some() {
+        info!("backend: winit");
         backend::winit::init(&mut event_loop, &mut monotile)?;
     } else {
+        info!("backend: drm");
         backend::drm::init(&mut event_loop, &mut monotile)?;
     }
 
@@ -34,9 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn init_logging() {
-    if let Ok(env_filter) = tracing_subscriber::EnvFilter::try_from_default_env() {
-        tracing_subscriber::fmt().with_env_filter(env_filter).init();
-    } else {
-        tracing_subscriber::fmt().init();
-    }
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("monotile=info,warn"));
+    tracing_subscriber::fmt().with_env_filter(filter).init();
 }

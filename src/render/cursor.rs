@@ -20,7 +20,7 @@ use smithay::{
     wayland::compositor,
 };
 
-use tracing::{info, warn};
+use tracing::warn;
 use xcursor::{CursorTheme, parser::parse_xcursor};
 
 use super::MonotileElement;
@@ -151,11 +151,6 @@ fn load_xcursor(theme: &CursorTheme, name: &str, size: u32) -> Option<Cursor> {
     let img = images
         .into_iter()
         .find(|img| img.width == w && img.height == h)?;
-
-    info!(
-        "loaded xcursor '{}': {}x{} hotspot=({},{})",
-        name, w, h, img.xhot, img.yhot
-    );
 
     let buffer = MemoryRenderBuffer::from_slice(
         &img.pixels_rgba,

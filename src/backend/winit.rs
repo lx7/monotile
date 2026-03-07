@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
+use tracing::info;
+
 use crate::{Monotile, state::State};
 use smithay::{
     backend::{
@@ -103,6 +105,7 @@ pub fn init(
     output.set_preferred(mode);
 
     monotile.state.add_monitor(output.clone());
+    info!("output: winit {}x{}", mode.size.w, mode.size.h);
 
     let damage_tracker = OutputDamageTracker::from_output(&output);
 

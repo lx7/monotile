@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use inline_default::inline_default;
 use serde::{Deserialize, Deserializer};
 use smithay::input::keyboard::{Keysym, ModifiersState, xkb};
-use tracing::warn;
+use tracing::{info, warn};
 
 const DEFAULT_CONFIG: &str = include_str!("../defaults/config.ron");
 const DEFAULT_AUTOSTART: &str = include_str!("../defaults/autostart.sh");
@@ -285,6 +285,12 @@ pub fn load(explicit: Option<PathBuf>) -> Config {
     };
 
     config.build_maps();
+    info!(
+        "config: {} ({} keybinds, {} mousebinds)",
+        path.display(),
+        config.key_map.len(),
+        config.mouse_map.len(),
+    );
     config
 }
 

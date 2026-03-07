@@ -2,6 +2,8 @@
 
 use std::{ffi::OsString, os::unix::net::UnixStream, sync::Arc};
 
+use tracing::info;
+
 use smithay::{
     desktop::{PopupManager, Window, WindowSurfaceType, layer_map_for_output},
     input::{Seat, SeatState, keyboard::XkbConfig},
@@ -69,6 +71,7 @@ impl Monotile {
         // insert event source to accept new client connections on the Wayland socket
         let socket = ListeningSocketSource::new_auto().unwrap();
         state.socket = socket.socket_name().to_os_string();
+        info!("listening on {}", state.socket.to_string_lossy());
         loop_handle
             .insert_source(socket, |stream, _, mt| mt.state.insert_client(stream))
             .unwrap();
@@ -173,6 +176,7 @@ impl State {
         )
         .unwrap();
         seat.add_pointer();
+        info!("keyboard: layout={} variant={}", kb.layout, kb.variant);
 
         let cursor_shape_state = CursorShapeManagerState::new::<Monotile>(&dh);
         let cursor = CursorManager::new(config.general.scale);
