@@ -92,7 +92,11 @@ impl XdgShellHandler for Monotile {
         // ignored, compositor controls window resizing
     }
 
-    fn fullscreen_request(&mut self, surface: ToplevelSurface, _output: Option<wl_output::WlOutput>) {
+    fn fullscreen_request(
+        &mut self,
+        surface: ToplevelSurface,
+        _output: Option<wl_output::WlOutput>,
+    ) {
         if let Some(id) = self.state.windows.find_by_surface(surface.wl_surface()) {
             let geo = self.state.mon().output_geometry();
             self.state.windows[id].set_fullscreen(Some(geo));
@@ -208,7 +212,10 @@ impl Monotile {
 
         // constraint rect depends on whether parent is a window or layer surface
         let popup_offset = get_popup_toplevel_coords(&kind);
-        let parent = self.state.windows.find_by_surface(&root)
+        let parent = self
+            .state
+            .windows
+            .find_by_surface(&root)
             .and_then(|id| self.state.windows.get(id));
         let mon = self.state.mon();
 

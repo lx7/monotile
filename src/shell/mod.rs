@@ -24,7 +24,7 @@ use smithay::{
     },
 };
 
-use crate::config::TAGCOUNT;
+use crate::config::Config;
 
 new_key_type! {
     pub struct WindowId;
@@ -300,16 +300,16 @@ impl Tag {
 #[derive(Debug)]
 pub struct Monitor {
     pub output: Output,
-    pub tags: [Tag; TAGCOUNT],
+    pub tags: Vec<Tag>,
     pub active_tag: usize,
     pub prev_tag: usize,
 }
 
 impl Monitor {
-    pub fn new(output: Output) -> Self {
+    pub fn new(output: Output, tag_count: usize) -> Self {
         Self {
             output,
-            tags: [(); TAGCOUNT].map(|_| Tag::default()),
+            tags: (0..tag_count).map(|_| Tag::default()).collect(),
             active_tag: 0,
             prev_tag: 0,
         }
@@ -366,7 +366,7 @@ impl Monitor {
     }
 
     pub fn move_to_tag(&mut self, ws: &mut Windows, tag: usize) {
-        if tag >= TAGCOUNT {
+        if tag >= self.tags.len() {
             return;
         }
         let Some(id) = self.tag().focused_id() else {
@@ -382,7 +382,7 @@ impl Monitor {
     }
 
     pub fn toggle_tag(&mut self, tag: usize) {
-        if tag >= TAGCOUNT {
+        if tag >= self.tags.len() {
             return;
         }
         let Some(id) = self.tag().focused_id() else {
@@ -399,7 +399,7 @@ impl Monitor {
     }
 
     pub fn set_active_tag(&mut self, tag: usize) {
-        if tag >= TAGCOUNT {
+        if tag >= self.tags.len() {
             return;
         }
         self.prev_tag = self.active_tag;
@@ -415,7 +415,7 @@ impl Monitor {
         Rectangle::new((0, 0).into(), size.to_logical(1))
     }
 
-    pub fn recompute_layout(&mut self, ws: &mut Windows) {
+    pub fn recompute_layout(&mut self, ws: &mut Windows, config: &Config) {
         let tag = &mut self.tags[self.active_tag];
 
         tag.tiled
@@ -441,7 +441,7 @@ impl Monitor {
             .find(|&id| ws.get(id).is_some_and(|we| we.fullscreen));
 
         let geo = layer_map_for_output(&self.output).non_exclusive_zone();
-        let rects = tag.layout.compute_rects(tag.tiled.len(), geo);
+        let rects = tag.layout.compute_rects(tag.tiled.len(), geo, config);
         for (&id, rect) in tag.tiled.iter().zip(rects) {
             if let Some(we) = ws.get_mut(id) {
                 we.tiled_geo = rect;

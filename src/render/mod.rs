@@ -30,7 +30,7 @@ use smithay::{
 };
 
 use crate::{
-    config::*,
+    config::Config,
     shell::{Monitor, WindowElement, Windows},
 };
 use clipped_surface::ClippedSurface;
@@ -99,9 +99,9 @@ fn layer_elements(
     renderer: &mut GlowRenderer,
     output: &Output,
     layers: &[Layer],
+    scale: Scale<f64>,
 ) -> Vec<MonotileElement> {
     let map = layer_map_for_output(output);
-    let scale = Scale::from(SCALE);
     let mut elems = Vec::new();
     for layer in layers {
         for surface in map.layers_on(*layer).rev() {
@@ -109,7 +109,7 @@ fn layer_elements(
             let surfs = render_elements_from_surface_tree(
                 renderer,
                 surface.wl_surface(),
-                geo.loc.to_physical_precise_round(SCALE),
+                geo.loc.to_physical_precise_round(scale),
                 scale,
                 1.0,
                 Kind::Unspecified,
@@ -124,13 +124,19 @@ fn layer_popup_elements(
     renderer: &mut GlowRenderer,
     output: &Output,
     layers: &[Layer],
+    scale: Scale<f64>,
 ) -> Vec<MonotileElement> {
     let map = layer_map_for_output(output);
     let mut elems = Vec::new();
     for layer in layers {
         for surface in map.layers_on(*layer).rev() {
             let geo = map.layer_geometry(surface).unwrap();
-            elems.extend(popup_elements(renderer, surface.wl_surface(), geo.loc));
+            elems.extend(popup_elements(
+                renderer,
+                surface.wl_surface(),
+                geo.loc,
+                scale,
+            ));
         }
     }
     elems
@@ -140,15 +146,15 @@ fn popup_elements(
     renderer: &mut GlowRenderer,
     surface: &WlSurface,
     origin: Point<i32, Logical>,
+    scale: Scale<f64>,
 ) -> Vec<MonotileElement> {
-    let scale = Scale::from(SCALE);
     let mut elems = Vec::new();
     for (popup, offset) in PopupManager::popups_for_surface(surface) {
         let pos = origin + offset - popup.geometry().loc;
         let surfs = render_elements_from_surface_tree(
             renderer,
             popup.wl_surface(),
-            pos.to_physical_precise_round(SCALE),
+            pos.to_physical_precise_round(scale),
             scale,
             1.0,
             Kind::Unspecified,
@@ -163,24 +169,30 @@ pub fn output_elements(
     mon: &Monitor,
     ws: &Windows,
     shaders: &Shaders,
+    config: &Config,
 ) -> Vec<MonotileElement> {
     let output = &mon.output;
-    let scale = Scale::from(SCALE);
+    let scale = Scale::from(config.general.scale as f64);
     let mut elems = Vec::new();
 
     if let Some(we) = mon.tag().fullscreen.and_then(|id| ws.get(id)) {
-        elems.extend(layer_popup_elements(renderer, output, &[Layer::Overlay]));
-        elems.extend(layer_elements(renderer, output, &[Layer::Overlay]));
+        elems.extend(layer_popup_elements(
+            renderer,
+            output,
+            &[Layer::Overlay],
+            scale,
+        ));
+        elems.extend(layer_elements(renderer, output, &[Layer::Overlay], scale));
 
         let win = we.geo();
         let buf = we.window.geometry();
         let wl = we.window.wl_surface().unwrap();
-        elems.extend(popup_elements(renderer, &wl, win.loc - buf.loc));
+        elems.extend(popup_elements(renderer, &wl, win.loc - buf.loc, scale));
 
         let surfs = render_elements_from_surface_tree(
             renderer,
             &wl,
-            (win.loc - buf.loc).to_physical_precise_round(SCALE),
+            (win.loc - buf.loc).to_physical_precise_round(scale),
             scale,
             1.0,
             Kind::ScanoutCandidate,
@@ -188,45 +200,51 @@ pub fn output_elements(
         elems.extend(surfs.into_iter().map(MonotileElement::Surface));
     } else {
         let all = &[Layer::Overlay, Layer::Top, Layer::Bottom, Layer::Background];
-        elems.extend(layer_popup_elements(renderer, output, all));
+        elems.extend(layer_popup_elements(renderer, output, all, scale));
         elems.extend(layer_elements(
             renderer,
             output,
             &[Layer::Overlay, Layer::Top],
+            scale,
         ));
 
-        let sigma = SHADOW_SOFTNESS as f32 / 2.0;
+        let bw = config.border.width;
+        let shadow = &config.shadow;
+        let sigma = shadow.softness as f32 / 2.0;
         let blur = (sigma * 3.0).ceil() as i32;
-        let pad_x = BORDER_WIDTH + blur + SHADOW_SPREAD + SHADOW_OFFSET.0.abs();
-        let pad_y = BORDER_WIDTH + blur + SHADOW_SPREAD + SHADOW_OFFSET.1.abs();
+        let pad_x = bw + blur + shadow.spread + shadow.offset.0.abs();
+        let pad_y = bw + blur + shadow.spread + shadow.offset.1.abs();
 
         let windows = ws.visible(mon.tag());
         let tiled = windows.iter().filter(|w| !w.floating).count();
+
+        let colors = &config.colors;
+        let border_cfg = &config.border;
 
         for we in windows.iter().rev() {
             let win = we.geo();
             let buf = we.window.geometry();
             let wl = we.window.wl_surface().unwrap();
-            let single_no_border = !SINGLE_BORDER && tiled == 1 && !we.floating;
+            let single_no_border = !border_cfg.single && tiled == 1 && !we.floating;
 
             let surfs = render_elements_from_surface_tree(
                 renderer,
                 &wl,
-                (win.loc - buf.loc).to_physical_precise_round(SCALE),
+                (win.loc - buf.loc).to_physical_precise_round(scale),
                 scale,
                 1.0,
                 Kind::Unspecified,
             );
 
             // popups (unclipped, on top of window)
-            elems.extend(popup_elements(renderer, &wl, win.loc - buf.loc));
+            elems.extend(popup_elements(renderer, &wl, win.loc - buf.loc, scale));
 
             #[rustfmt::skip]
             let (color, radius, bw) = match (we.floating, we.focused) {
-                (true,  true)  => (FOCUS_COLOR,  FLOATING_RADIUS, BORDER_WIDTH),
-                (true,  false) => (BORDER_COLOR, FLOATING_RADIUS, 0),
-                (false, true)  => (FOCUS_COLOR,  TILED_RADIUS,    BORDER_WIDTH),
-                (false, false) => (BORDER_COLOR, TILED_RADIUS,    BORDER_WIDTH),
+                (true,  true)  => (colors.focus.0,  border_cfg.floating_radius, border_cfg.width),
+                (true,  false) => (colors.border.0, border_cfg.floating_radius, 0),
+                (false, true)  => (colors.focus.0,  border_cfg.tiled_radius,    border_cfg.width),
+                (false, false) => (colors.border.0, border_cfg.tiled_radius,    border_cfg.width),
             };
 
             // surfaces
@@ -246,7 +264,7 @@ pub fn output_elements(
 
             // border (8 pieces)
             if bw > 0 && !single_no_border {
-                for piece in border::elements(&shaders.rect, win, radius, bw, color, SCALE as f32) {
+                for piece in border::elements(&shaders.rect, win, radius, bw, color, config.general.scale) {
                     elems.push(MonotileElement::Decoration(piece));
                 }
             }
@@ -261,9 +279,9 @@ pub fn output_elements(
                     Uniform::new("outer_size", (win.size.w as f32, win.size.h as f32)),
                     Uniform::new("border_width", 0.0f32),
                     Uniform::new("outer_radius", radius),
-                    Uniform::new("border_color", ROOT_COLOR),
+                    Uniform::new("border_color", colors.root.0),
                     Uniform::new("piece_offset", (0.0f32, 0.0f32)),
-                    Uniform::new("scale", SCALE as f32),
+                    Uniform::new("scale", config.general.scale),
                 ],
                 Kind::Unspecified,
             );
@@ -273,7 +291,7 @@ pub fn output_elements(
             if we.floating {
                 let outer_r = radius + bw as f32;
 
-                let shadow = PixelShaderElement::new(
+                let shadow_elem = PixelShaderElement::new(
                     shaders.shadow.clone(),
                     Rectangle::new(
                         (win.loc.x - pad_x, win.loc.y - pad_y).into(),
@@ -288,24 +306,24 @@ pub fn output_elements(
                         Uniform::new(
                             "shadow_box_size",
                             (
-                                (win.size.w + 2 * SHADOW_SPREAD) as f32,
-                                (win.size.h + 2 * SHADOW_SPREAD) as f32,
+                                (win.size.w + 2 * shadow.spread) as f32,
+                                (win.size.h + 2 * shadow.spread) as f32,
                             ),
                         ),
                         Uniform::new(
                             "shadow_box_offset",
                             (
-                                (pad_x - SHADOW_SPREAD + SHADOW_OFFSET.0) as f32,
-                                (pad_y - SHADOW_SPREAD + SHADOW_OFFSET.1) as f32,
+                                (pad_x - shadow.spread + shadow.offset.0) as f32,
+                                (pad_y - shadow.spread + shadow.offset.1) as f32,
                             ),
                         ),
                         Uniform::new("shadow_sigma", sigma),
-                        Uniform::new("shadow_color", SHADOW_COLOR),
-                        Uniform::new("scale", SCALE as f32),
+                        Uniform::new("shadow_color", shadow.color.0),
+                        Uniform::new("scale", config.general.scale),
                     ],
                     Kind::Unspecified,
                 );
-                elems.push(MonotileElement::Decoration(shadow));
+                elems.push(MonotileElement::Decoration(shadow_elem));
             }
         }
 
@@ -313,6 +331,7 @@ pub fn output_elements(
             renderer,
             output,
             &[Layer::Bottom, Layer::Background],
+            scale,
         ));
     }
 

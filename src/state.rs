@@ -36,7 +36,7 @@ use smithay::{
 
 use crate::{
     backend::Backend,
-    config,
+    config::Config,
     render::cursor::CursorManager,
     shell::{Monitor, WindowId, Windows},
 };
@@ -47,7 +47,7 @@ pub struct Monotile {
 }
 
 impl Monotile {
-    pub fn new() -> (EventLoop<'static, Monotile>, Self) {
+    pub fn new(config: Config) -> (EventLoop<'static, Monotile>, Self) {
         let event_loop: EventLoop<Monotile> = EventLoop::try_new().expect("event loop");
         let loop_handle = event_loop.handle();
 
@@ -64,7 +64,7 @@ impl Monotile {
             })
             .unwrap();
 
-        let mut state = State::new(display_handle, event_loop.get_signal());
+        let mut state = State::new(display_handle, event_loop.get_signal(), config);
 
         // insert event source to accept new client connections on the Wayland socket
         let socket = ListeningSocketSource::new_auto().unwrap();
@@ -83,8 +83,9 @@ impl Monotile {
     }
 
     pub fn recompute_layout(&mut self) {
+        let config = &self.state.config;
         let mon = &mut self.state.monitors[self.state.active_monitor];
-        mon.recompute_layout(&mut self.state.windows);
+        mon.recompute_layout(&mut self.state.windows, config);
         self.state.windows.configure_visible(mon.tag());
         self.update_focus();
     }
@@ -120,6 +121,7 @@ impl Monotile {
 }
 
 pub struct State {
+    pub config: Config,
     pub start_time: std::time::Instant,
     pub socket: OsString,
     pub display_handle: DisplayHandle,
@@ -143,11 +145,10 @@ pub struct State {
     pub monitors: Vec<Monitor>,
     pub active_monitor: usize,
     pub pending: Vec<Window>,
-    pub key_bindings: Vec<config::Key>,
 }
 
 impl State {
-    pub fn new(dh: DisplayHandle, signal: LoopSignal) -> Self {
+    pub fn new(dh: DisplayHandle, signal: LoopSignal, config: Config) -> Self {
         let compositor_state = CompositorState::new::<Monotile>(&dh);
         let xdg_shell_state = XdgShellState::new::<Monotile>(&dh);
         let xdg_decoration_state = XdgDecorationState::new::<Monotile>(&dh);
@@ -159,23 +160,25 @@ impl State {
 
         let mut seat_state = SeatState::new();
         let mut seat = seat_state.new_wl_seat(&dh, "seat0");
+        let kb = &config.keyboard;
         seat.add_keyboard(
             XkbConfig {
-                layout: config::KEYBOARD_LAYOUT,
-                variant: config::KEYBOARD_VARIANT,
-                options: config::KEYBOARD_OPTIONS.map(String::from),
+                layout: &kb.layout,
+                variant: &kb.variant,
+                options: Some(kb.options.clone()).filter(|s| !s.is_empty()),
                 ..Default::default()
             },
-            config::REPEAT_DELAY,
-            config::REPEAT_RATE,
+            kb.repeat_delay,
+            kb.repeat_rate,
         )
         .unwrap();
         seat.add_pointer();
 
         let cursor_shape_state = CursorShapeManagerState::new::<Monotile>(&dh);
-        let cursor = CursorManager::new();
+        let cursor = CursorManager::new(config.general.scale);
 
         Self {
+            config,
             start_time: std::time::Instant::now(),
             socket: OsString::new(),
             display_handle: dh,
@@ -199,7 +202,6 @@ impl State {
             monitors: Vec::new(),
             active_monitor: 0,
             pending: Vec::new(),
-            key_bindings: config::key_bindings(),
         }
     }
 
@@ -212,7 +214,8 @@ impl State {
     }
 
     pub fn add_monitor(&mut self, output: Output) {
-        self.monitors.push(Monitor::new(output));
+        self.monitors
+            .push(Monitor::new(output, self.config.layout.tags));
     }
 
     pub fn map(&mut self, window: Window, floating: bool) -> WindowId {
@@ -279,7 +282,6 @@ impl State {
     }
 }
 
-/// Data associated with a wayland client.
 #[derive(Default)]
 pub struct ClientState {
     pub compositor_state: CompositorClientState,

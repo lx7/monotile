@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use crate::config::{BORDER_WIDTH, GAP, MASTER_COUNT, MASTER_FACTOR, SINGLE_BORDER};
 use smithay::utils::{Logical, Rectangle};
+
+use crate::config;
 
 #[derive(Debug, Clone)]
 pub struct TilingLayout {
@@ -12,8 +13,8 @@ pub struct TilingLayout {
 impl Default for TilingLayout {
     fn default() -> Self {
         Self {
-            master_count: MASTER_COUNT,
-            master_factor: MASTER_FACTOR,
+            master_count: config::Layout::default().master_count,
+            master_factor: config::Layout::default().master_factor,
         }
     }
 }
@@ -23,6 +24,7 @@ impl TilingLayout {
         &self,
         count: usize,
         area: Rectangle<i32, Logical>,
+        cfg: &config::Config,
     ) -> Vec<Rectangle<i32, Logical>> {
         if count == 0 {
             return vec![];
@@ -31,10 +33,12 @@ impl TilingLayout {
         let master_count = self.master_count.min(count);
         let stack_count = count - master_count;
 
-        let edge = GAP + BORDER_WIDTH;
-        let inner = GAP + 2 * BORDER_WIDTH;
+        let gap = cfg.general.gap;
+        let bw = cfg.border.width;
+        let edge = gap + bw;
+        let inner = gap + 2 * bw;
 
-        let usable = if !SINGLE_BORDER && count == 1 {
+        let usable = if !cfg.border.single && count == 1 {
             area
         } else {
             Rectangle {

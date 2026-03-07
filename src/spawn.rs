@@ -1,19 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-pub fn autostart(cmds: &[(&str, &[&str])]) {
-    for (cmd, args) in cmds {
-        spawn(cmd, args);
+use crate::config;
+
+pub fn autostart(explicit: Option<PathBuf>) {
+    let path = config::resolve_autostart(explicit);
+    if path.exists() {
+        spawn("sh", &[path.to_string_lossy().into_owned()], true);
     }
 }
 
-pub fn spawn(cmd: &str, args: &[&str]) {
+pub fn spawn(cmd: &str, args: &[String], log: bool) {
     let mut proc = Command::new(cmd);
     proc.args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stderr(if log { Stdio::inherit() } else { Stdio::null() });
     match proc.spawn() {
         Ok(mut child) => {
             tracing::info!("spawned {cmd}");

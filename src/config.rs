@@ -1,228 +1,441 @@
-#![allow(dead_code)]
+// SPDX-License-Identifier: GPL-3.0-only
 
-// TODO: implement runtime config
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
-use smithay::input::keyboard::xkb::keysyms::*;
+use inline_default::inline_default;
+use serde::{Deserialize, Deserializer};
+use smithay::input::keyboard::{Keysym, ModifiersState, xkb};
+use tracing::warn;
 
-use crate::input::Mods;
+const DEFAULT_CONFIG: &str = include_str!("../defaults/config.ron");
+const DEFAULT_AUTOSTART: &str = include_str!("../defaults/autostart.sh");
 
-const fn color(hex: u32) -> [f32; 4] {
-    [
+// --- Color ---
+
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct Color(pub [f32; 4]);
+
+impl<'de> Deserialize<'de> for Color {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        let hex_str = s.strip_prefix('#').unwrap_or(&s);
+        let hex = u32::from_str_radix(hex_str, 16)
+            .map_err(|_| serde::de::Error::custom(format!("invalid color: {s}")))?;
+        match hex_str.len() {
+            6 => Ok(color((hex << 8) | 0xFF)),
+            8 => Ok(color(hex)),
+            _ => Err(serde::de::Error::custom(format!("invalid color: {s}"))),
+        }
+    }
+}
+
+fn color(hex: u32) -> Color {
+    Color([
         ((hex >> 24) & 0xFF) as f32 / 255.0,
         ((hex >> 16) & 0xFF) as f32 / 255.0,
         ((hex >> 8) & 0xFF) as f32 / 255.0,
         (hex & 0xFF) as f32 / 255.0,
-    ]
+    ])
 }
 
-/// Appearance
-pub const FOCUS_FOLLOWS_CURSOR: bool = true;
-pub const BORDER_WIDTH: i32 = 2;
-pub const SINGLE_BORDER: bool = false;
-pub const GAP: i32 = 0;
-pub const SCALE: f64 = 1.0;
+// --- Config structs ---
 
-pub const BG_COLOR: [f32; 4] = color(0x444444ff);
-pub const ROOT_COLOR: [f32; 4] = color(0x000000ff);
-pub const BORDER_COLOR: [f32; 4] = color(0x444444ff);
-pub const FOCUS_COLOR: [f32; 4] = color(0x458588ff);
-pub const URGENT_COLOR: [f32; 4] = color(0xff0000ff);
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(default)]
+pub struct Config {
+    pub general: General,
+    pub colors: Colors,
+    pub border: Border,
+    pub shadow: Shadow,
+    pub layout: Layout,
+    pub keyboard: Keyboard,
+    pub touchpad: Touchpad,
+    pub mouse: Mouse,
+    #[serde(deserialize_with = "de_keys")]
+    pub keybinds: Vec<(Vec<Mod>, Keysym, KeyAction)>,
+    pub mousebinds: Vec<(Vec<Mod>, Button, MouseAction)>,
+    #[serde(skip)]
+    pub key_map: HashMap<(Keysym, Mods), KeyAction>,
+    #[serde(skip)]
+    pub mouse_map: HashMap<(u32, Mods), MouseAction>,
+}
 
-pub const FLOATING_RADIUS: f32 = 6.0;
-pub const TILED_RADIUS: f32 = 0.0;
+inline_default! {
+    #[derive(Debug, Clone, PartialEq, Deserialize)]
+    #[serde(default)]
+    pub struct General {
+        pub focus_follows_cursor: bool = true,
+        pub scale: f32 = 1.0,
+        pub gap: i32,
+    }
 
-// Shadow
-pub const SHADOW_SOFTNESS: i32 = 25;
-pub const SHADOW_SPREAD: i32 = 5;
-pub const SHADOW_OFFSET: (i32, i32) = (0, 5);
-pub const SHADOW_COLOR: [f32; 4] = color(0x00000073);
+    #[derive(Debug, Clone, PartialEq, Deserialize)]
+    #[serde(default)]
+    pub struct Colors {
+        pub bg: Color = color(0x444444FF),
+        pub root: Color = color(0x000000FF),
+        pub border: Color = color(0x444444FF),
+        pub focus: Color = color(0x458588FF),
+        pub urgent: Color = color(0xFF0000FF),
+    }
 
-/// Tag configuration
-pub const TAGCOUNT: usize = 9;
+    #[derive(Debug, Clone, PartialEq, Deserialize)]
+    #[serde(default)]
+    pub struct Border {
+        pub width: i32 = 2,
+        pub single: bool,
+        pub floating_radius: f32 = 6.0,
+        pub tiled_radius: f32,
+    }
 
-/// Tiling layout parameters
-pub const MASTER_FACTOR: f32 = 0.54;
-pub const MASTER_COUNT: usize = 1;
-pub const RESIZE_STEP: f32 = 0.01;
+    #[derive(Debug, Clone, PartialEq, Deserialize)]
+    #[serde(default)]
+    pub struct Shadow {
+        pub softness: i32 = 25,
+        pub spread: i32 = 5,
+        pub offset: (i32, i32) = (0, 5),
+        pub color: Color = color(0x00000073),
+    }
 
-/// Keyboard configuration
-pub const KEYBOARD_LAYOUT: &str = "de";
-pub const KEYBOARD_VARIANT: &str = "nodeadkeys";
-pub const KEYBOARD_OPTIONS: Option<&str> = None;
+    #[derive(Debug, Clone, PartialEq, Deserialize)]
+    #[serde(default)]
+    pub struct Layout {
+        pub tags: usize = 9,
+        pub master_factor: f32 = 0.54,
+        pub master_count: usize = 1,
+        pub resize_step: f32 = 0.01,
+    }
 
-/// Keyboard repeat rate and delay
-pub const REPEAT_RATE: i32 = 30;
-pub const REPEAT_DELAY: i32 = 300;
+    #[derive(Debug, Clone, PartialEq, Deserialize)]
+    #[serde(default)]
+    pub struct Keyboard {
+        pub layout: String = "us".into(),
+        pub variant: String,
+        pub options: String,
+        pub repeat_rate: i32 = 30,
+        pub repeat_delay: i32 = 300,
+    }
 
-/// Trackpad configuration
-pub const TAP_TO_CLICK: bool = true;
-pub const TAP_AND_DRAG: bool = true;
-pub const DRAG_LOCK: bool = true;
-pub const NATURAL_SCROLL: bool = true;
-pub const DISABLE_WHILE_TYPING: bool = true;
-pub const LEFT_HANDED: bool = false;
-pub const MIDDLE_BUTTON_EMULATION: bool = false;
-pub const ACCEL_SPEED: f64 = 0.4;
-// pub const ACCEL_PROFILE: AccelProfile = Adaptive;
-// pub const CLICK_METHOD: ClickMethod = ButtonAreas;
-// pub const SCROLL_METHOD: ScrollMethod = TwoFinger;
-// pub const TAP_BUTTON_MAP: TapButtonMap = LeftRightMiddle;
+    #[derive(Debug, Clone, PartialEq, Deserialize)]
+    #[serde(default)]
+    pub struct Touchpad {
+        pub tap: bool = true,
+        pub tap_and_drag: bool = true,
+        pub drag_lock: bool = true,
+        pub natural_scroll: bool = true,
+        pub dwt: bool = true,
+        pub left_handed: bool,
+        pub middle_emulation: bool,
+        pub accel_speed: f64 = 0.4,
+    }
 
-/// Default terminal
-pub const DEFAULT_TERMINAL: &str = "foot";
+    #[derive(Debug, Clone, PartialEq, Deserialize)]
+    #[serde(default)]
+    pub struct Mouse {
+        pub natural_scroll: bool,
+        pub left_handed: bool,
+        pub middle_emulation: bool,
+        pub accel_speed: f64,
+    }
+}
 
-/// Modifier flags
-const SHIFT: u32 = 1;
-const CTRL: u32 = 4;
-const ALT: u32 = 8;
-const LOGO: u32 = 64;
+// --- Bindings ---
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub enum Mod {
+    Shift,
+    Ctrl,
+    Alt,
+    Logo,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Mods {
+    pub shift: bool,
+    pub ctrl: bool,
+    pub alt: bool,
+    pub logo: bool,
+}
+
+impl From<&ModifiersState> for Mods {
+    fn from(m: &ModifiersState) -> Self {
+        Self {
+            shift: m.shift,
+            ctrl: m.ctrl,
+            alt: m.alt,
+            logo: m.logo,
+        }
+    }
+}
+
+impl From<&[Mod]> for Mods {
+    fn from(v: &[Mod]) -> Self {
+        Self {
+            shift: v.contains(&Mod::Shift),
+            ctrl: v.contains(&Mod::Ctrl),
+            alt: v.contains(&Mod::Alt),
+            logo: v.contains(&Mod::Logo),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[repr(u32)]
+pub enum Button {
+    Left = 0x110,
+    Right = 0x111,
+    Middle = 0x112,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub enum KeyAction {
-    Quit,
-    Spawn(&'static str, &'static [&'static str]),
+    Noop,
+
+    FocusMon(i32),
     FocusStack(i32),
+    MoveMon(i32),
     MoveStack(i32),
-    IncNMaster(i32),
-    SetMFact(f32),
-    Zoom,
-    View(usize),
+
+    FocusTag(usize),
+    FocusTagPrev,
     Tag(usize),
     ToggleTag(usize),
-    KillClient,
-    ToggleFullscreen,
+
+    IncNMaster(i32),
+    SetMFact(f32),
     ToggleFloating,
-    FocusMon(i32),
-    TagMon(i32),
+    ToggleFullscreen,
+    Zoom,
+
+    KillClient,
+    Quit,
+    Spawn(Vec<String>),
 }
 
-pub type Key = (Mods, u32, KeyAction);
-
-macro_rules! spawn {
-    ($cmd:expr) => {
-        KeyAction::Spawn($cmd, &[])
-    };
-    ($cmd:expr, $($args:expr),+ $(,)?) => {
-        KeyAction::Spawn($cmd, &[$($args),+])
-    };
-}
-
-macro_rules! key {
-    ($mods:expr, $key:expr, $action:expr) => {
-        (
-            Mods {
-                shift: ($mods & SHIFT) != 0,
-                ctrl: ($mods & CTRL) != 0,
-                alt: ($mods & ALT) != 0,
-                logo: ($mods & LOGO) != 0,
-            },
-            $key,
-            $action,
-        )
-    };
-}
-
-fn tagkeys(key: u32, tag: usize) -> [Key; 3] {
-    [
-        key!(LOGO, key, KeyAction::View(tag)),
-        key!(LOGO | SHIFT, key, KeyAction::Tag(tag)),
-        key!(LOGO | CTRL | SHIFT, key, KeyAction::ToggleTag(tag)),
-    ]
-}
-
-pub fn key_bindings() -> Vec<Key> {
-    let mut keys = vec![
-        // Application launching
-        key!(LOGO, KEY_d, spawn!("menu_apps")),
-        key!(LOGO | SHIFT, KEY_e, spawn!("menu_exit")),
-        key!(LOGO, KEY_x, spawn!("notify_status")),
-        key!(
-            LOGO | SHIFT,
-            KEY_x,
-            spawn!("dwlb", "-toggle-visibility", "all")
-        ),
-        key!(LOGO, KEY_Return, spawn!("foot", "--log-level", "error")),
-        key!(LOGO | SHIFT, KEY_Return, spawn!("alacritty")),
-        key!(LOGO, KEY_w, spawn!("/bin/sh", "-c", "qbrowser")),
-        key!(LOGO | SHIFT, KEY_w, spawn!("firefox")),
-        key!(LOGO, KEY_f, spawn!("nautilus", "-w")),
-        key!(LOGO | SHIFT, KEY_d, spawn!("thunar")),
-        key!(LOGO, KEY_m, spawn!("foot", "--log-level", "error", "aerc")),
-        key!(LOGO, KEY_v, spawn!("menu_startvm")),
-        key!(LOGO | SHIFT, KEY_v, spawn!("menu_stopvm")),
-        key!(LOGO, KEY_l, spawn!("systemctl", "suspend")),
-        // Media keys (XF86 keysyms)
-        key!(0, KEY_XF86AudioMute, spawn!("change_volume", "-t")),
-        key!(LOGO, KEY_XF86AudioMute, spawn!("menu_pipewire")),
-        key!(
-            0,
-            KEY_XF86AudioLowerVolume,
-            spawn!("change_volume", "-d", "5")
-        ),
-        key!(
-            0,
-            KEY_XF86AudioRaiseVolume,
-            spawn!("change_volume", "-i", "5")
-        ),
-        key!(0, KEY_XF86AudioMicMute, spawn!("change_mic_mute", "toggle")),
-        key!(0, KEY_XF86MonBrightnessDown, spawn!("light", "-T", "0.8")),
-        key!(0, KEY_XF86MonBrightnessUp, spawn!("light", "-T", "1.2")),
-        key!(0, KEY_XF86WLAN, spawn!("toggle_wifi")),
-        key!(0, KEY_XF86Tools, spawn!("menu_bluetooth")),
-        key!(0, KEY_XF86Bluetooth, spawn!("toggle_bluetooth")),
-        key!(0, KEY_Print, spawn!("screenshot")),
-        key!(LOGO, KEY_Print, spawn!("screenshot", "file")),
-        // Window management
-        key!(LOGO, KEY_Left, KeyAction::FocusStack(-1)),
-        key!(LOGO, KEY_Right, KeyAction::FocusStack(1)),
-        key!(LOGO | SHIFT, KEY_Left, KeyAction::MoveStack(-1)),
-        key!(LOGO | SHIFT, KEY_Right, KeyAction::MoveStack(1)),
-        key!(LOGO, KEY_plus, KeyAction::IncNMaster(1)),
-        key!(LOGO, KEY_minus, KeyAction::IncNMaster(-1)),
-        key!(LOGO | ALT, KEY_Left, KeyAction::SetMFact(-0.01)),
-        key!(LOGO | ALT, KEY_Right, KeyAction::SetMFact(0.01)),
-        key!(LOGO | SHIFT, KEY_z, KeyAction::Zoom),
-        key!(LOGO, KEY_Tab, KeyAction::View(usize::MAX)), // Toggle to previous tag
-        key!(LOGO | SHIFT, KEY_q, KeyAction::KillClient),
-        key!(LOGO, KEY_space, KeyAction::ToggleFullscreen),
-        key!(LOGO | SHIFT, KEY_space, KeyAction::ToggleFloating),
-        key!(LOGO, KEY_comma, KeyAction::FocusMon(-1)),
-        key!(LOGO, KEY_period, KeyAction::FocusMon(1)),
-        key!(LOGO | SHIFT, KEY_less, KeyAction::TagMon(-1)),
-        key!(LOGO | SHIFT, KEY_greater, KeyAction::TagMon(1)),
-        key!(CTRL | ALT, KEY_BackSpace, KeyAction::Quit),
-    ];
-
-    keys.extend(tagkeys(KEY_1, 0));
-    keys.extend(tagkeys(KEY_2, 1));
-    keys.extend(tagkeys(KEY_3, 2));
-    keys.extend(tagkeys(KEY_4, 3));
-    keys.extend(tagkeys(KEY_5, 4));
-    keys.extend(tagkeys(KEY_6, 5));
-    keys.extend(tagkeys(KEY_7, 6));
-    keys.extend(tagkeys(KEY_8, 7));
-    keys.extend(tagkeys(KEY_9, 8));
-
-    keys
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize)]
 pub enum MouseAction {
     Move,
     Resize,
     ToggleFloating,
 }
 
-pub const BTN_LEFT: u32 = 0x110;
-pub const BTN_RIGHT: u32 = 0x111;
-pub const BTN_MIDDLE: u32 = 0x112;
+// --- Keysym serde ---
 
-pub type MouseButton = (Mods, u32, MouseAction);
+fn de_keys<'de, D: Deserializer<'de>>(
+    d: D,
+) -> Result<Vec<(Vec<Mod>, Keysym, KeyAction)>, D::Error> {
+    let raw: Vec<(Vec<Mod>, String, KeyAction)> = Vec::deserialize(d)?;
+    raw.into_iter()
+        .map(|(mods, name, action)| {
+            let sym = resolve_keysym(&name);
+            if sym.raw() == 0 {
+                return Err(serde::de::Error::custom(format!("unknown key: {name}")));
+            }
+            Ok((mods, sym, action))
+        })
+        .collect()
+}
 
-pub const MOUSE_BINDINGS: &[MouseButton] = &[
-    key!(LOGO, BTN_LEFT, MouseAction::Move),
-    key!(LOGO, BTN_MIDDLE, MouseAction::ToggleFloating),
-    key!(LOGO, BTN_RIGHT, MouseAction::Resize),
-];
+fn resolve_keysym(name: &str) -> Keysym {
+    let sym = xkb::keysym_from_name(name, xkb::KEYSYM_NO_FLAGS);
+    if sym.raw() != 0 {
+        return sym;
+    }
+    xkb::keysym_from_name(name, xkb::KEYSYM_CASE_INSENSITIVE)
+}
 
-pub const AUTOSTART: &[(&str, &[&str])] = &[("foot", &[])];
+// --- Loading ---
+
+impl Config {
+    pub fn new() -> Self {
+        let mut config: Self = ron::from_str(DEFAULT_CONFIG).expect("default config");
+        config.build_maps();
+        config
+    }
+
+    pub fn build_maps(&mut self) {
+        for (mods, sym, action) in &self.keybinds {
+            self.key_map
+                .insert((*sym, Mods::from(mods.as_slice())), action.clone());
+        }
+        for (mods, btn, action) in &self.mousebinds {
+            self.mouse_map
+                .insert((*btn as u32, Mods::from(mods.as_slice())), action.clone());
+        }
+    }
+}
+
+pub fn load(explicit: Option<PathBuf>) -> Config {
+    let path = resolve(explicit, "config.ron", DEFAULT_CONFIG);
+    let text = match std::fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("failed to read {}: {e}", path.display());
+            std::process::exit(1);
+        }
+    };
+
+    let mut config: Config = match ron::from_str(&text) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("config error in {}: {e}", path.display());
+            std::process::exit(1);
+        }
+    };
+
+    config.build_maps();
+    config
+}
+
+// --- CLI ---
+
+pub struct Args {
+    pub config: Option<PathBuf>,
+    pub autostart: Option<PathBuf>,
+}
+
+impl Args {
+    pub fn parse() -> Self {
+        let mut config = None;
+        let mut autostart = None;
+        let mut iter = std::env::args().skip(1);
+        while let Some(flag) = iter.next() {
+            match flag.as_str() {
+                "-c" | "--config" => {
+                    config = Some(PathBuf::from(iter.next().unwrap_or_else(|| {
+                        eprintln!("-c requires a path");
+                        std::process::exit(1);
+                    })));
+                }
+                "-s" | "--autostart" => {
+                    autostart = Some(PathBuf::from(iter.next().unwrap_or_else(|| {
+                        eprintln!("-s requires a path");
+                        std::process::exit(1);
+                    })));
+                }
+                _ => {
+                    eprintln!("usage: monotile [-c <config>] [-s <autostart>]");
+                    std::process::exit(1);
+                }
+            }
+        }
+        Self { config, autostart }
+    }
+}
+
+// --- Path and content helpers ---
+
+pub fn xdg_dir() -> PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("~/.config"))
+        .join("monotile")
+}
+
+pub(crate) fn resolve_autostart(path: Option<PathBuf>) -> PathBuf {
+    resolve(path, "autostart.sh", DEFAULT_AUTOSTART)
+}
+
+fn resolve(path: Option<PathBuf>, name: &str, default: &str) -> PathBuf {
+    if let Some(p) = path {
+        return p;
+    }
+    let p = xdg_dir().join(name);
+    provision(&p, default);
+    p
+}
+
+fn provision(path: &Path, content: &str) {
+    if path.exists() {
+        return;
+    }
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Err(e) = std::fs::write(path, content) {
+        warn!("failed to write {}: {e}", path.display());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn defaults_path() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("defaults/config.ron")
+    }
+
+    #[test]
+    fn default_config_matches_inline_defaults() {
+        let file: Config = ron::from_str(DEFAULT_CONFIG).expect("default config");
+        let code = Config::default();
+
+        assert_eq!(file.general, code.general);
+        assert_eq!(file.colors, code.colors);
+        assert_eq!(file.border, code.border);
+        assert_eq!(file.shadow, code.shadow);
+        assert_eq!(file.layout, code.layout);
+        assert_eq!(file.keyboard, code.keyboard);
+        assert_eq!(file.touchpad, code.touchpad);
+        assert_eq!(file.mouse, code.mouse);
+
+        assert!(!file.keybinds.is_empty(), "keybinds empty");
+        assert!(!file.mousebinds.is_empty(), "mousebinds empty");
+    }
+
+    #[test]
+    fn load_defaults_file() {
+        let config = load(Some(defaults_path()));
+        assert!(!config.keybinds.is_empty());
+        assert!(!config.key_map.is_empty(), "should populate key_map");
+        assert!(!config.mouse_map.is_empty(), "should populate mouse_map");
+    }
+
+    #[test]
+    fn color_hex6() {
+        let c: Color = ron::from_str("\"#ff8800\"").unwrap();
+        assert_eq!(c, color(0xFF8800FF));
+    }
+
+    #[test]
+    fn color_hex8() {
+        let c: Color = ron::from_str("\"#ff880080\"").unwrap();
+        assert_eq!(c, color(0xFF880080));
+    }
+
+    #[test]
+    fn color_invalid_hex() {
+        let r = ron::from_str::<Color>("\"#zzzzzz\"");
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn color_wrong_length() {
+        let r = ron::from_str::<Color>("\"#fff\"");
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn keysym_case_insensitive() {
+        let sym = resolve_keysym("return");
+        assert_ne!(sym.raw(), 0);
+        assert_eq!(sym, resolve_keysym("Return"));
+    }
+
+    #[test]
+    fn keysym_unknown() {
+        let ron = r#"(keybinds: [([Logo], "NonExistentKey_XYZ", Quit)])"#;
+        let r = ron::from_str::<Config>(ron);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn partial_config_uses_defaults() {
+        let ron = "(general: (gap: 10))";
+        let config: Config = ron::from_str(ron).unwrap();
+        assert_eq!(config.general.gap, 10);
+        assert_eq!(config.general.scale, General::default().scale);
+        assert_eq!(config.border, Border::default());
+    }
+}

@@ -34,13 +34,14 @@ struct Cursor {
 
 pub struct CursorManager {
     pub status: CursorImageStatus,
+    pub scale: f32,
     theme: CursorTheme,
     size: u32,
     cache: HashMap<String, Cursor>,
 }
 
 impl CursorManager {
-    pub fn new() -> Self {
+    pub fn new(scale: f32) -> Self {
         let name = std::env::var("XCURSOR_THEME").unwrap_or("default".into());
         let size = std::env::var("XCURSOR_SIZE").unwrap_or("24".into());
         let size = size.parse().unwrap_or(24);
@@ -48,6 +49,7 @@ impl CursorManager {
         let theme = CursorTheme::load(&name);
         let mut cursor_manager = Self {
             status: CursorImageStatus::default_named(),
+            scale,
             theme,
             size,
             cache: HashMap::new(),
@@ -98,10 +100,12 @@ impl CursorManager {
         renderer: &mut GlowRenderer,
         pos: Point<f64, Logical>,
     ) -> Vec<MonotileElement> {
-        if let CursorImageStatus::Surface(s) = &self.status && !s.is_alive() {
+        if let CursorImageStatus::Surface(s) = &self.status
+            && !s.is_alive()
+        {
             self.status = CursorImageStatus::default_named();
         }
-        let scale = Scale::from(crate::config::SCALE);
+        let scale = Scale::from(self.scale as f64);
         match &self.status {
             CursorImageStatus::Hidden => vec![],
             CursorImageStatus::Named(icon) => {

@@ -78,7 +78,7 @@ fn tag_switch() {
     f.client_mut(c).take_configures(w); // drain
 
     let mon = &mut f.mt.state.monitors[f.mt.state.active_monitor];
-    mon.set_active_tag(&mut f.mt.state.windows, 1);
+    mon.set_active_tag(1);
     f.roundtrip(c);
 
     // window is on tag 0, not visible on tag 1
@@ -97,7 +97,7 @@ fn tag_switch() {
 
     // switch back - window should be visible again
     let mon = &mut f.mt.state.monitors[f.mt.state.active_monitor];
-    mon.set_active_tag(&mut f.mt.state.windows, 0);
+    mon.set_active_tag(0);
     assert_eq!(
         f.mt.state.windows.visible(f.mt.state.mon().tag()).len(),
         1,
@@ -223,8 +223,7 @@ fn float_geo_preserved_across_toggle() {
     // toggle to floating, should get a centered float_geo
     {
         let floating = !f.mt.state.windows[id].floating;
-        let mon = &mut f.mt.state.monitors[f.mt.state.active_monitor];
-        mon.set_floating(&mut f.mt.state.windows, id, floating);
+        f.mt.state.windows[id].set_floating(floating);
     }
     let geo1 = f.mt.state.windows[id].float_geo;
     assert!(
@@ -239,13 +238,11 @@ fn float_geo_preserved_across_toggle() {
     // toggle to tiled and back to floating
     {
         let floating = !f.mt.state.windows[id].floating;
-        let mon = &mut f.mt.state.monitors[f.mt.state.active_monitor];
-        mon.set_floating(&mut f.mt.state.windows, id, floating);
+        f.mt.state.windows[id].set_floating(floating);
     }
     {
         let floating = !f.mt.state.windows[id].floating;
-        let mon = &mut f.mt.state.monitors[f.mt.state.active_monitor];
-        mon.set_floating(&mut f.mt.state.windows, id, floating);
+        f.mt.state.windows[id].set_floating(floating);
     }
 
     let geo2 = f.mt.state.windows[id].float_geo;

@@ -13,6 +13,10 @@ tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 calloop = "0.14"
 slotmap = "1.0"
 xcursor = "0.3"
+serde = { version = "1", features = ["derive"] }
+ron = "0.8"
+dirs = "6"
+inline_default = "1.2.0"
 
 [dependencies.smithay]
 git = "https://github.com/Smithay/smithay.git"

@@ -142,12 +142,13 @@ impl DrmState {
             mon,
             &state.windows,
             &self.shaders,
+            &state.config,
         ));
 
         let result = match surface.compositor.render_frame(
             &mut self.renderer,
             &elems,
-            crate::config::BG_COLOR,
+            state.config.colors.bg.0,
             FrameFlags::DEFAULT | FrameFlags::ALLOW_PRIMARY_PLANE_SCANOUT_ANY,
         ) {
             Ok(result) => result,
@@ -406,7 +407,7 @@ pub fn init(
 
     loop_handle.insert_source(LibinputInputBackend::new(libinput), |mut event, _, mt| {
         if let InputEvent::DeviceAdded { ref mut device } = event {
-            crate::input::configure_device(device);
+            crate::input::configure_device(device, &mt.state.config);
         }
         mt.process_input_event(event);
     })?;

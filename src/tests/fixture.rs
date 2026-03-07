@@ -15,7 +15,7 @@ pub struct Fixture {
 
 impl Fixture {
     pub fn new() -> Self {
-        let (event_loop, mut mt) = Monotile::new();
+        let (event_loop, mut mt) = Monotile::new(crate::config::Config::new());
 
         // headless output
         let output = Output::new(

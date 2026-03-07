@@ -2,7 +2,7 @@
 
 use crate::{
     Monotile,
-    config::*,
+    config::{KeyAction, Mods, MouseAction},
     grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
     spawn::spawn,
 };
@@ -13,29 +13,12 @@ use smithay::{
         PointerMotionEvent,
     },
     input::{
-        keyboard::{FilterResult, Keysym, ModifiersState},
+        keyboard::FilterResult,
         pointer::{AxisFrame, ButtonEvent, Focus, GrabStartData, MotionEvent},
     },
     reexports::input::Device,
     utils::{Logical, Point, SERIAL_COUNTER},
 };
-
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub struct Mods {
-    pub shift: bool,
-    pub ctrl: bool,
-    pub alt: bool,
-    pub logo: bool,
-}
-
-impl Mods {
-    pub fn matches(&self, other: &ModifiersState) -> bool {
-        self.shift == other.shift
-            && self.ctrl == other.ctrl
-            && self.alt == other.alt
-            && self.logo == other.logo
-    }
-}
 
 impl Monotile {
     pub fn process_input_event<I: InputBackend>(&mut self, event: InputEvent<I>) {
@@ -50,7 +33,6 @@ impl Monotile {
                 let key_state = event.state();
 
                 // Exclusive layer grabs all keys
-                // TODO: check all monitors. Maybe create a helper function.
                 if self.state.mon().exclusive_layer_surface().is_some() {
                     keyboard.input::<(), _>(self, key_code, key_state, serial, time, |_, _, _| {
                         FilterResult::Forward
@@ -65,16 +47,14 @@ impl Monotile {
                     serial,
                     time,
                     |monotile, modifiers, handle| {
-                        // Only handle key press, not release
                         if key_state != KeyState::Pressed {
                             return FilterResult::Forward;
                         }
 
-                        for (bind_mods, bind_key, action) in &monotile.state.key_bindings {
-                            if bind_mods.matches(modifiers)
-                                && handle.raw_syms().contains(&Keysym::new(*bind_key))
-                            {
-                                return FilterResult::Intercept(Some(*action));
+                        let mods = Mods::from(modifiers);
+                        for sym in handle.raw_syms() {
+                            if let Some(action) = monotile.state.config.key_map.get(&(sym, mods)) {
+                                return FilterResult::Intercept(Some(action.clone()));
                             }
                         }
 
@@ -82,7 +62,6 @@ impl Monotile {
                     },
                 );
 
-                // the outer option is None for forwarded events
                 if let Some(Some(action)) = action {
                     self.handle_action(action);
                 }
@@ -92,7 +71,7 @@ impl Monotile {
                 let pos = pointer.current_location() + event.delta();
                 let pos = pos.constrain(geo.to_f64());
 
-                if FOCUS_FOLLOWS_CURSOR {
+                if self.state.config.general.focus_follows_cursor {
                     let tag = self.state.mon().tag();
                     if let Some(we) = self.state.windows.window_under(tag, pos) {
                         self.set_focus(Some(we.id));
@@ -116,7 +95,7 @@ impl Monotile {
                 let output_geo = self.state.mon().output_geometry();
                 let pos = event.position_transformed(output_geo.size) + output_geo.loc.to_f64();
 
-                if FOCUS_FOLLOWS_CURSOR {
+                if self.state.config.general.focus_follows_cursor {
                     let tag = self.state.mon().tag();
                     if let Some(we) = self.state.windows.window_under(tag, pos) {
                         self.set_focus(Some(we.id));
@@ -124,7 +103,6 @@ impl Monotile {
                 }
                 let target = self.state.surface_under(pos);
 
-                // forward event to target surface
                 pointer.motion(
                     self,
                     target,
@@ -142,19 +120,15 @@ impl Monotile {
                 let button_state = event.state();
 
                 if button_state == ButtonState::Pressed && !pointer.is_grabbed() {
-                    let mods = keyboard.modifier_state();
-
-                    for (bind_mods, bind_btn, action) in MOUSE_BINDINGS {
-                        if bind_mods.matches(&mods) && button == *bind_btn {
-                            self.handle_mouse_action(
-                                *action,
-                                button,
-                                pointer.current_location(),
-                                serial,
-                            );
-                            // don't leak compositor binds to clients
-                            return;
-                        }
+                    let mods = Mods::from(&keyboard.modifier_state());
+                    if let Some(action) = self.state.config.mouse_map.get(&(button, mods)) {
+                        self.handle_mouse_action(
+                            action.clone(),
+                            button,
+                            pointer.current_location(),
+                            serial,
+                        );
+                        return;
                     }
 
                     // raise window and focus
@@ -170,7 +144,6 @@ impl Monotile {
                     }
                 }
 
-                // forward event to the focused client
                 pointer.button(
                     self,
                     &ButtonEvent {
@@ -183,10 +156,8 @@ impl Monotile {
                 pointer.frame(self);
             }
             InputEvent::PointerAxis { event, .. } => {
-                // scroll forwarding from Smithay/Anvil
                 let source = event.source();
 
-                // get pixel amount for each axis
                 let horizontal_amount = event.amount(Axis::Horizontal).unwrap_or_else(|| {
                     event.amount_v120(Axis::Horizontal).unwrap_or(0.0) * 15.0 / 120.
                 });
@@ -194,11 +165,9 @@ impl Monotile {
                     event.amount_v120(Axis::Vertical).unwrap_or(0.0) * 15.0 / 120.
                 });
 
-                // get discrete v120 amount (high-res scroll)
                 let horizontal_amount_discrete = event.amount_v120(Axis::Horizontal);
                 let vertical_amount_discrete = event.amount_v120(Axis::Vertical);
 
-                // create axis frame and add values only it they are not 0.0
                 let mut frame = AxisFrame::new(event.time_msec()).source(source);
                 if horizontal_amount != 0.0 {
                     frame = frame.value(Axis::Horizontal, horizontal_amount);
@@ -213,7 +182,6 @@ impl Monotile {
                     }
                 }
 
-                // trackpad: stop when the finger lifted
                 if source == AxisSource::Finger {
                     if event.amount(Axis::Horizontal) == Some(0.0) {
                         frame = frame.stop(Axis::Horizontal);
@@ -223,7 +191,6 @@ impl Monotile {
                     }
                 }
 
-                // forward
                 pointer.axis(self, frame);
                 pointer.frame(self);
             }
@@ -235,21 +202,24 @@ impl Monotile {
         use KeyAction::*;
 
         match action {
+            Noop => {}
             Quit => {
                 self.state.loop_signal.stop();
             }
-            Spawn(cmd, args) => {
-                spawn(cmd, args);
+            Spawn(ref args) => {
+                if let Some((cmd, args)) = args.split_first() {
+                    spawn(cmd, args, false);
+                }
             }
             FocusStack(delta) => {
                 if let Some(id) = self.state.mon().tag().focus_cycle(delta) {
                     self.set_focus(Some(id));
                 }
             }
-            View(usize::MAX) => {
+            FocusTagPrev => {
                 self.state.mon_mut().toggle_prev_tag();
             }
-            View(tag) => {
+            FocusTag(tag) => {
                 self.state.mon_mut().set_active_tag(tag);
             }
             Tag(tag) => {
@@ -295,7 +265,7 @@ impl Monotile {
                 }
             }
             // TODO: implement multi-monitor
-            FocusMon(_) | TagMon(_) => {}
+            FocusMon(_) | MoveMon(_) => {}
         }
         self.recompute_layout();
         self.backend.schedule_render(&self.state.mon().output);
@@ -342,23 +312,25 @@ impl Monotile {
     }
 }
 
-pub fn configure_device(dev: &mut Device) {
+pub fn configure_device(dev: &mut Device, config: &crate::config::Config) {
     let is_touchpad = dev.config_tap_finger_count() > 0;
     let is_mouse = !is_touchpad && dev.has_capability(DeviceCapability::Pointer.into());
 
     if is_touchpad {
-        let _ = dev.config_accel_set_speed(ACCEL_SPEED);
-        let _ = dev.config_tap_set_enabled(TAP_TO_CLICK);
-        let _ = dev.config_tap_set_drag_enabled(TAP_AND_DRAG);
-        let _ = dev.config_tap_set_drag_lock_enabled(DRAG_LOCK);
-        let _ = dev.config_scroll_set_natural_scroll_enabled(NATURAL_SCROLL);
-        let _ = dev.config_dwt_set_enabled(DISABLE_WHILE_TYPING);
-        let _ = dev.config_left_handed_set(LEFT_HANDED);
-        let _ = dev.config_middle_emulation_set_enabled(MIDDLE_BUTTON_EMULATION);
+        let tp = &config.touchpad;
+        let _ = dev.config_accel_set_speed(tp.accel_speed);
+        let _ = dev.config_tap_set_enabled(tp.tap);
+        let _ = dev.config_tap_set_drag_enabled(tp.tap_and_drag);
+        let _ = dev.config_tap_set_drag_lock_enabled(tp.drag_lock);
+        let _ = dev.config_scroll_set_natural_scroll_enabled(tp.natural_scroll);
+        let _ = dev.config_dwt_set_enabled(tp.dwt);
+        let _ = dev.config_left_handed_set(tp.left_handed);
+        let _ = dev.config_middle_emulation_set_enabled(tp.middle_emulation);
     } else if is_mouse {
-        let _ = dev.config_accel_set_speed(ACCEL_SPEED);
-        let _ = dev.config_scroll_set_natural_scroll_enabled(NATURAL_SCROLL);
-        let _ = dev.config_left_handed_set(LEFT_HANDED);
-        let _ = dev.config_middle_emulation_set_enabled(MIDDLE_BUTTON_EMULATION);
+        let m = &config.mouse;
+        let _ = dev.config_accel_set_speed(m.accel_speed);
+        let _ = dev.config_scroll_set_natural_scroll_enabled(m.natural_scroll);
+        let _ = dev.config_left_handed_set(m.left_handed);
+        let _ = dev.config_middle_emulation_set_enabled(m.middle_emulation);
     }
 }

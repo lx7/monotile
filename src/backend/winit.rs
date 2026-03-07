@@ -38,14 +38,19 @@ impl WinitState {
         let age = self.backend.buffer_age().unwrap_or(0);
         let (renderer, mut fb) = self.backend.bind()?;
 
-        let elems =
-            crate::render::output_elements(renderer, state.mon(), &state.windows, &self.shaders);
+        let elems = crate::render::output_elements(
+            renderer,
+            state.mon(),
+            &state.windows,
+            &self.shaders,
+            &state.config,
+        );
         let rendered = self.damage_tracker.render_output(
             renderer,
             &mut fb,
             age,
             &elems,
-            crate::config::BG_COLOR,
+            state.config.colors.bg.0,
         )?;
 
         std::mem::drop(fb);
