@@ -148,7 +148,7 @@ impl DrmState {
         let result = match surface.compositor.render_frame(
             &mut self.renderer,
             &elems,
-            state.config.colors.bg.0,
+            mon.background,
             FrameFlags::DEFAULT | FrameFlags::ALLOW_PRIMARY_PLANE_SCANOUT_ANY,
         ) {
             Ok(result) => result,

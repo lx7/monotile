@@ -13,8 +13,8 @@ pub struct TilingLayout {
 impl Default for TilingLayout {
     fn default() -> Self {
         Self {
-            master_count: config::Layout::default().master_count,
-            master_factor: config::Layout::default().master_factor,
+            master_count: config::TileConfig::default().master_count,
+            master_factor: config::TileConfig::default().master_factor,
         }
     }
 }
@@ -24,7 +24,7 @@ impl TilingLayout {
         &self,
         count: usize,
         area: Rectangle<i32, Logical>,
-        cfg: &config::Config,
+        layout: &config::Layout,
     ) -> Vec<Rectangle<i32, Logical>> {
         if count == 0 {
             return vec![];
@@ -33,17 +33,16 @@ impl TilingLayout {
         let master_count = self.master_count.min(count);
         let stack_count = count - master_count;
 
-        let gap = cfg.general.gap;
-        let bw = cfg.border.width;
-        let edge = gap + bw;
-        let inner = gap + 2 * bw;
+        let disable_gaps = layout.smart_gaps && count == 1;
+        let outer = if disable_gaps { 0 } else { layout.outer_gap };
+        let inner = if disable_gaps { 0 } else { layout.inner_gap };
 
-        let usable = if !cfg.border.single && count == 1 {
+        let usable = if outer == 0 {
             area
         } else {
             Rectangle {
-                loc: (area.loc.x + edge, area.loc.y + edge).into(),
-                size: (area.size.w - 2 * edge, area.size.h - 2 * edge).into(),
+                loc: (area.loc.x + outer, area.loc.y + outer).into(),
+                size: (area.size.w - 2 * outer, area.size.h - 2 * outer).into(),
             }
         };
 

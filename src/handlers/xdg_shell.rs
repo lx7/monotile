@@ -116,6 +116,30 @@ impl XdgShellHandler for Monotile {
         }
     }
 
+    fn title_changed(&mut self, surface: ToplevelSurface) {
+        let wl = surface.wl_surface();
+        let title = with_states(wl, |s| {
+            s.data_map.get::<XdgToplevelSurfaceData>()
+                .and_then(|d| d.lock().ok()?.title.clone())
+                .unwrap_or_default()
+        });
+        if let Some(id) = self.state.windows.find_by_surface(wl) {
+            self.state.windows[id].set_title(title);
+        }
+    }
+
+    fn app_id_changed(&mut self, surface: ToplevelSurface) {
+        let wl = surface.wl_surface();
+        let app_id = with_states(wl, |s| {
+            s.data_map.get::<XdgToplevelSurfaceData>()
+                .and_then(|d| d.lock().ok()?.app_id.clone())
+                .unwrap_or_default()
+        });
+        if let Some(id) = self.state.windows.find_by_surface(wl) {
+            self.state.windows[id].set_app_id(app_id);
+        }
+    }
+
     fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
         // TODO: implement popup grabs
     }

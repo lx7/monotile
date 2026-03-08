@@ -5,7 +5,7 @@ use smithay::output::{Mode, Output, PhysicalProperties, Subpixel};
 use smithay::reexports::calloop::EventLoop;
 
 use super::client::Client;
-use crate::Monotile;
+use crate::{Monotile, config::Config};
 
 pub struct Fixture {
     pub event_loop: EventLoop<'static, Monotile>,
@@ -15,7 +15,7 @@ pub struct Fixture {
 
 impl Fixture {
     pub fn new() -> Self {
-        let (event_loop, mut mt) = Monotile::new(crate::config::Config::new());
+        let (event_loop, mut mt) = Monotile::new(Config::new());
 
         // headless output
         let output = Output::new(

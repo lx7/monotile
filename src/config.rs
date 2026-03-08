@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
+// TODO: remove when config handling is complete
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use inline_default::inline_default;
 use serde::{Deserialize, Deserializer};
 use smithay::input::keyboard::{Keysym, ModifiersState, xkb};
+use smithay::reexports::input::AccelProfile as InputAccelProfile;
 use tracing::{info, warn};
 
 const DEFAULT_CONFIG: &str = include_str!("../defaults/config.ron");
@@ -39,79 +43,144 @@ fn color(hex: u32) -> Color {
     ])
 }
 
-// --- Config structs ---
+// --- Output rules ---
 
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
-pub struct Config {
-    pub general: General,
-    pub colors: Colors,
-    pub border: Border,
-    pub shadow: Shadow,
-    pub layout: Layout,
-    pub keyboard: Keyboard,
-    pub touchpad: Touchpad,
-    pub mouse: Mouse,
-    #[serde(deserialize_with = "de_keys")]
-    pub keybinds: Vec<(Vec<Mod>, Keysym, KeyAction)>,
-    pub mousebinds: Vec<(Vec<Mod>, Button, MouseAction)>,
-    #[serde(skip)]
-    pub key_map: HashMap<(Keysym, Mods), KeyAction>,
-    #[serde(skip)]
-    pub mouse_map: HashMap<(u32, Mods), MouseAction>,
+pub struct OutputMatch {
+    pub name: Option<String>,
+    pub make: Option<String>,
+    pub model: Option<String>,
+    pub serial: Option<String>,
+}
+
+impl OutputMatch {
+    pub fn matches(&self, name: &str, make: &str, model: &str, serial: &str) -> bool {
+        self.name.as_ref().is_none_or(|v| v == name)
+            && self.make.as_ref().is_none_or(|v| v == make)
+            && self.model.as_ref().is_none_or(|v| v == model)
+            && self.serial.as_ref().is_none_or(|v| v == serial)
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct OutputRule {
+    pub r#match: OutputMatch,
+    pub scale: Option<f64>,
+    pub pos: Option<(i32, i32)>,
+    // TODO: add mode and transform when output config is implemented
+    pub background: Option<Color>,
+}
+
+// --- Window rules ---
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct WindowMatch {
+    pub app_id: Option<String>,
+    pub title: Option<String>,
+    pub floating: Option<bool>,
+}
+
+impl WindowMatch {
+    pub fn matches(&self, app_id: &str, title: &str, floating: bool) -> bool {
+        self.app_id.as_ref().is_none_or(|v| v == app_id)
+            && self.title.as_ref().is_none_or(|v| v == title)
+            && self.floating.is_none_or(|v| v == floating)
+    }
+
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct WindowInit {
+    pub floating: Option<bool>,
+    pub size: Option<(i32, i32)>,
+    pub position: Option<(i32, i32)>,
+    pub output: Option<String>,
+    pub tags: Option<Vec<usize>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub enum RenderStep {
+    Shadow {
+        softness: i32,
+        spread: i32,
+        offset: (i32, i32),
+        color: Color,
+    },
+    WindowSurface {
+        #[serde(default)]
+        radius: f32,
+        fill: Color,
+    },
+    Border {
+        width: i32,
+        color: Color,
+    },
+    FocusRing {
+        width: i32,
+        color: Color,
+    },
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct WindowRule {
+    pub r#match: WindowMatch,
+    pub init: Option<WindowInit>,
+    pub render: Option<Vec<RenderStep>>,
+}
+
+// --- Layout ---
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq)]
+pub enum LayoutMode {
+    #[default]
+    Tile,
 }
 
 inline_default! {
     #[derive(Debug, Clone, PartialEq, Deserialize)]
     #[serde(default)]
-    pub struct General {
-        pub focus_follows_cursor: bool = true,
-        pub scale: f32 = 1.0,
-        pub gap: i32,
-    }
-
-    #[derive(Debug, Clone, PartialEq, Deserialize)]
-    #[serde(default)]
-    pub struct Colors {
-        pub bg: Color = color(0x444444FF),
-        pub root: Color = color(0x000000FF),
-        pub border: Color = color(0x444444FF),
-        pub focus: Color = color(0x458588FF),
-        pub urgent: Color = color(0xFF0000FF),
-    }
-
-    #[derive(Debug, Clone, PartialEq, Deserialize)]
-    #[serde(default)]
-    pub struct Border {
-        pub width: i32 = 2,
-        pub single: bool,
-        pub floating_radius: f32 = 6.0,
-        pub tiled_radius: f32,
-    }
-
-    #[derive(Debug, Clone, PartialEq, Deserialize)]
-    #[serde(default)]
-    pub struct Shadow {
-        pub softness: i32 = 25,
-        pub spread: i32 = 5,
-        pub offset: (i32, i32) = (0, 5),
-        pub color: Color = color(0x00000073),
+    pub struct TileConfig {
+        pub master_factor: f32 = 0.54,
+        pub master_count: usize = 1,
     }
 
     #[derive(Debug, Clone, PartialEq, Deserialize)]
     #[serde(default)]
     pub struct Layout {
         pub tags: usize = 9,
-        pub master_factor: f32 = 0.54,
-        pub master_count: usize = 1,
-        pub resize_step: f32 = 0.01,
+        pub inner_gap: i32 = 4,
+        pub outer_gap: i32 = 2,
+        pub smart_gaps: bool,
+        pub smart_borders: bool,
+        pub default: LayoutMode = LayoutMode::Tile,
+        pub tile: TileConfig = TileConfig::default(),
+    }
+
+    // --- Input ---
+
+    #[derive(Debug, Clone, PartialEq, Deserialize)]
+    #[serde(default)]
+    pub struct Input {
+        pub focus_follows_cursor: bool = true,
+        pub hide_cursor_when_typing: bool = true,
+        pub cursor_warp: bool,
+        pub cursor_theme: String = "default".into(),
+        pub cursor_size: u32 = 24,
+        pub keyboard: Keyboard = Keyboard::default(),
+        pub touchpad: Touchpad = Touchpad::default(),
+        pub mouse: Mouse = Mouse::default(),
     }
 
     #[derive(Debug, Clone, PartialEq, Deserialize)]
     #[serde(default)]
     pub struct Keyboard {
-        pub layout: String = "us".into(),
-        pub variant: String,
+        pub layout: String = "de".into(),
+        pub variant: String = "nodeadkeys".into(),
         pub options: String,
         pub repeat_rate: i32 = 30,
         pub repeat_delay: i32 = 300,
@@ -120,24 +189,59 @@ inline_default! {
     #[derive(Debug, Clone, PartialEq, Deserialize)]
     #[serde(default)]
     pub struct Touchpad {
+        pub accel_profile: AccelProfile = AccelProfile::Adaptive,
+        pub accel_speed: f64 = 0.4,
+        pub natural_scroll: bool = true,
+        pub left_handed: bool,
+        pub middle_emulation: bool,
         pub tap: bool = true,
         pub tap_and_drag: bool = true,
         pub drag_lock: bool = true,
-        pub natural_scroll: bool = true,
-        pub dwt: bool = true,
-        pub left_handed: bool,
-        pub middle_emulation: bool,
-        pub accel_speed: f64 = 0.4,
+        pub disable_while_typing: bool = true,
     }
 
     #[derive(Debug, Clone, PartialEq, Deserialize)]
     #[serde(default)]
     pub struct Mouse {
+        pub accel_profile: AccelProfile = AccelProfile::Flat,
+        pub accel_speed: f64,
         pub natural_scroll: bool,
         pub left_handed: bool,
         pub middle_emulation: bool,
-        pub accel_speed: f64,
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+pub enum AccelProfile {
+    Flat,
+    Adaptive,
+}
+
+impl From<AccelProfile> for InputAccelProfile {
+    fn from(p: AccelProfile) -> Self {
+        match p {
+            AccelProfile::Flat => Self::Flat,
+            AccelProfile::Adaptive => Self::Adaptive,
+        }
+    }
+}
+
+// --- Config ---
+
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(default)]
+pub struct Config {
+    pub outputs: Vec<OutputRule>,
+    pub layout: Layout,
+    pub windows: Vec<WindowRule>,
+    pub input: Input,
+    #[serde(deserialize_with = "de_keys")]
+    pub keybinds: Vec<(Vec<Mod>, Keysym, KeyAction)>,
+    pub mousebinds: Vec<(Vec<Mod>, Button, MouseAction)>,
+    #[serde(skip)]
+    pub key_map: HashMap<(Keysym, Mods), KeyAction>,
+    #[serde(skip)]
+    pub mouse_map: HashMap<(u32, Mods), MouseAction>,
 }
 
 // --- Bindings ---
@@ -199,16 +303,16 @@ pub enum KeyAction {
 
     FocusTag(usize),
     FocusTagPrev,
-    Tag(usize),
+    SetTag(usize),
     ToggleTag(usize),
 
-    IncNMaster(i32),
-    SetMFact(f32),
+    MasterCount(i32),
+    MasterRatio(f32),
     ToggleFloating,
     ToggleFullscreen,
-    Zoom,
+    SwapMaster,
 
-    KillClient,
+    Close,
     Quit,
     Spawn(Vec<String>),
 }
@@ -377,14 +481,8 @@ mod tests {
         let file: Config = ron::from_str(DEFAULT_CONFIG).expect("default config");
         let code = Config::default();
 
-        assert_eq!(file.general, code.general);
-        assert_eq!(file.colors, code.colors);
-        assert_eq!(file.border, code.border);
-        assert_eq!(file.shadow, code.shadow);
         assert_eq!(file.layout, code.layout);
-        assert_eq!(file.keyboard, code.keyboard);
-        assert_eq!(file.touchpad, code.touchpad);
-        assert_eq!(file.mouse, code.mouse);
+        assert_eq!(file.input, code.input);
 
         assert!(!file.keybinds.is_empty(), "keybinds empty");
         assert!(!file.mousebinds.is_empty(), "mousebinds empty");
@@ -438,10 +536,19 @@ mod tests {
 
     #[test]
     fn partial_config_uses_defaults() {
-        let ron = "(general: (gap: 10))";
+        let ron = "(layout: (inner_gap: 10))";
         let config: Config = ron::from_str(ron).unwrap();
-        assert_eq!(config.general.gap, 10);
-        assert_eq!(config.general.scale, General::default().scale);
-        assert_eq!(config.border, Border::default());
+        assert_eq!(config.layout.inner_gap, 10);
+        assert_eq!(config.layout.outer_gap, Layout::default().outer_gap);
+        assert_eq!(config.input, Input::default());
+    }
+
+    #[test]
+    fn empty_match_deserializes() {
+        let ron = "#![enable(implicit_some)]\n(windows: [(match: (), render: [WindowSurface(fill: \"#000000\")])])";
+        let config: Config = ron::from_str(ron).unwrap();
+        assert_eq!(config.windows.len(), 1);
+        assert!(config.windows[0].r#match.app_id.is_none());
+        assert!(config.windows[0].r#match.floating.is_none());
     }
 }

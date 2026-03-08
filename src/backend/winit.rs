@@ -52,7 +52,7 @@ impl WinitState {
             &mut fb,
             age,
             &elems,
-            state.config.colors.bg.0,
+            state.mon().background,
         )?;
 
         std::mem::drop(fb);

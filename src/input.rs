@@ -2,7 +2,7 @@
 
 use crate::{
     Monotile,
-    config::{KeyAction, Mods, MouseAction},
+    config::{Config, KeyAction, Mods, MouseAction},
     grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
     spawn::spawn,
 };
@@ -71,7 +71,7 @@ impl Monotile {
                 let pos = pointer.current_location() + event.delta();
                 let pos = pos.constrain(geo.to_f64());
 
-                if self.state.config.general.focus_follows_cursor {
+                if self.state.config.input.focus_follows_cursor {
                     let tag = self.state.mon().tag();
                     if let Some(we) = self.state.windows.window_under(tag, pos) {
                         self.set_focus(Some(we.id));
@@ -95,7 +95,7 @@ impl Monotile {
                 let output_geo = self.state.mon().output_geometry();
                 let pos = event.position_transformed(output_geo.size) + output_geo.loc.to_f64();
 
-                if self.state.config.general.focus_follows_cursor {
+                if self.state.config.input.focus_follows_cursor {
                     let tag = self.state.mon().tag();
                     if let Some(we) = self.state.windows.window_under(tag, pos) {
                         self.set_focus(Some(we.id));
@@ -222,14 +222,14 @@ impl Monotile {
             FocusTag(tag) => {
                 self.state.mon_mut().set_active_tag(tag);
             }
-            Tag(tag) => {
+            SetTag(tag) => {
                 let mon = &mut self.state.monitors[self.state.active_monitor];
                 mon.move_to_tag(&mut self.state.windows, tag);
             }
             ToggleTag(tag) => {
                 self.state.mon_mut().toggle_tag(tag);
             }
-            KillClient => {
+            Close => {
                 if let Some(id) = self.state.mon().tag().focused_id()
                     && let Some(tl) = self.state.windows[id].window.toplevel()
                 {
@@ -245,13 +245,13 @@ impl Monotile {
             MoveStack(delta) => {
                 self.state.mon_mut().tag_mut().move_in_stack(delta);
             }
-            Zoom => {
+            SwapMaster => {
                 self.state.mon_mut().tag_mut().zoom();
             }
-            IncNMaster(delta) => {
+            MasterCount(delta) => {
                 self.state.mon_mut().tag_mut().adjust_nmaster(delta);
             }
-            SetMFact(delta) => {
+            MasterRatio(delta) => {
                 self.state.mon_mut().tag_mut().adjust_mfact(delta);
             }
             ToggleFullscreen => {
@@ -312,22 +312,24 @@ impl Monotile {
     }
 }
 
-pub fn configure_device(dev: &mut Device, config: &crate::config::Config) {
+pub fn configure_device(dev: &mut Device, config: &Config) {
     let is_touchpad = dev.config_tap_finger_count() > 0;
     let is_mouse = !is_touchpad && dev.has_capability(DeviceCapability::Pointer.into());
 
     if is_touchpad {
-        let tp = &config.touchpad;
+        let tp = &config.input.touchpad;
+        let _ = dev.config_accel_set_profile(tp.accel_profile.into());
         let _ = dev.config_accel_set_speed(tp.accel_speed);
         let _ = dev.config_tap_set_enabled(tp.tap);
         let _ = dev.config_tap_set_drag_enabled(tp.tap_and_drag);
         let _ = dev.config_tap_set_drag_lock_enabled(tp.drag_lock);
         let _ = dev.config_scroll_set_natural_scroll_enabled(tp.natural_scroll);
-        let _ = dev.config_dwt_set_enabled(tp.dwt);
+        let _ = dev.config_dwt_set_enabled(tp.disable_while_typing);
         let _ = dev.config_left_handed_set(tp.left_handed);
         let _ = dev.config_middle_emulation_set_enabled(tp.middle_emulation);
     } else if is_mouse {
-        let m = &config.mouse;
+        let m = &config.input.mouse;
+        let _ = dev.config_accel_set_profile(m.accel_profile.into());
         let _ = dev.config_accel_set_speed(m.accel_speed);
         let _ = dev.config_scroll_set_natural_scroll_enabled(m.natural_scroll);
         let _ = dev.config_left_handed_set(m.left_handed);

@@ -24,7 +24,7 @@ use smithay::{
     },
 };
 
-use crate::config::Config;
+use crate::config::{self, Config};
 
 new_key_type! {
     pub struct WindowId;
@@ -34,16 +34,92 @@ new_key_type! {
 pub struct WindowElement {
     pub id: WindowId,
     pub window: Window,
-    pub tiled_geo: Rectangle<i32, Logical>,
-    pub float_geo: Rectangle<i32, Logical>,
+
+    pub app_id: String,
+    pub title: String,
     pub floating: bool,
     pub fullscreen: bool,
     pub focused: bool,
+
+    pub tiled_geo: Rectangle<i32, Logical>,
+    pub float_geo: Rectangle<i32, Logical>,
     fullscreen_geo: Rectangle<i32, Logical>,
+
+    pub render: Vec<config::RenderStep>,
+    rules: Vec<config::WindowRule>,
+
     pre_resize_buf: Option<(Size<i32, Logical>, Instant)>,
 }
 
 impl WindowElement {
+    pub fn new(
+        id: WindowId,
+        window: Window,
+        should_float: bool,
+        rules: &[config::WindowRule],
+    ) -> Self {
+        let (app_id, title) = window.toplevel().map(|tl| {
+            with_states(tl.wl_surface(), |s| {
+                s.data_map.get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                    .and_then(|d| d.lock().ok())
+                    .map(|d| (
+                        d.app_id.clone().unwrap_or_default(),
+                        d.title.clone().unwrap_or_default(),
+                    ))
+                    .unwrap_or_default()
+            })
+        }).unwrap_or_default();
+
+        let window_size = window.geometry().size;
+        Self {
+            id,
+            window,
+            app_id,
+            title,
+            floating: should_float,
+            fullscreen: false,
+            focused: false,
+            tiled_geo: Rectangle::default(),
+            float_geo: Rectangle::from_size(window_size),
+            fullscreen_geo: Rectangle::default(),
+            render: Vec::new(),
+            rules: rules.to_vec(),
+            pre_resize_buf: None,
+        }
+    }
+
+    pub fn resolve_init(&mut self) -> (Option<String>, Option<Vec<usize>>) {
+        let mut output = None;
+        let mut tags = None;
+        for rule in &self.rules {
+            if rule.r#match.matches(&self.app_id, &self.title, self.floating) {
+                if let Some(ref init) = rule.init {
+                    if let Some(f) = init.floating { self.floating = f; }
+                    if let Some((w, h)) = init.size {
+                        self.float_geo.size = (w, h).into();
+                    }
+                    if let Some((x, y)) = init.position {
+                        self.float_geo.loc = (x, y).into();
+                    }
+                    if let Some(ref o) = init.output { output = Some(o.clone()); }
+                    if let Some(ref t) = init.tags { tags = Some(t.clone()); }
+                }
+            }
+        }
+        (output, tags)
+    }
+
+    pub fn resolve_render(&mut self) {
+        self.render.clear();
+        for rule in &self.rules {
+            if rule.r#match.matches(&self.app_id, &self.title, self.floating) {
+                if let Some(ref render) = rule.render {
+                    self.render.clone_from(render);
+                }
+            }
+        }
+    }
+
     pub fn geo(&self) -> Rectangle<i32, Logical> {
         if self.fullscreen {
             self.fullscreen_geo
@@ -52,6 +128,16 @@ impl WindowElement {
         } else {
             self.tiled_geo
         }
+    }
+    
+    pub fn set_app_id(&mut self, app_id: String) {
+        self.app_id = app_id;
+        self.resolve_render();
+    }
+
+    pub fn set_title(&mut self, title: String) {
+        self.title = title;
+        self.resolve_render();
     }
 
     pub fn set_focused(&mut self, focused: bool) {
@@ -81,6 +167,7 @@ impl WindowElement {
     pub fn set_floating(&mut self, floating: bool) {
         self.floating = floating;
         self.fullscreen = false;
+        self.resolve_render();
         if let Some(tl) = self.window.toplevel() {
             tl.with_pending_state(|s| {
                 s.states.unset(xdg_toplevel::State::Fullscreen);
@@ -116,21 +203,11 @@ impl WindowElement {
     }
 }
 
-/// Check if a new window should open as floating.
-///
-/// Heuristic, in this order:
-/// - Does the window match a rule that explicitly sets it to floating? (not implemented yet)
-/// - Does it have a parent window? (usually dialogs)
-/// - Does it have a fixed width/height?
 pub fn should_float(tl: &ToplevelSurface) -> bool {
-    // TODO: check window rules here (override heuristics)
-
-    // windows with a parent
     if tl.parent().is_some() {
         return true;
     }
 
-    // fixed-size windows
     let (min, max) = with_states(tl.wl_surface(), |states| {
         let mut data = states.cached_state.get::<SurfaceCachedState>();
         let cur = data.current();
@@ -156,6 +233,13 @@ impl DerefMut for Windows {
 }
 
 impl Windows {
+    pub fn update_rules(&mut self, rules: &[config::WindowRule]) {
+        for we in self.values_mut() {
+            we.rules = rules.to_vec();
+            we.resolve_render();
+        }
+    }
+
     pub fn unfocus_all(&mut self) {
         for we in self.values_mut() {
             if we.focused {
@@ -303,16 +387,33 @@ pub struct Monitor {
     pub tags: Vec<Tag>,
     pub active_tag: usize,
     pub prev_tag: usize,
+    pub background: [f32; 4],
 }
 
 impl Monitor {
-    pub fn new(output: Output, tag_count: usize) -> Self {
-        Self {
+    pub fn new(output: Output, config: &Config) -> Self {
+        let mut mon = Self {
             output,
-            tags: (0..tag_count).map(|_| Tag::default()).collect(),
+            tags: (0..config.layout.tags).map(|_| Tag::default()).collect(),
             active_tag: 0,
             prev_tag: 0,
+            background: [0.0, 0.0, 0.0, 1.0],
+        };
+        mon.resolve(config);
+        mon
+    }
+
+    pub fn resolve(&mut self, config: &Config) {
+        let name = self.output.name();
+        let props = self.output.physical_properties();
+        let mut bg = None;
+        for rule in &config.outputs {
+            if rule.r#match.matches(&name, &props.make, &props.model, &props.serial_number) {
+                if let Some(c) = rule.background { bg = Some(c); }
+            }
         }
+        self.background = bg.map_or([0.0, 0.0, 0.0, 1.0], |c| c.0);
+        // TODO: use scale, pos, mode, transform from config
     }
 
     pub fn tag(&self) -> &Tag {
@@ -323,39 +424,27 @@ impl Monitor {
         &mut self.tags[self.active_tag]
     }
 
-    pub fn map(&mut self, ws: &mut Windows, window: Window, floating: bool) -> WindowId {
+    pub fn map(&mut self, ws: &mut Windows, id: WindowId, tags: Option<Vec<usize>>) {
         let area = layer_map_for_output(&self.output).non_exclusive_zone();
-        let size = window.geometry().size;
+        let we = &mut ws[id];
 
-        let fw = if size.w > 0 {
-            size.w
+        let fw = if we.float_geo.size.w > 0 { we.float_geo.size.w } else { area.size.w * 3 / 4 };
+        let fh = if we.float_geo.size.h > 0 { we.float_geo.size.h } else { area.size.h * 3 / 4 };
+
+        let has_pos = we.float_geo.loc != Point::default();
+        let x = if has_pos { we.float_geo.loc.x } else { area.loc.x + (area.size.w - fw) / 2 };
+        let y = if has_pos { we.float_geo.loc.y } else { area.loc.y + (area.size.h - fh) / 2 };
+        we.float_geo = Rectangle::new((x, y).into(), (fw, fh).into());
+
+        if let Some(tags) = tags {
+            for t in tags {
+                if t < self.tags.len() {
+                    self.tags[t].add(id);
+                }
+            }
         } else {
-            area.size.w * 3 / 4
-        };
-        let fh = if size.h > 0 {
-            size.h
-        } else {
-            area.size.h * 3 / 4
-        };
-
-        let x = area.loc.x + (area.size.w - fw) / 2;
-        let y = area.loc.y + (area.size.h - fh) / 2;
-        let float_geo = Rectangle::new((x, y).into(), (fw, fh).into());
-
-        let id = ws.insert_with_key(|id| WindowElement {
-            id,
-            window,
-            tiled_geo: Rectangle::default(),
-            float_geo,
-            floating,
-            fullscreen: false,
-            focused: false,
-            fullscreen_geo: Rectangle::default(),
-            pre_resize_buf: None,
-        });
-
-        self.tag_mut().add(id);
-        id
+            self.tag_mut().add(id);
+        }
     }
 
     pub fn unmap(&mut self, ws: &mut Windows, id: WindowId) {
@@ -441,7 +530,7 @@ impl Monitor {
             .find(|&id| ws.get(id).is_some_and(|we| we.fullscreen));
 
         let geo = layer_map_for_output(&self.output).non_exclusive_zone();
-        let rects = tag.layout.compute_rects(tag.tiled.len(), geo, config);
+        let rects = tag.layout.compute_rects(tag.tiled.len(), geo, &config.layout);
         for (&id, rect) in tag.tiled.iter().zip(rects) {
             if let Some(we) = ws.get_mut(id) {
                 we.tiled_geo = rect;

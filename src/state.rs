@@ -40,7 +40,7 @@ use crate::{
     backend::Backend,
     config::Config,
     render::cursor::CursorManager,
-    shell::{Monitor, WindowId, Windows},
+    shell::{Monitor, WindowElement, WindowId, Windows},
 };
 
 pub struct Monotile {
@@ -146,6 +146,10 @@ pub struct State {
     pub cursor: CursorManager,
     pub windows: Windows,
     pub monitors: Vec<Monitor>,
+    // TODO: active_monitor should be derived, not stored.
+    // Every lookup (render, map, unmap, focus, layout) really needs 
+    // "monitor for this output/window/pointer location", not "active".
+    // Remove this index when multi-monitor is implemented.
     pub active_monitor: usize,
     pub pending: Vec<Window>,
 }
@@ -163,7 +167,7 @@ impl State {
 
         let mut seat_state = SeatState::new();
         let mut seat = seat_state.new_wl_seat(&dh, "seat0");
-        let kb = &config.keyboard;
+        let kb = &config.input.keyboard;
         seat.add_keyboard(
             XkbConfig {
                 layout: &kb.layout,
@@ -179,7 +183,7 @@ impl State {
         info!("keyboard: layout={} variant={}", kb.layout, kb.variant);
 
         let cursor_shape_state = CursorShapeManagerState::new::<Monotile>(&dh);
-        let cursor = CursorManager::new(config.general.scale);
+        let cursor = CursorManager::new(1.0);
 
         Self {
             config,
@@ -218,13 +222,25 @@ impl State {
     }
 
     pub fn add_monitor(&mut self, output: Output) {
-        self.monitors
-            .push(Monitor::new(output, self.config.layout.tags));
+        self.monitors.push(Monitor::new(output, &self.config));
     }
 
-    pub fn map(&mut self, window: Window, floating: bool) -> WindowId {
-        let mon = &mut self.monitors[self.active_monitor];
-        mon.map(&mut self.windows, window, floating)
+    pub fn monitor_idx(&self, name: &str) -> usize {
+        self.monitors.iter().position(|m| m.output.name() == name)
+            .unwrap_or(self.active_monitor)
+    }
+
+    pub fn map(&mut self, window: Window, should_float: bool) -> WindowId {
+        let rules = &self.config.windows;
+        let id = self.windows.insert_with_key(|id| {
+            WindowElement::new(id, window, should_float, rules)
+        });
+        let (output, tags) = self.windows[id].resolve_init();
+        self.windows[id].resolve_render();
+
+        let idx = output.map_or(self.active_monitor, |n| self.monitor_idx(&n));
+        self.monitors[idx].map(&mut self.windows, id, tags);
+        id
     }
 
     pub fn unmap(&mut self, id: WindowId) {

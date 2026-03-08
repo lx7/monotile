@@ -1,12 +1,12 @@
-use crate::config::Config;
+use crate::config::Layout;
 use crate::shell::TilingLayout;
 use smithay::utils::{Logical, Rectangle};
 
 const W: i32 = 1000;
 const H: i32 = 800;
 
-fn cfg() -> Config {
-    Config::default()
+fn cfg() -> Layout {
+    Layout::default()
 }
 
 fn area() -> Rectangle<i32, Logical> {
@@ -31,60 +31,65 @@ fn zero_windows() {
 }
 
 #[test]
-fn single_window_no_border() {
-    // SINGLE_BORDER=false by default
+fn single_window_fills_area() {
+    let c = cfg();
+    let outer = c.outer_gap;
     let rects = compute(&TilingLayout::default(), 1);
     assert_eq!(rects.len(), 1, "single window should produce 1 rect");
-    assert_eq!(rects[0], area(), "single window should fill area");
+    let expected = Rectangle::new(
+        (outer, outer).into(),
+        (W - 2 * outer, H - 2 * outer).into(),
+    );
+    assert_eq!(rects[0], expected, "single window should fill usable area");
 }
 
 #[test]
 fn two_windows_even_split() {
     let c = cfg();
-    let edge = c.general.gap + c.border.width;
-    let inner = c.general.gap + 2 * c.border.width;
+    let outer = c.outer_gap;
+    let inner = c.inner_gap;
     let mfact = 0.5_f32;
     let half = inner / 2;
-    let usable_w = W - 2 * edge;
-    let usable_h = H - 2 * edge;
+    let usable_w = W - 2 * outer;
+    let usable_h = H - 2 * outer;
     let mw = (usable_w as f32 * mfact) as i32;
 
     let rects = compute(&layout(1, mfact), 2);
     assert_eq!(rects.len(), 2, "two windows should produce 2 rects");
 
-    assert_eq!(rects[0].loc, (edge, edge).into(), "master loc");
+    assert_eq!(rects[0].loc, (outer, outer).into(), "master loc");
     assert_eq!(rects[0].size, (mw - half, usable_h).into(), "master size");
 
-    let stack_x = edge + mw + inner - half;
+    let stack_x = outer + mw + inner - half;
     let stack_w = usable_w - mw - inner + half;
-    assert_eq!(rects[1].loc, (stack_x, edge).into(), "stack loc");
+    assert_eq!(rects[1].loc, (stack_x, outer).into(), "stack loc");
     assert_eq!(rects[1].size, (stack_w, usable_h).into(), "stack size");
 }
 
 #[test]
 fn three_windows_stack_splits_vertically() {
     let c = cfg();
-    let edge = c.general.gap + c.border.width;
-    let inner = c.general.gap + 2 * c.border.width;
+    let outer = c.outer_gap;
+    let inner = c.inner_gap;
     let mfact = 0.5_f32;
     let half = inner / 2;
-    let usable_w = W - 2 * edge;
-    let usable_h = H - 2 * edge;
+    let usable_w = W - 2 * outer;
+    let usable_h = H - 2 * outer;
     let mw = (usable_w as f32 * mfact) as i32;
-    let stack_x = edge + mw + inner - half;
+    let stack_x = outer + mw + inner - half;
     let stack_w = usable_w - mw - inner + half;
     let stack_h = (usable_h - inner) / 2;
 
     let rects = compute(&layout(1, mfact), 3);
     assert_eq!(rects.len(), 3, "three windows should produce 3 rects");
 
-    assert_eq!(rects[0].loc, (edge, edge).into(), "master loc");
+    assert_eq!(rects[0].loc, (outer, outer).into(), "master loc");
     assert_eq!(rects[0].size, (mw - half, usable_h).into(), "master size");
 
-    assert_eq!(rects[1].loc, (stack_x, edge).into(), "stack[0] loc");
+    assert_eq!(rects[1].loc, (stack_x, outer).into(), "stack[0] loc");
     assert_eq!(rects[1].size, (stack_w, stack_h).into(), "stack[0] size");
 
-    let y2 = edge + stack_h + inner;
+    let y2 = outer + stack_h + inner;
     assert_eq!(rects[2].loc, (stack_x, y2).into(), "stack[1] loc");
     assert_eq!(rects[2].size, (stack_w, stack_h).into(), "stack[1] size");
 }

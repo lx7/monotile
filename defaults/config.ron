@@ -1,8 +1,9 @@
+#![enable(implicit_some)]
 // SPDX-License-Identifier: GPL-3.0-only
 // monotile default configuration
 // https://github.com/user/monotile
 
-// RON syntax: 
+// RON syntax:
 // https://github.com/ron-rs/ron
 
 (
@@ -24,8 +25,8 @@
     layout: (
         tags: 9,
         
-        inner_gap: 0,
-        outer_gap: 0,
+        inner_gap: 4,
+        outer_gap: 2,
         smart_gaps: false,
         smart_borders: false,
 
@@ -119,9 +120,9 @@
     ([Logo],            "Right",                 FocusStack(1)),
     ([Logo, Shift],     "Left",                  MoveStack(-1)),
     ([Logo, Shift],     "Right",                 MoveStack(1)),
-    ([Logo, Shift],     "z",                     SwapMaster()),
-    ([Logo],            "space",                 ToggleFullscreen()),
-    ([Logo, Shift],     "space",                 ToggleFloating()),
+    ([Logo, Shift],     "z",                     SwapMaster),
+    ([Logo],            "space",                 ToggleFullscreen),
+    ([Logo, Shift],     "space",                 ToggleFloating),
     ([Logo],            "plus",                  MasterCount(1)),
     ([Logo],            "minus",                 MasterCount(-1)),
     ([Logo, Alt],       "Left",                  MasterRatio(-0.01)),
@@ -130,8 +131,8 @@
     ([Logo],            "period",                FocusMon(1)),
     ([Logo, Shift],     "less",                  MoveMon(-1)),
     ([Logo, Shift],     "greater",               MoveMon(1)),
-    ([Logo, Shift],     "q",                     Close()),
-    ([Ctrl, Alt],       "BackSpace",             Quit()),
+    ([Logo, Shift],     "q",                     Close),
+    ([Ctrl, Alt],       "BackSpace",             Quit),
 
     ([Logo],            "Return",                Spawn(["foot"])),
     ([Logo],            "d",                     Spawn(["fuzzel"])),
@@ -160,7 +161,7 @@
     ([],                "Print",                 Spawn(["/bin/sh", "-c", "grim -g \"$(slurp)\" - | wl-copy"])),
     ([Logo],            "Print",                 Spawn(["/bin/sh", "-c", "grim - | wl-copy"])),
 
-    ([Logo],            "Tab",                   FocusTagPrev()),
+    ([Logo],            "Tab",                   FocusTagPrev),
     ([Logo],              "1",                   FocusTag(0)),
     ([Logo],              "2",                   FocusTag(1)),
     ([Logo],              "3",                   FocusTag(2)),
@@ -192,9 +193,9 @@
 
     // Mouse button actions on windows: ([modifiers], Button, Action).
     mousebinds: [
-    ([Logo],            Left,                    Move()),
-    ([Logo],            Middle,                  ToggleFloating()),
-    ([Logo],            Right,                   Resize()),
+    ([Logo],            Left,                    Move),
+    ([Logo],            Middle,                  ToggleFloating),
+    ([Logo],            Right,                   Resize),
     ],
 )
 
