@@ -1,84 +1,137 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// monotile default configuration
+// https://github.com/user/monotile
+
+// RON syntax: 
+// https://github.com/ron-rs/ron
+
 (
-  general: (
-    focus_follows_cursor: true,
-    scale: 1.0,
-    gap: 0,
-  ),
+    // Output rules: top-to-bottom, later rules override earlier ones.
+    outputs: [
+        (match: (), scale: 1.0, background: "#444444"),
+        // all available fields:
+        // (
+        //     match: (name: "DP-1", make: "Dell", model: "U2723QE", serial: "ABC123"),
+        //     scale: 2.0,
+        //     pos: (0, 0),
+        //     mode: (size: (2560, 1440), refresh: 144),
+        //     transform: Normal,
+        //     background: "#222222",
+        // ),
+    ],
 
-  colors: (
-    bg: "#444444",
-    root: "#000000",
-    border: "#444444",
-    focus: "#458588",
-    urgent: "#ff0000",
-  ),
+    // Tiling layout and tag settings.
+    layout: (
+        tags: 9,
+        
+        inner_gap: 0,
+        outer_gap: 0,
+        smart_gaps: false,
+        smart_borders: false,
 
-  border: (
-    width: 2,
-    single: false,
-    floating_radius: 6.0,
-    tiled_radius: 0.0,
-  ),
+        default: Tile,
+        tile: (
+            master_factor: 0.54,
+            master_count: 1,
+        ),
+    ),
 
-  shadow: (
-    softness: 25,
-    spread: 5,
-    offset: (0, 5),
-    color: "#00000073",
-  ),
+    // Window rules: top-to-bottom, later rules override earlier ones.
+    windows: [
+        // tiled defaults, match all
+        (
+            match: (),
+            render: [
+                WindowSurface(fill: "#000000"),
+                Border(width: 2, color: "#444444"),
+                FocusRing(width: 2, color: "#458588"),
+            ],
+        ),
+        // floating overrides
+        (
+            match: (floating: true),
+            render: [
+                Shadow(softness: 25, spread: 5, offset: (0, 5), color: "#00000073"),
+                WindowSurface(radius: 6.0, fill: "#000000"),
+                Border(width: 2, color: "#444444"),
+                FocusRing(width: 2, color: "#458588"),
+            ],
+        ),
+        // all available fields:
+        // (
+        //     match: (app_id: "firefox", title: ".*YouTube.*", floating: true),
+        //     init: (
+        //         floating: true,
+        //         size: (600, 400),
+        //         position: (30, 30),
+        //         output: "DP-1",
+        //         tags: [0, 1, 2],
+        //     ),
+        //     render: [
+        //         Shadow(softness: 25, spread: 5, offset: (0, 5), color: "#00000073"),
+        //         WindowSurface(radius: 6.0, fill: "#000000"),
+        //         Border(width: 2, color: "#444444"),
+        //         FocusRing(width: 2, color: "#458588"),
+        //     ],
+        // ),
+    ],
 
-  layout: (
-    tags: 9,
-    master_factor: 0.54,
-    master_count: 1,
-    resize_step: 0.01,
-  ),
+    // Input devices and cursor behavior.
+    input: (
+        focus_follows_cursor: true,
+        hide_cursor_when_typing: true,
+        cursor_warp: false,
+        cursor_theme: "default",
+        cursor_size: 24,
 
-  keyboard: (
-    layout: "us",
-    variant: "",
-    options: "",
-    repeat_rate: 30,
-    repeat_delay: 300,
-  ),
+        keyboard: (
+            layout: "de",
+            variant: "nodeadkeys",
+            options: "",
+            repeat_rate: 30,
+            repeat_delay: 300,
+        ),
 
-  touchpad: (
-    tap: true,
-    tap_and_drag: true,
-    drag_lock: true,
-    natural_scroll: true,
-    dwt: true,
-    left_handed: false,
-    middle_emulation: false,
-    accel_speed: 0.4,
-  ),
+        touchpad: (
+            accel_profile: Adaptive,
+            accel_speed: 0.4,
+            natural_scroll: true,
+            left_handed: false,
+            middle_emulation: false,
+            tap: true,
+            tap_and_drag: true,
+            drag_lock: true,
+            disable_while_typing: true,
+        ),
 
-  mouse: (
-    natural_scroll: false,
-    left_handed: false,
-    middle_emulation: false,
-    accel_speed: 0.0,
-  ),
+        mouse: (
+            accel_profile: Flat,
+            accel_speed: 0.0,
+            natural_scroll: false,
+            left_handed: false,
+            middle_emulation: false,
+        ),
+    ),
 
-  keybinds: [
-    ([Ctrl, Alt],       "BackSpace",             Quit),
-    ([Logo, Shift],     "q",                     KillClient),
+    // Keyboard shortcuts: ([modifiers], "key", Action).
+    keybinds: [
     ([Logo],            "Left",                  FocusStack(-1)),
     ([Logo],            "Right",                 FocusStack(1)),
     ([Logo, Shift],     "Left",                  MoveStack(-1)),
     ([Logo, Shift],     "Right",                 MoveStack(1)),
-    ([Logo],            "plus",                  IncNMaster(1)),
-    ([Logo],            "minus",                 IncNMaster(-1)),
-    ([Logo, Alt],       "Left",                  SetMFact(-0.01)),
-    ([Logo, Alt],       "Right",                 SetMFact(0.01)),
-    ([Logo, Shift],     "z",                     Zoom),
-    ([Logo],            "Tab",                   FocusTagPrev),
-    ([Logo],            "space",                 ToggleFullscreen),
-    ([Logo, Shift],     "space",                 ToggleFloating),
+    ([Logo, Shift],     "z",                     SwapMaster()),
+    ([Logo],            "space",                 ToggleFullscreen()),
+    ([Logo, Shift],     "space",                 ToggleFloating()),
+    ([Logo],            "plus",                  MasterCount(1)),
+    ([Logo],            "minus",                 MasterCount(-1)),
+    ([Logo, Alt],       "Left",                  MasterRatio(-0.01)),
+    ([Logo, Alt],       "Right",                 MasterRatio(0.01)),
     ([Logo],            "comma",                 FocusMon(-1)),
     ([Logo],            "period",                FocusMon(1)),
     ([Logo, Shift],     "less",                  MoveMon(-1)),
     ([Logo, Shift],     "greater",               MoveMon(1)),
+    ([Logo, Shift],     "q",                     Close()),
+    ([Ctrl, Alt],       "BackSpace",             Quit()),
 
     ([Logo],            "Return",                Spawn(["foot"])),
     ([Logo],            "d",                     Spawn(["fuzzel"])),
@@ -107,6 +160,7 @@
     ([],                "Print",                 Spawn(["/bin/sh", "-c", "grim -g \"$(slurp)\" - | wl-copy"])),
     ([Logo],            "Print",                 Spawn(["/bin/sh", "-c", "grim - | wl-copy"])),
 
+    ([Logo],            "Tab",                   FocusTagPrev()),
     ([Logo],              "1",                   FocusTag(0)),
     ([Logo],              "2",                   FocusTag(1)),
     ([Logo],              "3",                   FocusTag(2)),
@@ -116,15 +170,15 @@
     ([Logo],              "7",                   FocusTag(6)),
     ([Logo],              "8",                   FocusTag(7)),
     ([Logo],              "9",                   FocusTag(8)),
-    ([Logo, Shift],       "1",                   Tag(0)),
-    ([Logo, Shift],       "2",                   Tag(1)),
-    ([Logo, Shift],       "3",                   Tag(2)),
-    ([Logo, Shift],       "4",                   Tag(3)),
-    ([Logo, Shift],       "5",                   Tag(4)),
-    ([Logo, Shift],       "6",                   Tag(5)),
-    ([Logo, Shift],       "7",                   Tag(6)),
-    ([Logo, Shift],       "8",                   Tag(7)),
-    ([Logo, Shift],       "9",                   Tag(8)),
+    ([Logo, Shift],       "1",                   SetTag(0)),
+    ([Logo, Shift],       "2",                   SetTag(1)),
+    ([Logo, Shift],       "3",                   SetTag(2)),
+    ([Logo, Shift],       "4",                   SetTag(3)),
+    ([Logo, Shift],       "5",                   SetTag(4)),
+    ([Logo, Shift],       "6",                   SetTag(5)),
+    ([Logo, Shift],       "7",                   SetTag(6)),
+    ([Logo, Shift],       "8",                   SetTag(7)),
+    ([Logo, Shift],       "9",                   SetTag(8)),
     ([Logo, Ctrl, Shift], "1",                   ToggleTag(0)),
     ([Logo, Ctrl, Shift], "2",                   ToggleTag(1)),
     ([Logo, Ctrl, Shift], "3",                   ToggleTag(2)),
@@ -134,11 +188,14 @@
     ([Logo, Ctrl, Shift], "7",                   ToggleTag(6)),
     ([Logo, Ctrl, Shift], "8",                   ToggleTag(7)),
     ([Logo, Ctrl, Shift], "9",                   ToggleTag(8)),
-  ],
+    ],
 
-  mousebinds: [
-    ([Logo],            Left,                    Move),
-    ([Logo],            Middle,                  ToggleFloating),
-    ([Logo],            Right,                   Resize),
-  ],
+    // Mouse button actions on windows: ([modifiers], Button, Action).
+    mousebinds: [
+    ([Logo],            Left,                    Move()),
+    ([Logo],            Middle,                  ToggleFloating()),
+    ([Logo],            Right,                   Resize()),
+    ],
 )
+
+// vim: set autoindent expandtab tabstop=4 shiftwidth=4 :
