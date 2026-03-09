@@ -334,7 +334,7 @@ pub enum KeyAction {
     Spawn(Vec<String>),
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize)]
 pub enum MouseAction {
     Move,
     Resize,

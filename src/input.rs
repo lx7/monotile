@@ -70,50 +70,12 @@ impl Monotile {
                 let geo = self.state.mon().output_geometry();
                 let pos = pointer.current_location() + event.delta();
                 let pos = pos.constrain(geo.to_f64());
-
-                if self.state.config.input.focus_follows_cursor {
-                    let tag = self.state.mon().tag();
-                    if let Some(we) = self.state.windows.window_under(tag, pos) {
-                        self.set_focus(Some(we.id));
-                    }
-                }
-                let target = self.state.surface_under(pos);
-
-                pointer.motion(
-                    self,
-                    target,
-                    &MotionEvent {
-                        location: pos,
-                        serial,
-                        time: event.time_msec(),
-                    },
-                );
-                pointer.frame(self);
-                self.backend.schedule_render(&self.state.mon().output);
+                self.handle_pointer_motion(pos, event.time_msec(), serial);
             }
             InputEvent::PointerMotionAbsolute { event, .. } => {
-                let output_geo = self.state.mon().output_geometry();
-                let pos = event.position_transformed(output_geo.size) + output_geo.loc.to_f64();
-
-                if self.state.config.input.focus_follows_cursor {
-                    let tag = self.state.mon().tag();
-                    if let Some(we) = self.state.windows.window_under(tag, pos) {
-                        self.set_focus(Some(we.id));
-                    }
-                }
-                let target = self.state.surface_under(pos);
-
-                pointer.motion(
-                    self,
-                    target,
-                    &MotionEvent {
-                        location: pos,
-                        serial,
-                        time: event.time_msec(),
-                    },
-                );
-                pointer.frame(self);
-                self.backend.schedule_render(&self.state.mon().output);
+                let geo = self.state.mon().output_geometry();
+                let pos = event.position_transformed(geo.size) + geo.loc.to_f64();
+                self.handle_pointer_motion(pos, event.time_msec(), serial);
             }
             InputEvent::PointerButton { event, .. } => {
                 let button = event.button_code();
@@ -196,6 +158,37 @@ impl Monotile {
             }
             _ => {}
         }
+    }
+
+    fn handle_pointer_motion(
+        &mut self,
+        pos: Point<f64, Logical>,
+        time: u32,
+        serial: smithay::utils::Serial,
+    ) {
+        let pointer = self.state.seat.get_pointer().unwrap();
+
+        if self.state.config.input.focus_follows_cursor {
+            let tag = self.state.mon().tag();
+            if let Some(we) = self.state.windows.window_under(tag, pos) {
+                if Some(we.id) != tag.focused_id() {
+                    self.set_focus(Some(we.id));
+                }
+            }
+        }
+
+        let target = self.state.surface_under(pos);
+        pointer.motion(
+            self,
+            target,
+            &MotionEvent {
+                location: pos,
+                serial,
+                time,
+            },
+        );
+        pointer.frame(self);
+        self.backend.schedule_render(&self.state.mon().output);
     }
 
     pub fn handle_action(&mut self, action: KeyAction) {

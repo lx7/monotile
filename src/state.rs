@@ -98,7 +98,11 @@ impl Monotile {
     }
 
     pub fn set_focus(&mut self, id: Option<WindowId>) {
-        self.state.windows.unfocus_all();
+        if let Some(old) = self.state.mon().tag().focused_id() {
+            if let Some(we) = self.state.windows.get_mut(old) {
+                we.set_focused(false);
+            }
+        }
 
         if let Some(surface) = self.state.mon().exclusive_layer_surface() {
             if let Some(kb) = self.state.seat.get_keyboard() {
@@ -270,7 +274,8 @@ impl State {
         }
 
         // windows
-        if let Some(we) = self.windows.window_under(mon.tag(), pos) {
+        let we = self.windows.window_under(mon.tag(), pos);
+        if let Some(we) = we {
             let loc = we.geo().loc - we.window.geometry().loc;
             let rel = pos - loc.to_f64();
             if let Some((s, point)) = we.window.surface_under(rel, WindowSurfaceType::ALL) {

@@ -20,7 +20,11 @@ pub fn push_elements(
     scale: f32,
 ) {
     let bw = border_width;
-    let outer_r = if radius != 0.0 { radius + bw as f32 } else { 0.0 };
+    let outer_r = if radius != 0.0 {
+        radius + bw as f32
+    } else {
+        0.0
+    };
     let c = outer_r.ceil() as i32;
 
     // window coordinates

@@ -268,14 +268,6 @@ impl Windows {
         }
     }
 
-    pub fn unfocus_all(&mut self) {
-        for we in self.values_mut() {
-            if we.focused {
-                we.set_focused(false);
-            }
-        }
-    }
-
     pub fn find_by_surface(&self, surface: &WlSurface) -> Option<WindowId> {
         for we in self.values() {
             if let Some(tl) = we.window.toplevel() {
