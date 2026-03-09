@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use inline_default::inline_default;
+use regex::Regex;
 use serde::{Deserialize, Deserializer};
 use smithay::input::keyboard::{Keysym, ModifiersState, xkb};
 use smithay::reexports::input::AccelProfile as InputAccelProfile;
@@ -43,23 +44,42 @@ fn color(hex: u32) -> Color {
     ])
 }
 
-// --- Output rules ---
+// --- Rules and pattern matching ---
+
+#[derive(Debug, Clone)]
+pub struct Pattern(Regex);
+
+impl Pattern {
+    pub fn is_match(&self, s: &str) -> bool {
+        self.0.is_match(s)
+    }
+}
+
+impl<'de> Deserialize<'de> for Pattern {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        let exp = format!("^(?:{s})$");
+        Regex::new(&exp)
+            .map(Pattern)
+            .map_err(serde::de::Error::custom)
+    }
+}
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct OutputMatch {
-    pub name: Option<String>,
-    pub make: Option<String>,
-    pub model: Option<String>,
-    pub serial: Option<String>,
+    pub name: Option<Pattern>,
+    pub make: Option<Pattern>,
+    pub model: Option<Pattern>,
+    pub serial: Option<Pattern>,
 }
 
 impl OutputMatch {
     pub fn matches(&self, name: &str, make: &str, model: &str, serial: &str) -> bool {
-        self.name.as_ref().is_none_or(|v| v == name)
-            && self.make.as_ref().is_none_or(|v| v == make)
-            && self.model.as_ref().is_none_or(|v| v == model)
-            && self.serial.as_ref().is_none_or(|v| v == serial)
+        self.name.as_ref().is_none_or(|p| p.is_match(name))
+            && self.make.as_ref().is_none_or(|p| p.is_match(make))
+            && self.model.as_ref().is_none_or(|p| p.is_match(model))
+            && self.serial.as_ref().is_none_or(|p| p.is_match(serial))
     }
 }
 
@@ -73,23 +93,20 @@ pub struct OutputRule {
     pub background: Option<Color>,
 }
 
-// --- Window rules ---
-
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct WindowMatch {
-    pub app_id: Option<String>,
-    pub title: Option<String>,
+    pub app_id: Option<Pattern>,
+    pub title: Option<Pattern>,
     pub floating: Option<bool>,
 }
 
 impl WindowMatch {
     pub fn matches(&self, app_id: &str, title: &str, floating: bool) -> bool {
-        self.app_id.as_ref().is_none_or(|v| v == app_id)
-            && self.title.as_ref().is_none_or(|v| v == title)
+        self.app_id.as_ref().is_none_or(|p| p.is_match(app_id))
+            && self.title.as_ref().is_none_or(|p| p.is_match(title))
             && self.floating.is_none_or(|v| v == floating)
     }
-
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -550,5 +567,90 @@ mod tests {
         assert_eq!(config.windows.len(), 1);
         assert!(config.windows[0].r#match.app_id.is_none());
         assert!(config.windows[0].r#match.floating.is_none());
+    }
+
+    #[test]
+    fn pattern_exact_match() {
+        let p: Pattern = ron::from_str("\"firefox\"").unwrap();
+        assert!(p.is_match("firefox"));
+        assert!(!p.is_match("firefox-esr"));
+        assert!(!p.is_match("myfirefox"));
+    }
+
+    #[test]
+    fn pattern_regex() {
+        let p: Pattern = ron::from_str("\"firefox.*\"").unwrap();
+        assert!(p.is_match("firefox"));
+        assert!(p.is_match("firefox-esr"));
+        assert!(!p.is_match("chromium"));
+    }
+
+    #[test]
+    fn pattern_alternation() {
+        let p: Pattern = ron::from_str("\"firefox|chromium\"").unwrap();
+        assert!(p.is_match("firefox"));
+        assert!(p.is_match("chromium"));
+        assert!(!p.is_match("epiphany"));
+    }
+
+    #[test]
+    fn pattern_invalid_regex() {
+        let r = ron::from_str::<Pattern>("\"[invalid\"");
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn window_match_empty_matches_all() {
+        let m = WindowMatch::default();
+        assert!(m.matches("firefox", "YouTube", true));
+        assert!(m.matches("", "", false));
+    }
+
+    #[test]
+    fn window_match_app_id() {
+        let ron = "#![enable(implicit_some)]\n(app_id: \"firefox\")";
+        let m: WindowMatch = ron::from_str(ron).unwrap();
+        assert!(m.matches("firefox", "any title", false));
+        assert!(!m.matches("chromium", "any title", false));
+    }
+
+    #[test]
+    fn window_match_floating() {
+        let ron = "(floating: Some(true))";
+        let m: WindowMatch = ron::from_str(ron).unwrap();
+        assert!(m.matches("any", "any", true));
+        assert!(!m.matches("any", "any", false));
+    }
+
+    #[test]
+    fn window_match_combined() {
+        let ron = "#![enable(implicit_some)]\n(app_id: \"firefox\", floating: true)";
+        let m: WindowMatch = ron::from_str(ron).unwrap();
+        assert!(m.matches("firefox", "any", true));
+        assert!(!m.matches("firefox", "any", false));
+        assert!(!m.matches("chromium", "any", true));
+    }
+
+    #[test]
+    fn window_match_title_regex() {
+        let ron = "#![enable(implicit_some)]\n(title: \".*YouTube.*\")";
+        let m: WindowMatch = ron::from_str(ron).unwrap();
+        assert!(m.matches("firefox", "Watching YouTube Now", false));
+        assert!(!m.matches("firefox", "GitHub", false));
+    }
+
+    #[test]
+    fn output_match_empty_matches_all() {
+        let m = OutputMatch::default();
+        assert!(m.matches("DP-1", "Dell", "U2723QE", "ABC123"));
+    }
+
+    #[test]
+    fn output_match_name() {
+        let ron = "#![enable(implicit_some)]\n(name: \"DP-.*\")";
+        let m: OutputMatch = ron::from_str(ron).unwrap();
+        assert!(m.matches("DP-1", "Dell", "U2723QE", "ABC123"));
+        assert!(m.matches("DP-2", "Dell", "U2723QE", "ABC123"));
+        assert!(!m.matches("HDMI-A-1", "Dell", "U2723QE", "ABC123"));
     }
 }

@@ -38,9 +38,11 @@
     ),
 
     // Window rules: top-to-bottom, later rules override earlier ones.
+    // - init is evaluated once when a window maps (fields override)
+    // - render defines the per-window render pipeline and is re-evaluated 
+    //   on window state change (entire render pipeline overrides)
     windows: [
-        // tiled defaults, match all
-        (
+        (   // tiled defaults, match all
             match: (),
             render: [
                 WindowSurface(fill: "#000000"),
@@ -48,8 +50,7 @@
                 FocusRing(width: 2, color: "#458588"),
             ],
         ),
-        // floating overrides
-        (
+        (   // floating overrides
             match: (floating: true),
             render: [
                 Shadow(softness: 25, spread: 5, offset: (0, 5), color: "#00000073"),
@@ -58,6 +59,16 @@
                 FocusRing(width: 2, color: "#458588"),
             ],
         ),
+        // examples (match strings are auto-anchored regex):
+        // (   // browser picture-in-picture: float in bottom-right corner
+        //     match: (app_id: "firefox|chromium", title: "Picture.in.[Pp]icture"),
+        //     init: (floating: true, size: (480, 270), position: (1400, 770)),
+        // ),
+        // (   // music on tag 8
+        //     match: (app_id: "spotify"),
+        //     init: (tags: [8]),
+        // ),
+        //
         // all available fields:
         // (
         //     match: (app_id: "firefox", title: ".*YouTube.*", floating: true),
