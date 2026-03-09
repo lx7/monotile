@@ -36,10 +36,7 @@ fn single_window_fills_area() {
     let outer = c.outer_gap;
     let rects = compute(&TilingLayout::default(), 1);
     assert_eq!(rects.len(), 1, "single window should produce 1 rect");
-    let expected = Rectangle::new(
-        (outer, outer).into(),
-        (W - 2 * outer, H - 2 * outer).into(),
-    );
+    let expected = Rectangle::new((outer, outer).into(), (W - 2 * outer, H - 2 * outer).into());
     assert_eq!(rects[0], expected, "single window should fill usable area");
 }
 

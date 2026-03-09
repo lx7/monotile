@@ -147,7 +147,7 @@ pub struct State {
     pub windows: Windows,
     pub monitors: Vec<Monitor>,
     // TODO: active_monitor should be derived, not stored.
-    // Every lookup (render, map, unmap, focus, layout) really needs 
+    // Every lookup (render, map, unmap, focus, layout) really needs
     // "monitor for this output/window/pointer location", not "active".
     // Remove this index when multi-monitor is implemented.
     pub active_monitor: usize,
@@ -226,15 +226,17 @@ impl State {
     }
 
     pub fn monitor_idx(&self, name: &str) -> usize {
-        self.monitors.iter().position(|m| m.output.name() == name)
+        self.monitors
+            .iter()
+            .position(|m| m.output.name() == name)
             .unwrap_or(self.active_monitor)
     }
 
     pub fn map(&mut self, window: Window, should_float: bool) -> WindowId {
         let rules = &self.config.windows;
-        let id = self.windows.insert_with_key(|id| {
-            WindowElement::new(id, window, should_float, rules)
-        });
+        let id = self
+            .windows
+            .insert_with_key(|id| WindowElement::new(id, window, should_float, rules));
         let (output, tags) = self.windows[id].resolve_init();
         self.windows[id].resolve_render();
 

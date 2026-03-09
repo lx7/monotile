@@ -8,16 +8,19 @@ use smithay::{
     utils::{Logical, Rectangle},
 };
 
-pub fn elements(
+use super::MonotileElement;
+
+pub fn push_elements(
+    out: &mut Vec<MonotileElement>,
     shader: &GlesPixelProgram,
     win: Rectangle<i32, Logical>,
     radius: f32,
     border_width: i32,
     color: [f32; 4],
     scale: f32,
-) -> Vec<PixelShaderElement> {
+) {
     let bw = border_width;
-    let outer_r = radius + bw as f32;
+    let outer_r = if radius != 0.0 { radius + bw as f32 } else { 0.0 };
     let c = outer_r.ceil() as i32;
 
     // window coordinates
@@ -46,8 +49,6 @@ pub fn elements(
         (ox,              oy + c,          bw,               bh_total - 2 * c), // left edge
     ];
 
-    let mut elems = Vec::with_capacity(8);
-
     for (rx, ry, rw, rh) in rects {
         if rw <= 0 || rh <= 0 {
             continue;
@@ -56,7 +57,7 @@ pub fn elements(
         let offset = ((rx - ox) as f32, (ry - oy) as f32);
         let rect = Rectangle::<i32, Logical>::new((rx, ry).into(), (rw, rh).into());
 
-        elems.push(PixelShaderElement::new(
+        out.push(MonotileElement::Decoration(PixelShaderElement::new(
             shader.clone(),
             rect,
             None,
@@ -70,8 +71,6 @@ pub fn elements(
                 Uniform::new("scale", scale),
             ],
             Kind::Unspecified,
-        ));
+        )));
     }
-
-    elems
 }

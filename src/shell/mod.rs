@@ -46,6 +46,7 @@ pub struct WindowElement {
     fullscreen_geo: Rectangle<i32, Logical>,
 
     pub render: Vec<config::RenderStep>,
+    pub radius: f32,
     rules: Vec<config::WindowRule>,
 
     pre_resize_buf: Option<(Size<i32, Logical>, Instant)>,
@@ -58,17 +59,23 @@ impl WindowElement {
         should_float: bool,
         rules: &[config::WindowRule],
     ) -> Self {
-        let (app_id, title) = window.toplevel().map(|tl| {
-            with_states(tl.wl_surface(), |s| {
-                s.data_map.get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
-                    .and_then(|d| d.lock().ok())
-                    .map(|d| (
-                        d.app_id.clone().unwrap_or_default(),
-                        d.title.clone().unwrap_or_default(),
-                    ))
-                    .unwrap_or_default()
+        let (app_id, title) = window
+            .toplevel()
+            .map(|tl| {
+                with_states(tl.wl_surface(), |s| {
+                    s.data_map
+                        .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                        .and_then(|d| d.lock().ok())
+                        .map(|d| {
+                            (
+                                d.app_id.clone().unwrap_or_default(),
+                                d.title.clone().unwrap_or_default(),
+                            )
+                        })
+                        .unwrap_or_default()
+                })
             })
-        }).unwrap_or_default();
+            .unwrap_or_default();
 
         let window_size = window.geometry().size;
         Self {
@@ -83,6 +90,7 @@ impl WindowElement {
             float_geo: Rectangle::from_size(window_size),
             fullscreen_geo: Rectangle::default(),
             render: Vec::new(),
+            radius: 0.0,
             rules: rules.to_vec(),
             pre_resize_buf: None,
         }
@@ -92,17 +100,26 @@ impl WindowElement {
         let mut output = None;
         let mut tags = None;
         for rule in &self.rules {
-            if rule.r#match.matches(&self.app_id, &self.title, self.floating) {
+            if rule
+                .r#match
+                .matches(&self.app_id, &self.title, self.floating)
+            {
                 if let Some(ref init) = rule.init {
-                    if let Some(f) = init.floating { self.floating = f; }
+                    if let Some(f) = init.floating {
+                        self.floating = f;
+                    }
                     if let Some((w, h)) = init.size {
                         self.float_geo.size = (w, h).into();
                     }
                     if let Some((x, y)) = init.position {
                         self.float_geo.loc = (x, y).into();
                     }
-                    if let Some(ref o) = init.output { output = Some(o.clone()); }
-                    if let Some(ref t) = init.tags { tags = Some(t.clone()); }
+                    if let Some(ref o) = init.output {
+                        output = Some(o.clone());
+                    }
+                    if let Some(ref t) = init.tags {
+                        tags = Some(t.clone());
+                    }
                 }
             }
         }
@@ -112,12 +129,23 @@ impl WindowElement {
     pub fn resolve_render(&mut self) {
         self.render.clear();
         for rule in &self.rules {
-            if rule.r#match.matches(&self.app_id, &self.title, self.floating) {
+            if rule
+                .r#match
+                .matches(&self.app_id, &self.title, self.floating)
+            {
                 if let Some(ref render) = rule.render {
                     self.render.clone_from(render);
                 }
             }
         }
+        self.radius = self
+            .render
+            .iter()
+            .find_map(|s| match s {
+                config::RenderStep::WindowSurface { radius, .. } => Some(*radius),
+                _ => None,
+            })
+            .unwrap_or(0.0);
     }
 
     pub fn geo(&self) -> Rectangle<i32, Logical> {
@@ -129,7 +157,7 @@ impl WindowElement {
             self.tiled_geo
         }
     }
-    
+
     pub fn set_app_id(&mut self, app_id: String) {
         self.app_id = app_id;
         self.resolve_render();
@@ -276,9 +304,8 @@ impl Windows {
     }
 
     pub fn any_pending_resize(&self, tag: &Tag) -> bool {
-        self.visible(tag)
-            .iter()
-            .any(|we| !we.floating && we.has_pending_resize())
+        tag.window_ids()
+            .any(|id| self.get(id).is_some_and(|we| we.has_pending_resize()))
     }
 
     pub fn window_under(&self, tag: &Tag, pos: Point<f64, Logical>) -> Option<&WindowElement> {
@@ -408,8 +435,13 @@ impl Monitor {
         let props = self.output.physical_properties();
         let mut bg = None;
         for rule in &config.outputs {
-            if rule.r#match.matches(&name, &props.make, &props.model, &props.serial_number) {
-                if let Some(c) = rule.background { bg = Some(c); }
+            if rule
+                .r#match
+                .matches(&name, &props.make, &props.model, &props.serial_number)
+            {
+                if let Some(c) = rule.background {
+                    bg = Some(c);
+                }
             }
         }
         self.background = bg.map_or([0.0, 0.0, 0.0, 1.0], |c| c.0);
@@ -428,12 +460,28 @@ impl Monitor {
         let area = layer_map_for_output(&self.output).non_exclusive_zone();
         let we = &mut ws[id];
 
-        let fw = if we.float_geo.size.w > 0 { we.float_geo.size.w } else { area.size.w * 3 / 4 };
-        let fh = if we.float_geo.size.h > 0 { we.float_geo.size.h } else { area.size.h * 3 / 4 };
+        let fw = if we.float_geo.size.w > 0 {
+            we.float_geo.size.w
+        } else {
+            area.size.w * 3 / 4
+        };
+        let fh = if we.float_geo.size.h > 0 {
+            we.float_geo.size.h
+        } else {
+            area.size.h * 3 / 4
+        };
 
         let has_pos = we.float_geo.loc != Point::default();
-        let x = if has_pos { we.float_geo.loc.x } else { area.loc.x + (area.size.w - fw) / 2 };
-        let y = if has_pos { we.float_geo.loc.y } else { area.loc.y + (area.size.h - fh) / 2 };
+        let x = if has_pos {
+            we.float_geo.loc.x
+        } else {
+            area.loc.x + (area.size.w - fw) / 2
+        };
+        let y = if has_pos {
+            we.float_geo.loc.y
+        } else {
+            area.loc.y + (area.size.h - fh) / 2
+        };
         we.float_geo = Rectangle::new((x, y).into(), (fw, fh).into());
 
         if let Some(tags) = tags {
@@ -530,7 +578,9 @@ impl Monitor {
             .find(|&id| ws.get(id).is_some_and(|we| we.fullscreen));
 
         let geo = layer_map_for_output(&self.output).non_exclusive_zone();
-        let rects = tag.layout.compute_rects(tag.tiled.len(), geo, &config.layout);
+        let rects = tag
+            .layout
+            .compute_rects(tag.tiled.len(), geo, &config.layout);
         for (&id, rect) in tag.tiled.iter().zip(rects) {
             if let Some(we) = ws.get_mut(id) {
                 we.tiled_geo = rect;

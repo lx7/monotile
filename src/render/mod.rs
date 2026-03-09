@@ -167,7 +167,7 @@ fn popup_elements(
 pub fn output_elements(
     renderer: &mut GlowRenderer,
     mon: &Monitor,
-    ws: &Windows,
+    windows: &Windows,
     shaders: &Shaders,
     config: &Config,
 ) -> Vec<MonotileElement> {
@@ -175,9 +175,10 @@ pub fn output_elements(
     let out_scale = output.current_scale().fractional_scale();
     let scale = Scale::from(out_scale);
     let scale_f32 = out_scale as f32;
-    let mut elems = Vec::new();
+    let n = mon.tag().tiled.len() + mon.tag().floating.len();
+    let mut elems = Vec::with_capacity(n * 20 + 32);
 
-    if let Some(we) = mon.tag().fullscreen.and_then(|id| ws.get(id)) {
+    if let Some(we) = mon.tag().fullscreen.and_then(|id| windows.get(id)) {
         elems.extend(layer_popup_elements(
             renderer,
             output,
@@ -210,10 +211,11 @@ pub fn output_elements(
             scale,
         ));
 
-        let windows = ws.visible(mon.tag());
-        let tiled = windows.iter().filter(|w| !w.floating).count();
+        let tag = mon.tag();
+        let tiled = tag.tiled.len();
 
-        for we in windows.iter().rev() {
+        for id in tag.window_ids().rev() {
+            let Some(we) = windows.get(id) else { continue };
             let win = we.geo();
             let buf = we.window.geometry();
             let wl = we.window.wl_surface().unwrap();
@@ -221,24 +223,34 @@ pub fn output_elements(
             let single_tiled = tiled == 1 && !we.floating;
             let disable_gaps = config.layout.smart_gaps && single_tiled;
             let disable_border = config.layout.smart_borders && single_tiled;
-
-            let radius = we.render.iter().find_map(|s| match s {
-                RenderStep::WindowSurface { radius, .. } => Some(*radius),
-                _ => None,
-            }).unwrap_or(0.0);
+            let radius = we.radius;
 
             // rev: render pipeline is back-to-front
             for step in we.render.iter().rev() {
                 match step {
-                    RenderStep::FocusRing { width, color } if we.focused && !disable_border && *width > 0 => {
-                        for piece in border::elements(&shaders.rect, win, radius, *width, color.0, scale_f32) {
-                            elems.push(MonotileElement::Decoration(piece));
-                        }
+                    RenderStep::FocusRing { width, color }
+                        if we.focused && !disable_border && *width > 0 =>
+                    {
+                        border::push_elements(
+                            &mut elems,
+                            &shaders.rect,
+                            win,
+                            radius,
+                            *width,
+                            color.0,
+                            scale_f32,
+                        );
                     }
                     RenderStep::Border { width, color } if !disable_border && *width > 0 => {
-                        for piece in border::elements(&shaders.rect, win, radius, *width, color.0, scale_f32) {
-                            elems.push(MonotileElement::Decoration(piece));
-                        }
+                        border::push_elements(
+                            &mut elems,
+                            &shaders.rect,
+                            win,
+                            radius,
+                            *width,
+                            color.0,
+                            scale_f32,
+                        );
                     }
                     RenderStep::WindowSurface { fill, .. } => {
                         let clip_r = if disable_gaps { 0.0 } else { radius };
@@ -259,7 +271,11 @@ pub fn output_elements(
                                 elems.push(MonotileElement::Surface(s));
                             } else {
                                 elems.push(MonotileElement::Clipped(ClippedSurface::new(
-                                    s, shaders.clip.clone(), win, clip_r, scale,
+                                    s,
+                                    shaders.clip.clone(),
+                                    win,
+                                    clip_r,
+                                    scale,
                                 )));
                             }
                         }
@@ -281,7 +297,12 @@ pub fn output_elements(
                             Kind::Unspecified,
                         )));
                     }
-                    RenderStep::Shadow { softness, spread, offset, color } if !disable_gaps => {
+                    RenderStep::Shadow {
+                        softness,
+                        spread,
+                        offset,
+                        color,
+                    } if !disable_gaps => {
                         let sigma = *softness as f32 / 2.0;
                         let blur = (sigma * 3.0).ceil() as i32;
                         let pad_x = blur + spread + offset.0.abs();
@@ -299,14 +320,20 @@ pub fn output_elements(
                                 Uniform::new("win_size", (win.size.w as f32, win.size.h as f32)),
                                 Uniform::new("win_offset", (pad_x as f32, pad_y as f32)),
                                 Uniform::new("outer_radius", radius),
-                                Uniform::new("shadow_box_size", (
-                                    (win.size.w + 2 * spread) as f32,
-                                    (win.size.h + 2 * spread) as f32,
-                                )),
-                                Uniform::new("shadow_box_offset", (
-                                    (pad_x - spread + offset.0) as f32,
-                                    (pad_y - spread + offset.1) as f32,
-                                )),
+                                Uniform::new(
+                                    "shadow_box_size",
+                                    (
+                                        (win.size.w + 2 * spread) as f32,
+                                        (win.size.h + 2 * spread) as f32,
+                                    ),
+                                ),
+                                Uniform::new(
+                                    "shadow_box_offset",
+                                    (
+                                        (pad_x - spread + offset.0) as f32,
+                                        (pad_y - spread + offset.1) as f32,
+                                    ),
+                                ),
                                 Uniform::new("shadow_sigma", sigma),
                                 Uniform::new("shadow_color", color.0),
                                 Uniform::new("scale", scale_f32),
