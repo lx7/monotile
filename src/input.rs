@@ -33,7 +33,7 @@ impl Monotile {
                 let key_state = event.state();
 
                 // Exclusive layer grabs all keys
-                if self.state.mon().exclusive_layer_surface().is_some() {
+                if self.state.mon().exclusive_layer.is_some() {
                     keyboard.input::<(), _>(self, key_code, key_state, serial, time, |_, _, _| {
                         FilterResult::Forward
                     });

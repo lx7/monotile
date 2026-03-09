@@ -104,7 +104,7 @@ impl Monotile {
             }
         }
 
-        if let Some(surface) = self.state.mon().exclusive_layer_surface() {
+        if let Some(surface) = self.state.mon().exclusive_layer.clone() {
             if let Some(kb) = self.state.seat.get_keyboard() {
                 kb.set_focus(self, Some(surface), SERIAL_COUNTER.next_serial());
             }

@@ -407,6 +407,7 @@ pub struct Monitor {
     pub active_tag: usize,
     pub prev_tag: usize,
     pub background: [f32; 4],
+    pub exclusive_layer: Option<WlSurface>,
 }
 
 impl Monitor {
@@ -415,6 +416,7 @@ impl Monitor {
             output,
             tags: (0..config.layout.tags).map(|_| Tag::default()).collect(),
             active_tag: 0,
+            exclusive_layer: None,
             prev_tag: 0,
             background: [0.0, 0.0, 0.0, 1.0],
         };
@@ -580,15 +582,16 @@ impl Monitor {
         }
     }
 
-    pub fn exclusive_layer_surface(&self) -> Option<WlSurface> {
+    pub fn update_exclusive_layer(&mut self) {
         let map = layer_map_for_output(&self.output);
+        self.exclusive_layer = None;
         for l in [Layer::Overlay, Layer::Top] {
             for s in map.layers_on(l).rev() {
                 if s.cached_state().keyboard_interactivity == KeyboardInteractivity::Exclusive {
-                    return Some(s.wl_surface().clone());
+                    self.exclusive_layer = Some(s.wl_surface().clone());
+                    return;
                 }
             }
         }
-        None
     }
 }

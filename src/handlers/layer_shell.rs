@@ -35,6 +35,7 @@ impl WlrLayerShellHandler for Monotile {
         let layer = LayerSurface::new(surface, namespace);
         map.map_layer(&layer).unwrap();
         drop(map);
+        self.state.mon_mut().update_exclusive_layer();
         self.update_focus();
     }
 
@@ -54,6 +55,7 @@ impl WlrLayerShellHandler for Monotile {
             map.unmap_layer(&layer);
         }
         drop(map);
+        self.state.mon_mut().update_exclusive_layer();
         self.recompute_layout();
     }
 }

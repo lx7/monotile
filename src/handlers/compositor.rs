@@ -69,6 +69,9 @@ impl Monotile {
         }
         let changed = map.arrange();
         drop(map);
+        if changed {
+            self.state.mon_mut().update_exclusive_layer();
+        }
         changed
     }
 }
