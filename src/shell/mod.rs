@@ -3,7 +3,7 @@
 mod layout;
 pub use layout::TilingLayout;
 
-use std::ops::{Deref, DerefMut};
+use derive_more::{Deref, DerefMut};
 use std::time::{Duration, Instant};
 
 use slotmap::{SlotMap, new_key_type};
@@ -244,21 +244,8 @@ pub fn should_float(tl: &ToplevelSurface) -> bool {
     min.w > 0 && min.h > 0 && (min.w == max.w || min.h == max.h)
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Deref, DerefMut)]
 pub struct Windows(pub SlotMap<WindowId, WindowElement>);
-
-impl Deref for Windows {
-    type Target = SlotMap<WindowId, WindowElement>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for Windows {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
 
 impl Windows {
     pub fn update_rules(&mut self, rules: &[config::WindowRule]) {
@@ -420,15 +407,15 @@ impl Monitor {
             prev_tag: 0,
             background: [0.0, 0.0, 0.0, 1.0],
         };
-        mon.resolve(config);
+        mon.resolve(&config.outputs);
         mon
     }
 
-    pub fn resolve(&mut self, config: &Config) {
+    pub fn resolve(&mut self, rules: &[config::OutputRule]) {
         let name = self.output.name();
         let props = self.output.physical_properties();
         let mut bg = None;
-        for rule in &config.outputs {
+        for rule in rules {
             if rule
                 .r#match
                 .matches(&name, &props.make, &props.model, &props.serial_number)
@@ -592,6 +579,17 @@ impl Monitor {
                     return;
                 }
             }
+        }
+    }
+}
+
+#[derive(Debug, Default, Deref, DerefMut)]
+pub struct Monitors(pub Vec<Monitor>);
+
+impl Monitors {
+    pub fn update_rules(&mut self, rules: &[config::OutputRule]) {
+        for mon in self.iter_mut() {
+            mon.resolve(rules);
         }
     }
 }

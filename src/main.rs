@@ -11,7 +11,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_logging();
 
     let args = Args::parse();
-    let config = config::load(args.config);
+    let config = config::load(args.config).unwrap_or_else(|e| {
+        eprintln!("{e}");
+        std::process::exit(1);
+    });
+
     let (mut event_loop, mut monotile) = Monotile::new(config);
 
     if std::env::var_os("WAYLAND_DISPLAY").is_some() || std::env::var_os("DISPLAY").is_some() {

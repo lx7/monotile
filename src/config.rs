@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use inline_default::inline_default;
 use regex::Regex;
 use serde::{Deserialize, Deserializer};
-use smithay::input::keyboard::{Keysym, ModifiersState, xkb};
+use smithay::input::keyboard::{Keysym, ModifiersState, XkbConfig, xkb};
 use smithay::reexports::input::AccelProfile as InputAccelProfile;
 use tracing::{info, warn};
 
@@ -243,6 +243,17 @@ impl From<AccelProfile> for InputAccelProfile {
     }
 }
 
+impl Keyboard {
+    pub fn xkb_config(&self) -> XkbConfig<'_> {
+        XkbConfig {
+            layout: &self.layout,
+            variant: &self.variant,
+            options: Some(self.options.clone()).filter(|s| !s.is_empty()),
+            ..Default::default()
+        }
+    }
+}
+
 // --- Config ---
 
 #[derive(Debug, Default, Clone, Deserialize)]
@@ -259,6 +270,8 @@ pub struct Config {
     pub key_map: HashMap<(Keysym, Mods), KeyAction>,
     #[serde(skip)]
     pub mouse_map: HashMap<(u32, Mods), MouseAction>,
+    #[serde(skip)]
+    pub path: PathBuf,
 }
 
 // --- Bindings ---
@@ -331,6 +344,7 @@ pub enum KeyAction {
 
     Close,
     Quit,
+    ReloadConfig,
     Spawn(Vec<String>),
 }
 
@@ -387,32 +401,16 @@ impl Config {
     }
 }
 
-pub fn load(explicit: Option<PathBuf>) -> Config {
+pub fn load(explicit: Option<PathBuf>) -> Result<Config, String> {
     let path = resolve(explicit, "config.ron", DEFAULT_CONFIG);
-    let text = match std::fs::read_to_string(&path) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("failed to read {}: {e}", path.display());
-            std::process::exit(1);
-        }
-    };
-
-    let mut config: Config = match ron::from_str(&text) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("config error in {}: {e}", path.display());
-            std::process::exit(1);
-        }
-    };
-
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+    let mut config: Config = ron::from_str(&text)
+        .map_err(|e| format!("config error in {}: {e}", path.display()))?;
     config.build_maps();
-    info!(
-        "config: {} ({} keybinds, {} mousebinds)",
-        path.display(),
-        config.key_map.len(),
-        config.mouse_map.len(),
-    );
-    config
+    info!("config: {}", path.display());
+    config.path = path;
+    Ok(config)
 }
 
 // --- CLI ---
@@ -507,7 +505,7 @@ mod tests {
 
     #[test]
     fn load_defaults_file() {
-        let config = load(Some(defaults_path()));
+        let config = load(Some(defaults_path())).unwrap();
         assert!(!config.keybinds.is_empty());
         assert!(!config.key_map.is_empty(), "should populate key_map");
         assert!(!config.mouse_map.is_empty(), "should populate mouse_map");

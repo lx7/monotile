@@ -2,11 +2,11 @@
 
 use std::{ffi::OsString, os::unix::net::UnixStream, sync::Arc};
 
-use tracing::info;
+use tracing::{info, warn};
 
 use smithay::{
     desktop::{PopupManager, Window, WindowSurfaceType, layer_map_for_output},
-    input::{Seat, SeatState, keyboard::XkbConfig},
+    input::{Seat, SeatState},
     output::Output,
     reexports::{
         calloop::{
@@ -38,9 +38,9 @@ use smithay::{
 
 use crate::{
     backend::Backend,
-    config::Config,
+    config::{self, Config},
     render::cursor::CursorManager,
-    shell::{Monitor, WindowElement, WindowId, Windows},
+    shell::{Monitor, Monitors, WindowElement, WindowId, Windows},
 };
 
 pub struct Monotile {
@@ -85,6 +85,8 @@ impl Monotile {
         )
     }
 
+    // TODO: decide how to do recompute_layout for all monitors. 
+    // Do we need recompute_layout for the active monitors, or always recompute all?
     pub fn recompute_layout(&mut self) {
         let config = &self.state.config;
         let mon = &mut self.state.monitors[self.state.active_monitor];
@@ -93,13 +95,41 @@ impl Monotile {
         self.update_focus();
     }
 
+    pub fn reload_config(&mut self) {
+        let path = self.state.config.path.clone();
+        let config = match config::load(Some(path)) {
+            Ok(c) => c,
+            Err(e) => {
+                warn!("config reload failed: {e}");
+                return;
+            }
+        };
+
+        let kb_changed = config.input.keyboard != self.state.config.input.keyboard;
+        if kb_changed {
+            let kb_conf = &config.input.keyboard;
+            let kb = self.state.seat.get_keyboard().unwrap();
+            let _ = kb.set_xkb_config(self, kb_conf.xkb_config());
+            kb.change_repeat_info(kb_conf.repeat_rate, kb_conf.repeat_delay);
+            info!("keyboard: layout={} variant={}", kb_conf.layout, kb_conf.variant);
+        }
+
+        self.state.config = config;
+        self.state.windows.update_rules(&self.state.config.windows);
+        self.state.monitors.update_rules(&self.state.config.outputs);
+        self.recompute_layout();
+        self.backend.schedule_render(&self.state.mon().output);
+
+        info!("config reloaded");
+    }
+
     pub fn update_focus(&mut self) {
         self.set_focus(self.state.mon().tag().focused_id());
     }
 
     pub fn set_focus(&mut self, id: Option<WindowId>) {
-        if let Some(old) = self.state.mon().tag().focused_id() {
-            if let Some(we) = self.state.windows.get_mut(old) {
+        for we in self.state.windows.values_mut() {
+            if we.focused {
                 we.set_focused(false);
             }
         }
@@ -149,7 +179,7 @@ pub struct State {
     pub cursor_shape_state: CursorShapeManagerState,
     pub cursor: CursorManager,
     pub windows: Windows,
-    pub monitors: Vec<Monitor>,
+    pub monitors: Monitors,
     // TODO: active_monitor should be derived, not stored.
     // Every lookup (render, map, unmap, focus, layout) really needs
     // "monitor for this output/window/pointer location", not "active".
@@ -172,17 +202,7 @@ impl State {
         let mut seat_state = SeatState::new();
         let mut seat = seat_state.new_wl_seat(&dh, "seat0");
         let kb = &config.input.keyboard;
-        seat.add_keyboard(
-            XkbConfig {
-                layout: &kb.layout,
-                variant: &kb.variant,
-                options: Some(kb.options.clone()).filter(|s| !s.is_empty()),
-                ..Default::default()
-            },
-            kb.repeat_delay,
-            kb.repeat_rate,
-        )
-        .unwrap();
+        seat.add_keyboard(kb.xkb_config(), kb.repeat_delay, kb.repeat_rate).unwrap();
         seat.add_pointer();
         info!("keyboard: layout={} variant={}", kb.layout, kb.variant);
 
@@ -211,7 +231,7 @@ impl State {
             cursor_shape_state,
             cursor,
             windows: Windows::default(),
-            monitors: Vec::new(),
+            monitors: Monitors::default(),
             active_monitor: 0,
             pending: Vec::new(),
         }

@@ -257,6 +257,9 @@ impl Monotile {
                     self.state.windows[id].set_fullscreen(geo);
                 }
             }
+            ReloadConfig => {
+                self.reload_config();
+            }
             // TODO: implement multi-monitor
             FocusMon(_) | MoveMon(_) => {}
         }
