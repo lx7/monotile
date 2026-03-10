@@ -25,7 +25,7 @@ use smithay::{
     reexports::{
         calloop::{EventLoop, LoopHandle},
         drm::control::{ModeTypeFlags, connector, crtc},
-        input::Libinput,
+        input::{Device, Libinput},
         rustix::fs::OFlags,
         wayland_server::backend::GlobalId,
     },
@@ -39,7 +39,7 @@ use smithay_drm_extras::{
 
 use tracing::{error, info, warn};
 
-use crate::{Monotile, render::Shaders, render::send_frame_callbacks, state::State};
+use crate::{Monotile, input::configure_device, render::Shaders, render::send_frame_callbacks, state::State};
 
 type Allocator = GbmAllocator<DrmDeviceFd>;
 type Exporter = GbmFramebufferExporter<DrmDeviceFd>;
@@ -71,6 +71,7 @@ pub struct DrmState {
     pub render_formats: FormatSet,
     pub surfaces: HashMap<crtc::Handle, OutputSurface>,
     pub loop_handle: LoopHandle<'static, Monotile>,
+    pub input_devices: Vec<Device>,
     scanner: DrmScanner,
 }
 
@@ -372,6 +373,7 @@ pub fn init(
         render_formats,
         surfaces: HashMap::new(),
         loop_handle: loop_handle.clone(),
+        input_devices: Vec::new(),
         scanner: DrmScanner::new(),
     });
 
@@ -409,8 +411,18 @@ pub fn init(
     })?;
 
     loop_handle.insert_source(LibinputInputBackend::new(libinput), |mut event, _, mt| {
-        if let InputEvent::DeviceAdded { ref mut device } = event {
-            crate::input::configure_device(device, &mt.state.config);
+        {
+            let drm = mt.backend.drm();
+            match &mut event {
+                InputEvent::DeviceAdded { device } => {
+                    configure_device(device, &mt.state.config);
+                    drm.input_devices.push(device.clone());
+                }
+                InputEvent::DeviceRemoved { device } => {
+                    drm.input_devices.retain(|d| d != device);
+                }
+                _ => {}
+            }
         }
         mt.process_input_event(event);
     })?;

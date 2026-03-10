@@ -7,6 +7,7 @@ use smithay::{backend::renderer::glow::GlowRenderer, output::Output};
 use winit::WinitState;
 
 use self::drm::DrmState;
+use crate::{config::Config, input::configure_device};
 
 /// Enum over all supported backends
 #[derive(Debug)]
@@ -48,6 +49,14 @@ impl Backend {
             Backend::Winit(winit) => winit.backend.renderer(),
             Backend::Drm(drm) => &mut drm.renderer,
             Backend::Unset => panic!("called renderer() on unset backend"),
+        }
+    }
+
+    pub fn reconfigure_devices(&mut self, config: &Config) {
+        if let Backend::Drm(drm) = self {
+            for dev in &mut drm.input_devices {
+                configure_device(dev, config);
+            }
         }
     }
 }

@@ -117,6 +117,7 @@ impl Monotile {
         self.state.config = config;
         self.state.windows.update_rules(&self.state.config.windows);
         self.state.monitors.update_rules(&self.state.config.outputs);
+        self.backend.reconfigure_devices(&self.state.config);
         self.recompute_layout();
         self.backend.schedule_render(&self.state.mon().output);
 

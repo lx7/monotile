@@ -143,6 +143,7 @@
     ([Logo, Shift],     "less",                  MoveMon(-1)),
     ([Logo, Shift],     "greater",               MoveMon(1)),
     ([Logo, Shift],     "q",                     Close),
+    ([Logo, Shift],     "r",                     ReloadConfig),
     ([Ctrl, Alt],       "BackSpace",             Quit),
 
     ([Logo],            "Return",                Spawn(["foot"])),
