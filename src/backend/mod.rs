@@ -3,7 +3,11 @@
 pub mod drm;
 pub mod winit;
 
-use smithay::{backend::renderer::glow::GlowRenderer, output::Output};
+use smithay::{
+    backend::{renderer::glow::GlowRenderer, session::Session},
+    output::Output,
+};
+use tracing::warn;
 use winit::WinitState;
 
 use self::drm::DrmState;
@@ -49,6 +53,14 @@ impl Backend {
             Backend::Winit(winit) => winit.backend.renderer(),
             Backend::Drm(drm) => &mut drm.renderer,
             Backend::Unset => panic!("called renderer() on unset backend"),
+        }
+    }
+
+    pub fn change_vt(&mut self, vt: i32) {
+        if let Backend::Drm(drm) = self {
+            if let Err(err) = drm.session.change_vt(vt) {
+                warn!("failed to switch VT: {err}");
+            }
         }
     }
 

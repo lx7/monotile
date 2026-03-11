@@ -346,6 +346,7 @@ pub enum KeyAction {
     Quit,
     ReloadConfig,
     Spawn(Vec<String>),
+    ChangeVt(i32),
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]

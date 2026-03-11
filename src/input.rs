@@ -13,7 +13,7 @@ use smithay::{
         PointerMotionEvent,
     },
     input::{
-        keyboard::FilterResult,
+        keyboard::{FilterResult, Keysym},
         pointer::{AxisFrame, ButtonEvent, Focus, GrabStartData, MotionEvent},
     },
     reexports::input::Device,
@@ -32,14 +32,6 @@ impl Monotile {
                 let key_code = event.key_code();
                 let key_state = event.state();
 
-                // Exclusive layer grabs all keys
-                if self.state.mon().exclusive_layer.is_some() {
-                    keyboard.input::<(), _>(self, key_code, key_state, serial, time, |_, _, _| {
-                        FilterResult::Forward
-                    });
-                    return;
-                }
-
                 let action = keyboard.input(
                     self,
                     key_code,
@@ -51,6 +43,21 @@ impl Monotile {
                             return FilterResult::Forward;
                         }
 
+                        // VT switch
+                        let sym = handle.modified_sym();
+                        let vt_range =
+                            Keysym::XF86_Switch_VT_1.raw()..=Keysym::XF86_Switch_VT_12.raw();
+                        if vt_range.contains(&sym.raw()) {
+                            let vt = (sym.raw() - Keysym::XF86_Switch_VT_1.raw() + 1) as i32;
+                            return FilterResult::Intercept(Some(KeyAction::ChangeVt(vt)));
+                        }
+
+                        // exclusive layer
+                        if monotile.state.mon().exclusive_layer.is_some() {
+                            return FilterResult::Forward;
+                        }
+
+                        // key binds
                         let mods = Mods::from(modifiers);
                         for sym in handle.raw_syms() {
                             if let Some(action) = monotile.state.config.key_map.get(&(sym, mods)) {
@@ -58,6 +65,7 @@ impl Monotile {
                             }
                         }
 
+                        // forward to client
                         FilterResult::Forward
                     },
                 );
@@ -259,6 +267,10 @@ impl Monotile {
             }
             ReloadConfig => {
                 self.reload_config();
+            }
+            ChangeVt(vt) => {
+                self.backend.change_vt(vt);
+                return; // no recompute needed
             }
             // TODO: implement multi-monitor
             FocusMon(_) | MoveMon(_) => {}

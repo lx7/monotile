@@ -39,7 +39,9 @@ use smithay_drm_extras::{
 
 use tracing::{error, info, warn};
 
-use crate::{Monotile, input::configure_device, render::Shaders, render::send_frame_callbacks, state::State};
+use crate::{
+    Monotile, input::configure_device, render::Shaders, render::send_frame_callbacks, state::State,
+};
 
 type Allocator = GbmAllocator<DrmDeviceFd>;
 type Exporter = GbmFramebufferExporter<DrmDeviceFd>;
@@ -72,6 +74,7 @@ pub struct DrmState {
     pub surfaces: HashMap<crtc::Handle, OutputSurface>,
     pub loop_handle: LoopHandle<'static, Monotile>,
     pub input_devices: Vec<Device>,
+    libinput: Libinput,
     scanner: DrmScanner,
 }
 
@@ -328,6 +331,7 @@ pub fn init(
     let seat = session.seat();
     let mut libinput = Libinput::new_with_udev(LibinputSessionInterface::from(session.clone()));
     libinput.udev_assign_seat(&seat).unwrap();
+    let libinput_ctx = libinput.clone();
 
     let (render_node, card_node) = find_gpu(&seat)?;
     info!(
@@ -374,6 +378,7 @@ pub fn init(
         surfaces: HashMap::new(),
         loop_handle: loop_handle.clone(),
         input_devices: Vec::new(),
+        libinput: libinput_ctx,
         scanner: DrmScanner::new(),
     });
 
@@ -387,16 +392,32 @@ pub fn init(
         match event {
             SessionEvent::PauseSession => {
                 info!("session paused");
+                drm.libinput.suspend();
+                for surface in drm.surfaces.values_mut() {
+                    surface.render = RenderState::Idle;
+                }
                 drm.drm.pause();
             }
             SessionEvent::ActivateSession => {
                 info!("session activated");
+                if let Err(()) = drm.libinput.resume() {
+                    error!("failed to resume libinput");
+                }
                 if let Err(err) = drm.drm.activate(false) {
                     error!(?err, "failed to activate DRM");
+                }
+                for surface in drm.surfaces.values_mut() {
+                    if let Err(err) = surface.compositor.reset_state() {
+                        warn!(?err, "failed to reset compositor state");
+                    }
                 }
                 for crtc in drm.surfaces.keys().copied().collect::<Vec<_>>() {
                     drm.schedule_render_crtc(crtc);
                 }
+                // tescan connectors for hotplug during VT switch
+                drm.loop_handle.insert_idle(|mt: &mut Monotile| {
+                    device_changed(mt.backend.drm(), &mut mt.state);
+                });
             }
         }
     })?;
