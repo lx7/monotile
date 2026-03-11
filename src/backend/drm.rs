@@ -306,7 +306,7 @@ fn connector_connected(
             render: RenderState::default(),
         },
     );
-    drm.render(crtc, state);
+    drm.schedule_render_crtc(crtc);
 }
 
 fn connector_disconnected(drm: &mut DrmState, state: &mut State, crtc: crtc::Handle) {
@@ -331,7 +331,7 @@ pub fn init(
 
     let (render_node, card_node) = find_gpu(&seat)?;
     info!(
-        "selected GPU: gpu={} card={}",
+        "GPU: gpu={} card={}",
         render_node.dev_path().unwrap_or_default().display(),
         card_node.dev_path().unwrap_or_default().display(),
     );
