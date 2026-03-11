@@ -84,6 +84,12 @@ impl std::fmt::Debug for DrmState {
     }
 }
 
+impl Drop for DrmState {
+    fn drop(&mut self) {
+        self.drm.pause();
+    }
+}
+
 impl DrmState {
     pub fn schedule_render(&mut self, output: &Output) {
         let crtc = self
