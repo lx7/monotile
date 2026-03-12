@@ -5,13 +5,27 @@ use crate::{Monotile, shell::WindowId};
 use smithay::{
     input::pointer::*,
     reexports::wayland_server::protocol::wl_surface::WlSurface,
-    utils::{Logical, Point},
+    utils::{Logical, Point, Rectangle},
 };
 
 pub struct MoveSurfaceGrab {
-    pub start_data: GrabStartData<Monotile>,
-    pub window_id: WindowId,
-    pub initial_location: Point<i32, Logical>,
+    start_data: GrabStartData<Monotile>,
+    window_id: WindowId,
+    initial_loc: Point<i32, Logical>,
+}
+
+impl MoveSurfaceGrab {
+    pub fn start(
+        start_data: GrabStartData<Monotile>,
+        window_id: WindowId,
+        initial_rect: Rectangle<i32, Logical>,
+    ) -> Self {
+        Self {
+            start_data,
+            window_id,
+            initial_loc: initial_rect.loc,
+        }
+    }
 }
 
 impl PointerGrab<Monotile> for MoveSurfaceGrab {
@@ -27,7 +41,7 @@ impl PointerGrab<Monotile> for MoveSurfaceGrab {
 
         if let Some(we) = monotile.state.windows.get_mut(self.window_id) {
             let delta = event.location - self.start_data.location;
-            we.float_geo.loc = (self.initial_location.to_f64() + delta).to_i32_round();
+            we.float_geo.loc = (self.initial_loc.to_f64() + delta).to_i32_round();
         }
     }
 

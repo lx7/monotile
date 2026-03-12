@@ -305,25 +305,27 @@ impl Monotile {
         };
         let id = we.id;
         let geo = we.geo();
-        let start = GrabStartData {
-            focus: self.state.surface_under(pos),
-            button: btn,
-            location: pos,
-        };
-
         let ptr = self.state.seat.get_pointer().unwrap();
         match action {
             MouseAction::Move => {
                 self.state.cursor.override_icon = Some(CursorIcon::Grabbing);
-                let grab = MoveSurfaceGrab {
-                    start_data: start,
-                    window_id: id,
-                    initial_location: geo.loc,
+                let start = GrabStartData {
+                    focus: self.state.surface_under(pos),
+                    button: btn,
+                    location: pos,
                 };
+                let grab = MoveSurfaceGrab::start(start, id, geo);
                 ptr.set_grab(self, grab, serial, Focus::Clear);
             }
             MouseAction::Resize => {
                 self.state.cursor.override_icon = Some(CursorIcon::SeResize);
+                let corner = (geo.loc + geo.size).to_f64();
+                ptr.set_location(corner);
+                let start = GrabStartData {
+                    focus: self.state.surface_under(corner),
+                    button: btn,
+                    location: corner,
+                };
                 let grab = ResizeSurfaceGrab::start(start, id, geo);
                 ptr.set_grab(self, grab, serial, Focus::Clear);
             }
