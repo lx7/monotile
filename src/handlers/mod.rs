@@ -4,11 +4,13 @@
 mod compositor;
 mod dmabuf;
 mod layer_shell;
+mod session_lock;
 mod xdg_shell;
 
 use crate::Monotile;
 use smithay::{
     delegate_cursor_shape, delegate_data_device, delegate_output, delegate_seat,
+    delegate_single_pixel_buffer, delegate_viewporter,
     input::{
         Seat, SeatHandler, SeatState,
         dnd::{DnDGrab, DndGrabHandler, GrabType, Source},
@@ -24,6 +26,7 @@ use smithay::{
                 DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler, set_data_device_focus,
             },
         },
+        tablet_manager::TabletSeatHandler,
     },
 };
 
@@ -92,5 +95,8 @@ impl WaylandDndGrabHandler for Monotile {
 impl OutputHandler for Monotile {}
 delegate_output!(Monotile);
 
-impl smithay::wayland::tablet_manager::TabletSeatHandler for Monotile {}
+delegate_viewporter!(Monotile);
+delegate_single_pixel_buffer!(Monotile);
+
+impl TabletSeatHandler for Monotile {}
 delegate_cursor_shape!(Monotile);

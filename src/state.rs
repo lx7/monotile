@@ -26,13 +26,16 @@ use smithay::{
         dmabuf::{DmabufGlobal, DmabufState},
         output::OutputManagerState,
         selection::data_device::DataDeviceState,
+        session_lock::SessionLockManagerState,
         shell::{
             kde::decoration::KdeDecorationState,
             wlr_layer::{Layer, WlrLayerShellState},
             xdg::{ToplevelSurface, XdgShellState, decoration::XdgDecorationState},
         },
         shm::ShmState,
+        single_pixel_buffer::SinglePixelBufferState,
         socket::ListeningSocketSource,
+        viewporter::ViewporterState,
     },
 };
 
@@ -85,7 +88,7 @@ impl Monotile {
         )
     }
 
-    // TODO: decide how to do recompute_layout for all monitors. 
+    // TODO: decide how to do recompute_layout for all monitors.
     // Do we need recompute_layout for the active monitors, or always recompute all?
     pub fn recompute_layout(&mut self) {
         let config = &self.state.config;
@@ -111,7 +114,10 @@ impl Monotile {
             let kb = self.state.seat.get_keyboard().unwrap();
             let _ = kb.set_xkb_config(self, kb_conf.xkb_config());
             kb.change_repeat_info(kb_conf.repeat_rate, kb_conf.repeat_delay);
-            info!("keyboard: layout={} variant={}", kb_conf.layout, kb_conf.variant);
+            info!(
+                "keyboard: layout={} variant={}",
+                kb_conf.layout, kb_conf.variant
+            );
         }
 
         self.state.config = config;
@@ -133,6 +139,14 @@ impl Monotile {
             if we.focused {
                 we.set_focused(false);
             }
+        }
+
+        if let Some(ls) = &self.state.mon().lock_surface {
+            let surface = ls.wl_surface().clone();
+            if let Some(kb) = self.state.seat.get_keyboard() {
+                kb.set_focus(self, Some(surface), SERIAL_COUNTER.next_serial());
+            }
+            return;
         }
 
         if let Some(surface) = self.state.mon().exclusive_layer.clone() {
@@ -175,6 +189,8 @@ pub struct State {
     pub data_device_state: DataDeviceState,
     pub dmabuf_state: DmabufState,
     pub dmabuf_global: Option<DmabufGlobal>,
+    pub viewporter_state: ViewporterState,
+    pub single_pixel_buffer_state: SinglePixelBufferState,
     pub popups: PopupManager,
     pub seat: Seat<Monotile>,
     pub cursor_shape_state: CursorShapeManagerState,
@@ -187,6 +203,8 @@ pub struct State {
     // Remove this index when multi-monitor is implemented.
     pub active_monitor: usize,
     pub pending: Vec<Window>,
+    pub locked: bool,
+    pub session_lock_state: SessionLockManagerState,
 }
 
 impl State {
@@ -196,6 +214,9 @@ impl State {
         let xdg_decoration_state = XdgDecorationState::new::<Monotile>(&dh);
         let kde_decoration_state = KdeDecorationState::new::<Monotile>(&dh, KdeMode::Server);
         let layer_shell_state = WlrLayerShellState::new::<Monotile>(&dh);
+        let session_lock_state = SessionLockManagerState::new::<Monotile, _>(&dh, |_| true);
+        let viewporter_state = ViewporterState::new::<Monotile>(&dh);
+        let single_pixel_buffer_state = SinglePixelBufferState::new::<Monotile>(&dh);
         let shm_state = ShmState::new::<Monotile>(&dh, vec![]);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Monotile>(&dh);
         let data_device_state = DataDeviceState::new::<Monotile>(&dh);
@@ -203,7 +224,8 @@ impl State {
         let mut seat_state = SeatState::new();
         let mut seat = seat_state.new_wl_seat(&dh, "seat0");
         let kb = &config.input.keyboard;
-        seat.add_keyboard(kb.xkb_config(), kb.repeat_delay, kb.repeat_rate).unwrap();
+        seat.add_keyboard(kb.xkb_config(), kb.repeat_delay, kb.repeat_rate)
+            .unwrap();
         seat.add_pointer();
         info!("keyboard: layout={} variant={}", kb.layout, kb.variant);
 
@@ -227,6 +249,8 @@ impl State {
             data_device_state,
             dmabuf_state: DmabufState::new(),
             dmabuf_global: None,
+            viewporter_state,
+            single_pixel_buffer_state,
             popups: PopupManager::default(),
             seat,
             cursor_shape_state,
@@ -235,6 +259,8 @@ impl State {
             monitors: Monitors::default(),
             active_monitor: 0,
             pending: Vec::new(),
+            locked: false,
+            session_lock_state,
         }
     }
 
@@ -279,6 +305,14 @@ impl State {
         &self,
         pos: Point<f64, Logical>,
     ) -> Option<(WlSurface, Point<f64, Logical>)> {
+        if self.locked {
+            return self
+                .mon()
+                .lock_surface
+                .as_ref()
+                .map(|ls| (ls.wl_surface().clone(), pos));
+        }
+
         let mon = self.mon();
         let map = layer_map_for_output(&mon.output);
         let layer_hit = |layer| {

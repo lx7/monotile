@@ -170,10 +170,27 @@ pub fn output_elements(
     windows: &Windows,
     shaders: &Shaders,
     config: &Config,
+    locked: bool,
 ) -> Vec<MonotileElement> {
     let output = &mon.output;
     let out_scale = output.current_scale().fractional_scale();
     let scale = Scale::from(out_scale);
+
+    if let Some(lock) = &mon.lock_surface {
+        let surfs = render_elements_from_surface_tree(
+            renderer,
+            lock.wl_surface(),
+            (0, 0),
+            scale,
+            1.0,
+            Kind::Unspecified,
+        );
+        return surfs.into_iter().map(MonotileElement::Surface).collect();
+    }
+    if locked {
+        return vec![];
+    }
+
     let scale_f32 = out_scale as f32;
     let n = mon.tag().tiled.len() + mon.tag().floating.len();
     let mut elems = Vec::with_capacity(n * 20 + 32);

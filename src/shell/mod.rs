@@ -17,6 +17,7 @@ use smithay::{
     utils::{Logical, Point, Rectangle, Size},
     wayland::{
         compositor::with_states,
+        session_lock::LockSurface,
         shell::{
             wlr_layer::{KeyboardInteractivity, Layer},
             xdg::{SurfaceCachedState, ToplevelSurface},
@@ -395,6 +396,7 @@ pub struct Monitor {
     pub prev_tag: usize,
     pub background: [f32; 4],
     pub exclusive_layer: Option<WlSurface>,
+    pub lock_surface: Option<LockSurface>,
 }
 
 impl Monitor {
@@ -404,6 +406,7 @@ impl Monitor {
             tags: (0..config.layout.tags).map(|_| Tag::default()).collect(),
             active_tag: 0,
             exclusive_layer: None,
+            lock_surface: None,
             prev_tag: 0,
             background: [0.0, 0.0, 0.0, 1.0],
         };

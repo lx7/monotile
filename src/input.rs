@@ -52,6 +52,11 @@ impl Monotile {
                             return FilterResult::Intercept(Some(KeyAction::ChangeVt(vt)));
                         }
 
+                        // locked
+                        if monotile.state.locked {
+                            return FilterResult::Forward;
+                        }
+
                         // exclusive layer
                         if monotile.state.mon().exclusive_layer.is_some() {
                             return FilterResult::Forward;
@@ -89,7 +94,10 @@ impl Monotile {
                 let button = event.button_code();
                 let button_state = event.state();
 
-                if button_state == ButtonState::Pressed && !pointer.is_grabbed() {
+                if button_state == ButtonState::Pressed
+                    && !pointer.is_grabbed()
+                    && !self.state.locked
+                {
                     let mods = Mods::from(&keyboard.modifier_state());
                     if let Some(action) = self.state.config.mouse_map.get(&(button, mods)) {
                         self.handle_mouse_action(

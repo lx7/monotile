@@ -21,6 +21,7 @@ use smithay::{
         session::{Event as SessionEvent, Session, libseat::LibSeatSession},
         udev::{UdevBackend, UdevEvent, all_gpus, primary_gpu},
     },
+    desktop::utils::send_frames_surface_tree,
     output::{Output, OutputModeSource, PhysicalProperties, Subpixel},
     reexports::{
         calloop::{EventLoop, LoopHandle},
@@ -132,8 +133,8 @@ impl DrmState {
             return;
         };
 
-        // skip frame if a tiled window has a pending resize (no flicker)
-        if state.windows.any_pending_resize(mon.tag()) {
+        // skip frame if a window has a pending resize (no flicker)
+        if !state.locked && state.windows.any_pending_resize(mon.tag()) {
             send_frame_callbacks(
                 state.windows.visible(mon.tag()),
                 &surface.output,
@@ -146,13 +147,13 @@ impl DrmState {
         let ptr = state.seat.get_pointer().unwrap();
         let pos = ptr.current_location();
         let mut elems = state.cursor.elements(&mut self.renderer, pos);
-
         elems.extend(crate::render::output_elements(
             &mut self.renderer,
             mon,
             &state.windows,
             &self.shaders,
             &state.config,
+            state.locked,
         ));
 
         let result = match surface.compositor.render_frame(
@@ -178,7 +179,16 @@ impl DrmState {
         }
         surface.render = RenderState::WaitingForVBlank;
 
-        crate::render::send_frame_callbacks(
+        if let Some(ls) = &mon.lock_surface {
+            send_frames_surface_tree(
+                ls.wl_surface(),
+                &surface.output,
+                state.start_time.elapsed(),
+                None,
+                |_, _| Some(surface.output.clone()),
+            );
+        }
+        send_frame_callbacks(
             state.windows.visible(mon.tag()),
             &surface.output,
             state.start_time.elapsed(),

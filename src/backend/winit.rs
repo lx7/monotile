@@ -8,7 +8,7 @@ use smithay::{
         renderer::{damage::OutputDamageTracker, glow::GlowRenderer},
         winit::{self, WinitEvent, WinitGraphicsBackend},
     },
-    desktop::layer_map_for_output,
+    desktop::{layer_map_for_output, utils::send_frames_surface_tree},
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::calloop::EventLoop,
     utils::Transform,
@@ -24,8 +24,8 @@ pub struct WinitState {
 
 impl WinitState {
     pub fn render(&mut self, state: &mut State) -> Result<(), Box<dyn std::error::Error>> {
-        // skip frame if a tiled window has a pending resize (no flicker)
-        if state.windows.any_pending_resize(state.mon().tag()) {
+        // skip frame if a window has a pending resize (no flicker)
+        if !state.locked && state.windows.any_pending_resize(state.mon().tag()) {
             let mon = state.mon();
             crate::render::send_frame_callbacks(
                 state.windows.visible(mon.tag()),
@@ -39,13 +39,13 @@ impl WinitState {
 
         let age = self.backend.buffer_age().unwrap_or(0);
         let (renderer, mut fb) = self.backend.bind()?;
-
         let elems = crate::render::output_elements(
             renderer,
             state.mon(),
             &state.windows,
             &self.shaders,
             &state.config,
+            state.locked,
         );
         let rendered = self.damage_tracker.render_output(
             renderer,
@@ -59,6 +59,15 @@ impl WinitState {
         self.backend.submit(rendered.damage.map(|x| x.as_slice()))?;
 
         let mon = &state.monitors[state.active_monitor];
+        if let Some(ls) = &mon.lock_surface {
+            send_frames_surface_tree(
+                ls.wl_surface(),
+                &self.output,
+                state.start_time.elapsed(),
+                None,
+                |_, _| Some(self.output.clone()),
+            );
+        }
         crate::render::send_frame_callbacks(
             state.windows.visible(mon.tag()),
             &self.output,
