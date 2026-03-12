@@ -10,7 +10,8 @@ use smithay::{
     output::Output,
     reexports::{
         calloop::{
-            EventLoop, Interest, LoopSignal, Mode as CalloopMode, PostAction, generic::Generic,
+            EventLoop, Interest, LoopHandle, LoopSignal, Mode as CalloopMode, PostAction,
+            generic::Generic,
         },
         wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration_manager::Mode as KdeMode,
         wayland_server::{
@@ -24,6 +25,8 @@ use smithay::{
         compositor::{CompositorClientState, CompositorState},
         cursor_shape::CursorShapeManagerState,
         dmabuf::{DmabufGlobal, DmabufState},
+        idle_inhibit::IdleInhibitManagerState,
+        idle_notify::IdleNotifierState,
         output::OutputManagerState,
         selection::data_device::DataDeviceState,
         session_lock::SessionLockManagerState,
@@ -69,7 +72,12 @@ impl Monotile {
             })
             .unwrap();
 
-        let mut state = State::new(display_handle, event_loop.get_signal(), config);
+        let mut state = State::new(
+            display_handle,
+            loop_handle.clone(),
+            event_loop.get_signal(),
+            config,
+        );
 
         // insert event source to accept new client connections on the Wayland socket
         let socket = ListeningSocketSource::new_auto().unwrap();
@@ -191,6 +199,8 @@ pub struct State {
     pub dmabuf_global: Option<DmabufGlobal>,
     pub viewporter_state: ViewporterState,
     pub single_pixel_buffer_state: SinglePixelBufferState,
+    pub idle_notifier_state: IdleNotifierState<Monotile>,
+    pub idle_inhibit_state: IdleInhibitManagerState,
     pub popups: PopupManager,
     pub seat: Seat<Monotile>,
     pub cursor_shape_state: CursorShapeManagerState,
@@ -208,7 +218,12 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(dh: DisplayHandle, signal: LoopSignal, config: Config) -> Self {
+    pub fn new(
+        dh: DisplayHandle,
+        lh: LoopHandle<'static, Monotile>,
+        signal: LoopSignal,
+        config: Config,
+    ) -> Self {
         let compositor_state = CompositorState::new::<Monotile>(&dh);
         let xdg_shell_state = XdgShellState::new::<Monotile>(&dh);
         let xdg_decoration_state = XdgDecorationState::new::<Monotile>(&dh);
@@ -217,6 +232,8 @@ impl State {
         let session_lock_state = SessionLockManagerState::new::<Monotile, _>(&dh, |_| true);
         let viewporter_state = ViewporterState::new::<Monotile>(&dh);
         let single_pixel_buffer_state = SinglePixelBufferState::new::<Monotile>(&dh);
+        let idle_notifier_state = IdleNotifierState::<Monotile>::new(&dh, lh);
+        let idle_inhibit_state = IdleInhibitManagerState::new::<Monotile>(&dh);
         let shm_state = ShmState::new::<Monotile>(&dh, vec![]);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Monotile>(&dh);
         let data_device_state = DataDeviceState::new::<Monotile>(&dh);
@@ -251,6 +268,8 @@ impl State {
             dmabuf_global: None,
             viewporter_state,
             single_pixel_buffer_state,
+            idle_notifier_state,
+            idle_inhibit_state,
             popups: PopupManager::default(),
             seat,
             cursor_shape_state,

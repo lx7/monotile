@@ -22,6 +22,10 @@ use smithay::{
 
 impl Monotile {
     pub fn process_input_event<I: InputBackend>(&mut self, event: InputEvent<I>) {
+        self.state
+            .idle_notifier_state
+            .notify_activity(&self.state.seat);
+
         let pointer = self.state.seat.get_pointer().unwrap();
         let keyboard = self.state.seat.get_keyboard().unwrap();
         let serial = SERIAL_COUNTER.next_serial();
