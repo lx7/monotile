@@ -34,6 +34,7 @@ struct Cursor {
 
 pub struct CursorManager {
     pub status: CursorImageStatus,
+    pub override_icon: Option<CursorIcon>,
     pub scale: f32,
     theme: CursorTheme,
     size: u32,
@@ -49,6 +50,7 @@ impl CursorManager {
         let theme = CursorTheme::load(&name);
         let mut cursor_manager = Self {
             status: CursorImageStatus::default_named(),
+            override_icon: None,
             scale,
             theme,
             size,
@@ -106,6 +108,24 @@ impl CursorManager {
             self.status = CursorImageStatus::default_named();
         }
         let scale = Scale::from(self.scale as f64);
+
+        if let Some(icon) = self.override_icon {
+            let cached = self.get_icon(icon);
+            let loc = (pos - cached.hotspot.to_f64()).to_physical_precise_round(scale);
+            return match MemoryRenderBufferRenderElement::from_buffer(
+                renderer,
+                loc,
+                &cached.buffer,
+                None,
+                None,
+                None,
+                Kind::Cursor,
+            ) {
+                Ok(elem) => vec![MonotileElement::Memory(elem)],
+                Err(_) => vec![],
+            };
+        }
+
         match &self.status {
             CursorImageStatus::Hidden => vec![],
             CursorImageStatus::Named(icon) => {

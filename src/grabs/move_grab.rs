@@ -81,5 +81,7 @@ impl PointerGrab<Monotile> for MoveSurfaceGrab {
         &self.start_data
     }
 
-    fn unset(&mut self, _: &mut Monotile) {}
+    fn unset(&mut self, mt: &mut Monotile) {
+        mt.state.cursor.override_icon = None;
+    }
 }

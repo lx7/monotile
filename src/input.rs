@@ -14,7 +14,7 @@ use smithay::{
     },
     input::{
         keyboard::{FilterResult, Keysym},
-        pointer::{AxisFrame, ButtonEvent, Focus, GrabStartData, MotionEvent},
+        pointer::{AxisFrame, ButtonEvent, CursorIcon, Focus, GrabStartData, MotionEvent},
     },
     reexports::input::Device,
     utils::{Logical, Point, SERIAL_COUNTER},
@@ -314,6 +314,7 @@ impl Monotile {
         let ptr = self.state.seat.get_pointer().unwrap();
         match action {
             MouseAction::Move => {
+                self.state.cursor.override_icon = Some(CursorIcon::Grabbing);
                 let grab = MoveSurfaceGrab {
                     start_data: start,
                     window_id: id,
@@ -322,6 +323,7 @@ impl Monotile {
                 ptr.set_grab(self, grab, serial, Focus::Clear);
             }
             MouseAction::Resize => {
+                self.state.cursor.override_icon = Some(CursorIcon::SeResize);
                 let grab = ResizeSurfaceGrab::start(start, id, geo);
                 ptr.set_grab(self, grab, serial, Focus::Clear);
             }
