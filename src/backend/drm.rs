@@ -430,9 +430,10 @@ pub fn init(
                 for crtc in drm.surfaces.keys().copied().collect::<Vec<_>>() {
                     drm.schedule_render_crtc(crtc);
                 }
-                // tescan connectors for hotplug during VT switch
+
                 drm.loop_handle.insert_idle(|mt: &mut Monotile| {
                     device_changed(mt.backend.drm(), &mut mt.state);
+                    mt.update_focus();
                 });
             }
         }
