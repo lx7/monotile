@@ -28,7 +28,12 @@ use smithay::{
         idle_inhibit::IdleInhibitManagerState,
         idle_notify::IdleNotifierState,
         output::OutputManagerState,
-        selection::data_device::DataDeviceState,
+        selection::{
+            data_device::DataDeviceState,
+            ext_data_control::DataControlState as ExtDataControlState,
+            primary_selection::PrimarySelectionState,
+            wlr_data_control::DataControlState as WlrDataControlState,
+        },
         session_lock::SessionLockManagerState,
         shell::{
             kde::decoration::KdeDecorationState,
@@ -195,6 +200,9 @@ pub struct State {
     pub output_manager_state: OutputManagerState,
     pub seat_state: SeatState<Monotile>,
     pub data_device_state: DataDeviceState,
+    pub primary_selection_state: PrimarySelectionState,
+    pub wlr_data_control_state: WlrDataControlState,
+    pub ext_data_control_state: ExtDataControlState,
     pub dmabuf_state: DmabufState,
     pub dmabuf_global: Option<DmabufGlobal>,
     pub viewporter_state: ViewporterState,
@@ -237,6 +245,11 @@ impl State {
         let shm_state = ShmState::new::<Monotile>(&dh, vec![]);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Monotile>(&dh);
         let data_device_state = DataDeviceState::new::<Monotile>(&dh);
+        let primary_selection_state = PrimarySelectionState::new::<Monotile>(&dh);
+        let wlr_data_control_state =
+            WlrDataControlState::new::<Monotile, _>(&dh, Some(&primary_selection_state), |_| true);
+        let ext_data_control_state =
+            ExtDataControlState::new::<Monotile, _>(&dh, Some(&primary_selection_state), |_| true);
 
         let mut seat_state = SeatState::new();
         let mut seat = seat_state.new_wl_seat(&dh, "seat0");
@@ -264,6 +277,9 @@ impl State {
             output_manager_state,
             seat_state,
             data_device_state,
+            primary_selection_state,
+            wlr_data_control_state,
+            ext_data_control_state,
             dmabuf_state: DmabufState::new(),
             dmabuf_global: None,
             viewporter_state,

@@ -10,8 +10,9 @@ mod xdg_shell;
 
 use crate::Monotile;
 use smithay::{
-    delegate_cursor_shape, delegate_data_device, delegate_output, delegate_seat,
-    delegate_single_pixel_buffer, delegate_viewporter,
+    delegate_cursor_shape, delegate_data_control, delegate_data_device, delegate_ext_data_control,
+    delegate_output, delegate_primary_selection, delegate_seat, delegate_single_pixel_buffer,
+    delegate_viewporter,
     input::{
         Seat, SeatHandler, SeatState,
         dnd::{DnDGrab, DndGrabHandler, GrabType, Source},
@@ -25,6 +26,17 @@ use smithay::{
             SelectionHandler,
             data_device::{
                 DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler, set_data_device_focus,
+            },
+            ext_data_control::{
+                DataControlHandler as ExtDataControlHandler,
+                DataControlState as ExtDataControlState,
+            },
+            primary_selection::{
+                PrimarySelectionHandler, PrimarySelectionState, set_primary_focus,
+            },
+            wlr_data_control::{
+                DataControlHandler as WlrDataControlHandler,
+                DataControlState as WlrDataControlState,
             },
         },
         tablet_manager::TabletSeatHandler,
@@ -45,11 +57,11 @@ impl SeatHandler for Monotile {
         self.backend.schedule_render(&self.state.mon().output);
     }
 
-    // update data device (clipboard) access when the focus changes
     fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&WlSurface>) {
         let dh = &self.state.display_handle;
         let client = focused.and_then(|s| dh.get_client(s.id()).ok());
-        set_data_device_focus(dh, seat, client);
+        set_data_device_focus(dh, seat, client.clone());
+        set_primary_focus(dh, seat, client);
     }
 }
 delegate_seat!(Monotile);
@@ -64,6 +76,27 @@ impl DataDeviceHandler for Monotile {
     }
 }
 delegate_data_device!(Monotile);
+
+impl PrimarySelectionHandler for Monotile {
+    fn primary_selection_state(&mut self) -> &mut PrimarySelectionState {
+        &mut self.state.primary_selection_state
+    }
+}
+delegate_primary_selection!(Monotile);
+
+impl WlrDataControlHandler for Monotile {
+    fn data_control_state(&mut self) -> &mut WlrDataControlState {
+        &mut self.state.wlr_data_control_state
+    }
+}
+delegate_data_control!(Monotile);
+
+impl ExtDataControlHandler for Monotile {
+    fn data_control_state(&mut self) -> &mut ExtDataControlState {
+        &mut self.state.ext_data_control_state
+    }
+}
+delegate_ext_data_control!(Monotile);
 
 impl DndGrabHandler for Monotile {}
 impl WaylandDndGrabHandler for Monotile {
@@ -80,7 +113,6 @@ impl WaylandDndGrabHandler for Monotile {
                 let ptr = seat.get_pointer().unwrap();
                 let start_data = ptr.grab_start_data().unwrap();
 
-                // create a dnd grab to start the operation
                 let grab =
                     DnDGrab::new_pointer(&self.state.display_handle, start_data, source, seat);
                 ptr.set_grab(self, grab, serial, Focus::Keep);
