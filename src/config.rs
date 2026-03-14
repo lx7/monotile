@@ -327,7 +327,7 @@ pub enum Button {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-pub enum Position {
+pub enum Rel {
     Next,
     Prev,
     First,
@@ -346,8 +346,8 @@ pub enum Direction {
 pub enum Action {
     Noop,
 
-    Focus(Position),
-    Swap(Position),
+    Focus(Rel),
+    Swap(Rel),
     Close,
     ToggleFloat,
     ToggleFullscreen,

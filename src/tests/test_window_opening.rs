@@ -1,5 +1,5 @@
 use super::Fixture;
-use crate::config::Position;
+use crate::config::Rel;
 use smithay::utils::Rectangle;
 use wayland_protocols::xdg::shell::client::xdg_toplevel::State as ToplevelState;
 
@@ -170,7 +170,10 @@ fn focus_cycle() {
     f.client_mut(c).take_configures(w2);
 
     // cycle focus to w1
-    if let Some(id) = f.mt.state.mon().tag().focus(Position::Next) {
+    let tag = f.mt.state.mon().tag();
+    if let Some(cur) = tag.focused_id()
+        && let Some(id) = tag.target(cur, Rel::Next)
+    {
         f.mt.set_focus(Some(id));
     }
     f.roundtrip(c);

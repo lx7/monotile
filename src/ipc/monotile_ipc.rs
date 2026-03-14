@@ -17,7 +17,7 @@ use super::monotile_ipc_protocol::{
     zmonotile_status_manager_v1::ZmonotileStatusManagerV1,
 };
 use crate::Monotile;
-use crate::config::{Action, Direction, Position};
+use crate::config::{Action, Direction, Rel};
 use crate::spawn::spawn_shell;
 
 // -- State --
@@ -257,13 +257,13 @@ impl Dispatch<ZmonotileSeatControlV1, ()> for Monotile {
             Request::SetToplevelTag { index } => Action::SetTag(index as usize),
             Request::ToggleToplevelTag { index } => Action::ToggleTag(index as usize),
             Request::FocusToplevel { position } => {
-                let Ok(pos) = Position::try_from(position) else {
+                let Ok(pos) = Rel::try_from(position) else {
                     return;
                 };
                 Action::Focus(pos)
             }
             Request::Swap { position } => {
-                let Ok(pos) = Position::try_from(position) else {
+                let Ok(pos) = Rel::try_from(position) else {
                     return;
                 };
                 Action::Swap(pos)
@@ -293,7 +293,7 @@ impl Dispatch<ZmonotileSeatControlV1, ()> for Monotile {
     }
 }
 
-impl TryFrom<WEnum<proto::Position>> for Position {
+impl TryFrom<WEnum<proto::Position>> for Rel {
     type Error = WEnumError;
     fn try_from(w: WEnum<proto::Position>) -> Result<Self, WEnumError> {
         match w.into_result()? {

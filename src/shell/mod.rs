@@ -3,7 +3,7 @@
 mod layout;
 pub use layout::TilingLayout;
 
-use crate::config::Position;
+use crate::config::Rel;
 use derive_more::{Deref, DerefMut};
 use std::time::{Duration, Instant};
 
@@ -341,30 +341,25 @@ impl Tag {
         self.focus_stack.insert(0, id);
     }
 
-    pub fn focus(&self, pos: Position) -> Option<WindowId> {
-        match pos {
-            Position::Next => {
-                let cur = self.focused_tiled_pos()?;
-                Some(self.tiled[(cur + 1) % self.tiled.len()])
-            }
-            Position::Prev => {
-                let cur = self.focused_tiled_pos()?;
-                Some(self.tiled[(cur + self.tiled.len() - 1) % self.tiled.len()])
-            }
-            Position::First => self.tiled.first().copied(),
-            Position::Last => self.tiled.last().copied(),
+    pub fn target(&self, from: WindowId, to: Rel) -> Option<WindowId> {
+        let cur = self.tiled_pos(from)?;
+        match to {
+            Rel::Next => Some(self.tiled[(cur + 1) % self.tiled.len()]),
+            Rel::Prev => Some(self.tiled[(cur + self.tiled.len() - 1) % self.tiled.len()]),
+            Rel::First => self.tiled.first().copied(),
+            Rel::Last => self.tiled.last().copied(),
         }
     }
 
-    pub fn swap(&mut self, pos: Position) {
-        let Some(cur) = self.focused_tiled_pos() else {
+    pub fn swap(&mut self, from: WindowId, to: Rel) {
+        let Some(cur) = self.tiled_pos(from) else {
             return;
         };
-        let target = match pos {
-            Position::Next => (cur + 1) % self.tiled.len(),
-            Position::Prev => (cur + self.tiled.len() - 1) % self.tiled.len(),
-            Position::First => 0,
-            Position::Last => self.tiled.len() - 1,
+        let target = match to {
+            Rel::Next => (cur + 1) % self.tiled.len(),
+            Rel::Prev => (cur + self.tiled.len() - 1) % self.tiled.len(),
+            Rel::First => 0,
+            Rel::Last => self.tiled.len() - 1,
         };
         if cur != target {
             self.tiled.swap(cur, target);
@@ -375,9 +370,8 @@ impl Tag {
         self.focus_stack.first().copied()
     }
 
-    fn focused_tiled_pos(&self) -> Option<usize> {
-        let current = self.focused_id()?;
-        self.tiled.iter().position(|&id| id == current)
+    fn tiled_pos(&self, id: WindowId) -> Option<usize> {
+        self.tiled.iter().position(|&x| x == id)
     }
 
     pub fn raise(&mut self, id: WindowId) {
@@ -438,7 +432,10 @@ impl Monitor {
         let mut tags = None;
         let mut bg = None;
         for rule in rules {
-            if rule.r#match.matches(&name, &props.make, &props.model, &props.serial_number) {
+            if rule
+                .r#match
+                .matches(&name, &props.make, &props.model, &props.serial_number)
+            {
                 if let Some(t) = &rule.tags {
                     tags = Some(t.clone());
                 }
@@ -613,9 +610,7 @@ pub struct Monitors(pub Vec<Monitor>);
 
 impl Monitors {
     pub fn by_output(&self, output: &Output) -> Option<(usize, &Monitor)> {
-        self.iter()
-            .enumerate()
-            .find(|(_, m)| m.output == *output)
+        self.iter().enumerate().find(|(_, m)| m.output == *output)
     }
 
     pub fn update_rules(&mut self, rules: &[config::OutputRule]) {

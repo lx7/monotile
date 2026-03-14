@@ -225,11 +225,20 @@ impl Monotile {
                 }
             }
             Focus(pos) => {
-                if let Some(id) = self.state.mon().tag().focus(pos) {
+                let tag = self.state.mon().tag();
+                if let Some(cur) = tag.focused_id()
+                    && let Some(id) = tag.target(cur, pos)
+                {
                     self.set_focus(Some(id));
                 }
+                self.backend.schedule_render(&self.state.mon().output);
+                return;
             }
-            Swap(pos) => self.state.mon_mut().tag_mut().swap(pos),
+            Swap(pos) => {
+                if let Some(cur) = self.state.mon().tag().focused_id() {
+                    self.state.mon_mut().tag_mut().swap(cur, pos);
+                }
+            }
             Close => {
                 if let Some(id) = self.state.mon().tag().focused_id()
                     && let Some(tl) = self.state.windows[id].window.toplevel()
