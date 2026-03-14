@@ -19,10 +19,10 @@ pub struct IpcState {
 }
 
 impl IpcState {
-    pub fn new(dh: &DisplayHandle, tag_count: usize) -> Self {
+    pub fn new(dh: &DisplayHandle) -> Self {
         Self {
-            dwl: DwlIpcState::new(dh, tag_count as u32),
-            monotile: MonotileIpcState::new(dh, tag_count),
+            dwl: DwlIpcState::new(dh),
+            monotile: MonotileIpcState::new(dh),
             dirty: false,
         }
     }

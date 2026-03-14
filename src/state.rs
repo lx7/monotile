@@ -266,7 +266,7 @@ impl State {
         let cursor_shape_state = CursorShapeManagerState::new::<Monotile>(&dh);
         let cursor = CursorManager::new(1.0);
 
-        let ipc = IpcState::new(&dh, config.layout.tags);
+        let ipc = IpcState::new(&dh);
 
         Self {
             config,

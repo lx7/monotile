@@ -83,10 +83,15 @@ impl OutputMatch {
     }
 }
 
+pub fn default_tags() -> Vec<String> {
+    (1..=9).map(|i| i.to_string()).collect()
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct OutputRule {
     pub r#match: OutputMatch,
+    pub tags: Option<Vec<String>>,
     pub scale: Option<f64>,
     pub pos: Option<(i32, i32)>,
     // TODO: add mode and transform when output config is implemented
@@ -169,7 +174,6 @@ inline_default! {
     #[derive(Debug, Clone, PartialEq, Deserialize)]
     #[serde(default)]
     pub struct Layout {
-        pub tags: usize = 9,
         pub inner_gap: i32 = 4,
         pub outer_gap: i32 = 2,
         pub smart_gaps: bool,
@@ -376,9 +380,7 @@ pub enum MouseAction {
 
 // --- Keysym serde ---
 
-fn de_keys<'de, D: Deserializer<'de>>(
-    d: D,
-) -> Result<Vec<(Vec<Mod>, Keysym, Action)>, D::Error> {
+fn de_keys<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<(Vec<Mod>, Keysym, Action)>, D::Error> {
     let raw: Vec<(Vec<Mod>, String, Action)> = Vec::deserialize(d)?;
     raw.into_iter()
         .map(|(mods, name, action)| {
@@ -422,12 +424,11 @@ impl Config {
 
 pub fn load(explicit: Option<PathBuf>) -> Result<Config, String> {
     let path = resolve(explicit, "config.ron", DEFAULT_CONFIG);
-    let text = std::fs::read_to_string(&path)
-        .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
-    let mut config: Config = ron::from_str(&text)
-        .map_err(|e| format!("config error in {}: {e}", path.display()))?;
+    let disp = path.display();
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("{disp}: {e}"))?;
+    let mut config: Config = ron::from_str(&text).map_err(|e| format!("{disp}: {e}"))?;
     config.build_maps();
-    info!("config: {}", path.display());
+    info!("config: {disp}");
     config.path = path;
     Ok(config)
 }
@@ -669,5 +670,24 @@ mod tests {
         assert!(m.matches("DP-1", "Dell", "U2723QE", "ABC123"));
         assert!(m.matches("DP-2", "Dell", "U2723QE", "ABC123"));
         assert!(!m.matches("HDMI-A-1", "Dell", "U2723QE", "ABC123"));
+    }
+
+    #[test]
+    fn output_rule_tags_default() {
+        let ron = "(outputs: [(match: ())])";
+        let config: Config = ron::from_str(ron).unwrap();
+        assert!(config.outputs[0].tags.is_none());
+        assert_eq!(
+            default_tags(),
+            vec!["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+        );
+    }
+
+    #[test]
+    fn output_rule_tags_custom() {
+        let ron = "#![enable(implicit_some)]\n(outputs: [(match: (), tags: [\"9\", \"7-1\", \"music\"])])";
+        let config: Config = ron::from_str(ron).unwrap();
+        let tags = config.outputs[0].tags.as_ref().unwrap();
+        assert_eq!(tags, &["9", "7-1", "music"]);
     }
 }

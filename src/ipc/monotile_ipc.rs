@@ -23,17 +23,15 @@ use crate::spawn::spawn_shell;
 // -- State --
 
 pub struct MonotileIpcState {
-    tag_count: usize,
     outputs: HashMap<Output, Vec<Weak<ZmonotileOutputStatusV1>>>,
     seats: Vec<Weak<ZmonotileSeatStatusV1>>,
 }
 
 impl MonotileIpcState {
-    pub fn new(dh: &DisplayHandle, tag_count: usize) -> Self {
+    pub fn new(dh: &DisplayHandle) -> Self {
         dh.create_global::<Monotile, ZmonotileStatusManagerV1, _>(1, ());
         dh.create_global::<Monotile, ZmonotileControlV1, _>(1, ());
         Self {
-            tag_count,
             outputs: HashMap::new(),
             seats: Vec::new(),
         }
@@ -128,20 +126,16 @@ impl Dispatch<ZmonotileStatusManagerV1, ()> for Monotile {
                 let Some(output) = Output::from_resource(&output) else {
                     return;
                 };
-
-                // TODO: get tag count from monitor
-                let tag_count = monotile.state.ipc.monotile.tag_count;
                 let handle = data_init.init(id, ());
-
-                // send tag metadata
-                handle.tag_count(tag_count as u32);
-                for i in 0..tag_count {
-                    handle.tag_name(i as u32, (i + 1).to_string());
-                }
-
-                // send initial state
                 monotile.state.ipc.monotile.add_output(&output, &handle);
+
                 if let Some((_, mon)) = monotile.state.monitors.by_output(&output) {
+                    // send tag metadata
+                    handle.tag_count(mon.tag_names.len() as u32);
+                    for (i, name) in mon.tag_names.iter().enumerate() {
+                        handle.tag_name(i as u32, name.clone());
+                    }
+                    // send initial state
                     let snap = mon.snapshot(&monotile.state.windows);
                     send_output_status(&handle, &snap);
                 }

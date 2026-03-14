@@ -9,10 +9,16 @@
 (
     // Output rules: top-to-bottom, later rules override earlier ones.
     outputs: [
-        (match: (), scale: 1.0, background: "#444444"),
+        (   // default settings, match all
+            match: (), 
+            scale: 1.0,
+            tags: ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
+            background: "#444444",
+        ),
         // all available fields:
         // (
         //     match: (name: "DP-1", make: "Dell", model: "U2723QE", serial: "ABC123"),
+        //     tags: ["1", "2", "3", "music", "mail", "chat", "7", "8", "9"],
         //     scale: 2.0,
         //     pos: (0, 0),
         //     mode: (size: (2560, 1440), refresh: 144),
@@ -21,10 +27,8 @@
         // ),
     ],
 
-    // Tiling layout and tag settings.
+    // Tiling layout settings.
     layout: (
-        tags: 9,
-        
         inner_gap: 4,
         outer_gap: 2,
         smart_gaps: false,

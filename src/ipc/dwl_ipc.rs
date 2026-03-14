@@ -14,7 +14,7 @@ use super::dwl_ipc_protocol::{
     zdwl_ipc_manager_v2::ZdwlIpcManagerV2,
     zdwl_ipc_output_v2::{self, ZdwlIpcOutputV2},
 };
-use crate::{Monotile, config::Action, shell::Monitor};
+use crate::{Monotile, config::{self, Action}, shell::Monitor};
 
 #[derive(Default)]
 pub struct DwlIpcState {
@@ -50,7 +50,8 @@ fn send_snapshot(handle: &ZdwlIpcOutputV2, snap: &TagSnapshot, mon: &Monitor, ac
 }
 
 impl DwlIpcState {
-    pub fn new(dh: &DisplayHandle, tag_count: u32) -> Self {
+    pub fn new(dh: &DisplayHandle) -> Self {
+        let tag_count = config::default_tags().len() as u32;
         dh.create_global::<Monotile, ZdwlIpcManagerV2, _>(2, DwlIpcManagerData { tag_count });
         Self {
             outputs: HashMap::new(),

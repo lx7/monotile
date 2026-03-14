@@ -407,6 +407,7 @@ impl Tag {
 #[derive(Debug)]
 pub struct Monitor {
     pub output: Output,
+    pub tag_names: Vec<String>,
     pub tags: Vec<Tag>,
     pub active_tag: usize,
     pub prev_tag: usize,
@@ -419,7 +420,8 @@ impl Monitor {
     pub fn new(output: Output, config: &Config) -> Self {
         let mut mon = Self {
             output,
-            tags: (0..config.layout.tags).map(|_| Tag::default()).collect(),
+            tag_names: Vec::new(),
+            tags: Vec::new(),
             active_tag: 0,
             exclusive_layer: None,
             lock_surface: None,
@@ -433,17 +435,21 @@ impl Monitor {
     pub fn resolve(&mut self, rules: &[config::OutputRule]) {
         let name = self.output.name();
         let props = self.output.physical_properties();
+        let mut tags = None;
         let mut bg = None;
         for rule in rules {
-            if rule
-                .r#match
-                .matches(&name, &props.make, &props.model, &props.serial_number)
-            {
+            if rule.r#match.matches(&name, &props.make, &props.model, &props.serial_number) {
+                if let Some(t) = &rule.tags {
+                    tags = Some(t.clone());
+                }
                 if let Some(c) = rule.background {
                     bg = Some(c);
                 }
             }
         }
+        let tag_names = tags.unwrap_or_else(config::default_tags);
+        self.tags.resize_with(tag_names.len(), Tag::default);
+        self.tag_names = tag_names;
         self.background = bg.map_or([0.0, 0.0, 0.0, 1.0], |c| c.0);
         // TODO: use scale, pos, mode, transform from config
     }
