@@ -1,4 +1,5 @@
 use super::Fixture;
+use crate::config::Position;
 use smithay::utils::Rectangle;
 use wayland_protocols::xdg::shell::client::xdg_toplevel::State as ToplevelState;
 
@@ -30,20 +31,20 @@ fn two_windows() {
         "compositor should have 2 visible windows",
     );
 
-    // w1 should be reconfigured (full -> master)
+    // w1 should be reconfigured (full -> main)
     let cfgs1 = f.client_mut(c).take_configures(w1);
     // w2 got its initial configure during open_window
     let cfgs2 = f.client_mut(c).take_configures(w2);
 
-    assert!(!cfgs1.is_empty(), "master should be reconfigured",);
+    assert!(!cfgs1.is_empty(), "main should be reconfigured",);
     assert!(!cfgs2.is_empty(), "stack window should get a configure",);
 
-    // master and stack should have different widths
+    // main and stack should have different widths
     let last1 = cfgs1.last().unwrap();
     let last2 = cfgs2.last().unwrap();
     assert_ne!(
         last1.width, last2.width,
-        "master and stack should differ: \
+        "main and stack should differ: \
          {}x{} vs {}x{}",
         last1.width, last1.height, last2.width, last2.height,
     );
@@ -169,7 +170,7 @@ fn focus_cycle() {
     f.client_mut(c).take_configures(w2);
 
     // cycle focus to w1
-    if let Some(id) = f.mt.state.mon().tag().focus_cycle(1) {
+    if let Some(id) = f.mt.state.mon().tag().focus(Position::Next) {
         f.mt.set_focus(Some(id));
     }
     f.roundtrip(c);

@@ -910,6 +910,8 @@ dependencies = [
  "wayland-backend",
  "wayland-client",
  "wayland-protocols",
+ "wayland-scanner",
+ "wayland-server",
  "xcursor",
 ]
 

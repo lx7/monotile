@@ -2,7 +2,7 @@
 
 use crate::{
     Monotile,
-    config::{Config, KeyAction, Mods, MouseAction},
+    config::{Action, Config, Mods, MouseAction},
     grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
     spawn::spawn,
 };
@@ -53,7 +53,7 @@ impl Monotile {
                             Keysym::XF86_Switch_VT_1.raw()..=Keysym::XF86_Switch_VT_12.raw();
                         if vt_range.contains(&sym.raw()) {
                             let vt = (sym.raw() - Keysym::XF86_Switch_VT_1.raw() + 1) as i32;
-                            return FilterResult::Intercept(Some(KeyAction::ChangeVt(vt)));
+                            return FilterResult::Intercept(Some(Action::ChangeVt(vt)));
                         }
 
                         // locked
@@ -211,12 +211,12 @@ impl Monotile {
         self.backend.schedule_render(&self.state.mon().output);
     }
 
-    pub fn handle_action(&mut self, action: KeyAction) {
-        use KeyAction::*;
+    pub fn handle_action(&mut self, action: Action) {
+        use Action::*;
 
         match action {
             Noop => {}
-            Quit => {
+            Exit => {
                 self.state.loop_signal.stop();
             }
             Spawn(ref args) => {
@@ -224,24 +224,12 @@ impl Monotile {
                     spawn(cmd, args, false);
                 }
             }
-            FocusStack(delta) => {
-                if let Some(id) = self.state.mon().tag().focus_cycle(delta) {
+            Focus(pos) => {
+                if let Some(id) = self.state.mon().tag().focus(pos) {
                     self.set_focus(Some(id));
                 }
             }
-            FocusTagPrev => {
-                self.state.mon_mut().toggle_prev_tag();
-            }
-            FocusTag(tag) => {
-                self.state.mon_mut().set_active_tag(tag);
-            }
-            SetTag(tag) => {
-                let mon = &mut self.state.monitors[self.state.active_monitor];
-                mon.move_to_tag(&mut self.state.windows, tag);
-            }
-            ToggleTag(tag) => {
-                self.state.mon_mut().toggle_tag(tag);
-            }
+            Swap(pos) => self.state.mon_mut().tag_mut().swap(pos),
             Close => {
                 if let Some(id) = self.state.mon().tag().focused_id()
                     && let Some(tl) = self.state.windows[id].window.toplevel()
@@ -249,23 +237,11 @@ impl Monotile {
                     tl.send_close();
                 }
             }
-            ToggleFloating => {
+            ToggleFloat => {
                 if let Some(id) = self.state.mon().tag().focused_id() {
                     let floating = !self.state.windows[id].floating;
                     self.state.windows[id].set_floating(floating);
                 }
-            }
-            MoveStack(delta) => {
-                self.state.mon_mut().tag_mut().move_in_stack(delta);
-            }
-            SwapMaster => {
-                self.state.mon_mut().tag_mut().zoom();
-            }
-            MasterCount(delta) => {
-                self.state.mon_mut().tag_mut().adjust_nmaster(delta);
-            }
-            MasterRatio(delta) => {
-                self.state.mon_mut().tag_mut().adjust_mfact(delta);
             }
             ToggleFullscreen => {
                 if let Some(id) = self.state.mon().tag().focused_id() {
@@ -277,6 +253,31 @@ impl Monotile {
                     self.state.windows[id].set_fullscreen(geo);
                 }
             }
+            FocusTag(tag) => {
+                self.state.mon_mut().set_active_tag(tag);
+            }
+            FocusPrevTag => {
+                self.state.mon_mut().toggle_prev_tag();
+            }
+            SetTag(tag) => {
+                let mon = &mut self.state.monitors[self.state.active_monitor];
+                mon.move_to_tag(&mut self.state.windows, tag);
+            }
+            ToggleTag(tag) => {
+                self.state.mon_mut().toggle_tag(tag);
+            }
+            AdjustMainCount(delta) => {
+                self.state.mon_mut().tag_mut().adjust_main_count(delta);
+            }
+            SetMainCount(count) => {
+                self.state.mon_mut().tag_mut().set_main_count(count);
+            }
+            AdjustMainRatio(delta) => {
+                self.state.mon_mut().tag_mut().adjust_main_factor(delta);
+            }
+            SetMainRatio(ratio) => {
+                self.state.mon_mut().tag_mut().set_main_factor(ratio);
+            }
             ReloadConfig => {
                 self.reload_config();
             }
@@ -285,7 +286,7 @@ impl Monotile {
                 return; // no recompute needed
             }
             // TODO: implement multi-monitor
-            FocusMon(_) | MoveMon(_) => {}
+            FocusOutput(_) | SendToOutput(_) => {}
         }
         self.recompute_layout();
         self.backend.schedule_render(&self.state.mon().output);

@@ -9,10 +9,18 @@ use std::sync::{
 use wayland_client::{
     Connection, Dispatch, EventQueue, QueueHandle,
     protocol::{
-        wl_buffer, wl_callback, wl_compositor, wl_registry, wl_shm, wl_shm_pool, wl_surface,
+        wl_buffer, wl_callback, wl_compositor, wl_output, wl_registry, wl_seat, wl_shm,
+        wl_shm_pool, wl_surface,
     },
 };
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
+
+use super::monotile_ipc_client_protocol::{
+    zmonotile_control_v1::ZmonotileControlV1, zmonotile_output_status_v1::ZmonotileOutputStatusV1,
+    zmonotile_seat_control_v1::ZmonotileSeatControlV1,
+    zmonotile_seat_status_v1::ZmonotileSeatStatusV1,
+    zmonotile_status_manager_v1::ZmonotileStatusManagerV1,
+};
 
 // ── Client state ────────────────────────────────────
 
@@ -28,6 +36,15 @@ struct ClientData {
     shm: Option<wl_shm::WlShm>,
     buffer: Option<wl_buffer::WlBuffer>,
     windows: Vec<WindowState>,
+
+    ipc_output: Option<wl_output::WlOutput>,
+    ipc_seat: Option<wl_seat::WlSeat>,
+    ipc_status_manager: Option<ZmonotileStatusManagerV1>,
+    ipc_control: Option<ZmonotileControlV1>,
+    ipc_output_status: Option<ZmonotileOutputStatusV1>,
+    ipc_seat_status: Option<ZmonotileSeatStatusV1>,
+    ipc_seat_control: Option<ZmonotileSeatControlV1>,
+    pub ipc_events: Vec<IpcEvent>,
 }
 
 pub struct WindowState {
@@ -37,6 +54,28 @@ pub struct WindowState {
     pub configures: Vec<Configure>,
     pub closed: bool,
     last_serial: u32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum IpcEvent {
+    TagCount(u32),
+    TagName {
+        index: u32,
+        name: String,
+    },
+    FocusedTags(u32),
+    OccupiedTags(u32),
+    UrgentTags(u32),
+    Layout {
+        name: String,
+        symbol: String,
+    },
+    FocusedToplevel {
+        title: Option<String>,
+        app_id: String,
+        fullscreen: bool,
+        floating: bool,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -61,6 +100,14 @@ impl Client {
             shm: None,
             buffer: None,
             windows: Vec::new(),
+            ipc_output: None,
+            ipc_seat: None,
+            ipc_status_manager: None,
+            ipc_control: None,
+            ipc_output_status: None,
+            ipc_seat_status: None,
+            ipc_seat_control: None,
+            ipc_events: Vec::new(),
         };
 
         let mut client = Client { conn, queue, data };
@@ -138,6 +185,62 @@ impl Client {
     pub fn take_configures(&mut self, win: usize) -> Vec<Configure> {
         self.data.windows[win].configures.drain(..).collect()
     }
+
+    // IPC
+
+    pub fn bind_output_status(&mut self) {
+        let qh = self.queue.handle();
+        let mgr = self.data.ipc_status_manager.as_ref().expect("ipc_status_manager");
+        let output = self.data.ipc_output.as_ref().expect("ipc_output");
+        self.data.ipc_output_status = Some(mgr.get_output_status(output, &qh, ()));
+        let _ = self.queue.flush();
+    }
+
+    pub fn bind_seat_status(&mut self) {
+        let qh = self.queue.handle();
+        let mgr = self.data.ipc_status_manager.as_ref().expect("ipc_status_manager");
+        let seat = self.data.ipc_seat.as_ref().expect("ipc_seat");
+        self.data.ipc_seat_status = Some(mgr.get_seat_status(seat, &qh, ()));
+        let _ = self.queue.flush();
+    }
+
+    pub fn bind_seat_control(&mut self) {
+        let qh = self.queue.handle();
+        let ctl = self.data.ipc_control.as_ref().expect("ipc_control");
+        let seat = self.data.ipc_seat.as_ref().expect("ipc_seat");
+        self.data.ipc_seat_control = Some(ctl.get_seat_control(seat, &qh, ()));
+        let _ = self.queue.flush();
+    }
+
+    pub fn seat_control(&self) -> &ZmonotileSeatControlV1 {
+        self.data.ipc_seat_control.as_ref().expect("ipc_seat_control")
+    }
+
+    pub fn control(&self) -> &ZmonotileControlV1 {
+        self.data.ipc_control.as_ref().expect("ipc_control")
+    }
+
+    pub fn destroy_output_status(&mut self) {
+        if let Some(os) = self.data.ipc_output_status.take() {
+            os.destroy();
+            let _ = self.queue.flush();
+        }
+    }
+
+    pub fn destroy_seat_status(&mut self) {
+        if let Some(ss) = self.data.ipc_seat_status.take() {
+            ss.destroy();
+            let _ = self.queue.flush();
+        }
+    }
+
+    pub fn take_ipc_events(&mut self) -> Vec<IpcEvent> {
+        self.data.ipc_events.drain(..).collect()
+    }
+
+    pub fn flush(&self) {
+        let _ = self.queue.flush();
+    }
 }
 
 // ── Dispatch impls ──────────────────────────────────
@@ -166,6 +269,18 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientData {
                 }
                 "wl_shm" => {
                     state.shm = Some(registry.bind(name, version, qh, ()));
+                }
+                "wl_output" => {
+                    state.ipc_output = Some(registry.bind(name, version, qh, ()));
+                }
+                "wl_seat" => {
+                    state.ipc_seat = Some(registry.bind(name, version, qh, ()));
+                }
+                "zmonotile_status_manager_v1" => {
+                    state.ipc_status_manager = Some(registry.bind(name, version, qh, ()));
+                }
+                "zmonotile_control_v1" => {
+                    state.ipc_control = Some(registry.bind(name, version, qh, ()));
                 }
                 _ => {}
             }
@@ -323,6 +438,122 @@ impl Dispatch<wl_buffer::WlBuffer, ()> for ClientData {
         _: &mut Self,
         _: &wl_buffer::WlBuffer,
         _: wl_buffer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<wl_output::WlOutput, ()> for ClientData {
+    fn event(
+        _: &mut Self,
+        _: &wl_output::WlOutput,
+        _: wl_output::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<wl_seat::WlSeat, ()> for ClientData {
+    fn event(
+        _: &mut Self,
+        _: &wl_seat::WlSeat,
+        _: wl_seat::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+// ── IPC Dispatch impls ──────────────────────────────
+
+impl Dispatch<ZmonotileStatusManagerV1, ()> for ClientData {
+    fn event(
+        _: &mut Self,
+        _: &ZmonotileStatusManagerV1,
+        _: <ZmonotileStatusManagerV1 as wayland_client::Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ZmonotileOutputStatusV1, ()> for ClientData {
+    fn event(
+        state: &mut Self,
+        _: &ZmonotileOutputStatusV1,
+        event: <ZmonotileOutputStatusV1 as wayland_client::Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use super::monotile_ipc_client_protocol::zmonotile_output_status_v1::Event;
+        match event {
+            Event::TagCount { count } => state.ipc_events.push(IpcEvent::TagCount(count)),
+            Event::TagName { index, name } => {
+                state.ipc_events.push(IpcEvent::TagName { index, name });
+            }
+            Event::FocusedTags { tags } => state.ipc_events.push(IpcEvent::FocusedTags(tags)),
+            Event::OccupiedTags { tags } => state.ipc_events.push(IpcEvent::OccupiedTags(tags)),
+            Event::UrgentTags { tags } => state.ipc_events.push(IpcEvent::UrgentTags(tags)),
+            Event::Layout { name, symbol } => {
+                state.ipc_events.push(IpcEvent::Layout { name, symbol });
+            }
+        }
+    }
+}
+
+impl Dispatch<ZmonotileSeatStatusV1, ()> for ClientData {
+    fn event(
+        state: &mut Self,
+        _: &ZmonotileSeatStatusV1,
+        event: <ZmonotileSeatStatusV1 as wayland_client::Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use super::monotile_ipc_client_protocol::zmonotile_seat_status_v1::Event;
+        match event {
+            Event::FocusedToplevel {
+                title,
+                app_id,
+                fullscreen,
+                floating,
+            } => {
+                state.ipc_events.push(IpcEvent::FocusedToplevel {
+                    title,
+                    app_id,
+                    fullscreen: fullscreen != 0,
+                    floating: floating != 0,
+                });
+            }
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<ZmonotileControlV1, ()> for ClientData {
+    fn event(
+        _: &mut Self,
+        _: &ZmonotileControlV1,
+        _: <ZmonotileControlV1 as wayland_client::Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ZmonotileSeatControlV1, ()> for ClientData {
+    fn event(
+        _: &mut Self,
+        _: &ZmonotileSeatControlV1,
+        _: <ZmonotileSeatControlV1 as wayland_client::Proxy>::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,

@@ -50,6 +50,7 @@ use smithay::{
 use crate::{
     backend::Backend,
     config::{self, Config},
+    ipc::IpcState,
     render::cursor::CursorManager,
     shell::{Monitor, Monitors, WindowElement, WindowId, Windows},
 };
@@ -111,6 +112,7 @@ impl Monotile {
         self.update_focus();
     }
 
+
     pub fn reload_config(&mut self) {
         let path = self.state.config.path.clone();
         let config = match config::load(Some(path)) {
@@ -171,7 +173,7 @@ impl Monotile {
 
         let target = id
             .and_then(|id| {
-                self.state.mon_mut().tag_mut().focus(id);
+                self.state.mon_mut().tag_mut().promote(id);
                 self.state.windows.get_mut(id)
             })
             .and_then(|we| {
@@ -182,6 +184,7 @@ impl Monotile {
         if let Some(kb) = self.state.seat.get_keyboard() {
             kb.set_focus(self, target, SERIAL_COUNTER.next_serial());
         }
+        self.state.ipc.mark_dirty();
     }
 }
 
@@ -223,6 +226,7 @@ pub struct State {
     pub pending: Vec<Window>,
     pub locked: bool,
     pub session_lock_state: SessionLockManagerState,
+    pub ipc: IpcState,
 }
 
 impl State {
@@ -262,6 +266,8 @@ impl State {
         let cursor_shape_state = CursorShapeManagerState::new::<Monotile>(&dh);
         let cursor = CursorManager::new(1.0);
 
+        let ipc = IpcState::new(&dh, config.layout.tags);
+
         Self {
             config,
             start_time: std::time::Instant::now(),
@@ -296,6 +302,7 @@ impl State {
             pending: Vec::new(),
             locked: false,
             session_lock_state,
+            ipc,
         }
     }
 
@@ -395,6 +402,7 @@ impl State {
     }
 
     pub fn flush_clients(&mut self) {
+        self.ipc.flush(&self.monitors, &self.windows, self.active_monitor);
         let _ = self.display_handle.flush_clients();
     }
 }

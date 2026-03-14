@@ -6,20 +6,28 @@ use crate::config;
 
 #[derive(Debug, Clone)]
 pub struct TilingLayout {
-    pub master_count: usize,
-    pub master_factor: f32,
+    pub main_count: usize,
+    pub main_factor: f32,
 }
 
 impl Default for TilingLayout {
     fn default() -> Self {
         Self {
-            master_count: config::TileConfig::default().master_count,
-            master_factor: config::TileConfig::default().master_factor,
+            main_count: config::TileConfig::default().main_count,
+            main_factor: config::TileConfig::default().main_factor,
         }
     }
 }
 
 impl TilingLayout {
+    pub fn name(&self) -> &str {
+        "tile"
+    }
+
+    pub fn symbol(&self) -> &str {
+        "[]=".into()
+    }
+
     pub fn compute_rects(
         &self,
         count: usize,
@@ -30,8 +38,8 @@ impl TilingLayout {
             return vec![];
         }
 
-        let master_count = self.master_count.min(count);
-        let stack_count = count - master_count;
+        let main_count = self.main_count.min(count);
+        let stack_count = count - main_count;
 
         let disable_gaps = layout.smart_gaps && count == 1;
         let outer = if disable_gaps { 0 } else { layout.outer_gap };
@@ -50,8 +58,8 @@ impl TilingLayout {
             Self::stack_rects(count, usable, inner)
         } else {
             let half = inner / 2;
-            let mw = (usable.size.w as f32 * self.master_factor) as i32;
-            let master_area = Rectangle {
+            let mw = (usable.size.w as f32 * self.main_factor) as i32;
+            let main_area = Rectangle {
                 loc: usable.loc,
                 size: (mw - half, usable.size.h).into(),
             };
@@ -59,7 +67,7 @@ impl TilingLayout {
                 loc: (usable.loc.x + mw + inner - half, usable.loc.y).into(),
                 size: (usable.size.w - mw - inner + half, usable.size.h).into(),
             };
-            let mut rects = Self::stack_rects(master_count, master_area, inner);
+            let mut rects = Self::stack_rects(main_count, main_area, inner);
             rects.extend(Self::stack_rects(stack_count, stack_area, inner));
             rects
         }

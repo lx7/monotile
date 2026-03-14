@@ -162,8 +162,8 @@ inline_default! {
     #[derive(Debug, Clone, PartialEq, Deserialize)]
     #[serde(default)]
     pub struct TileConfig {
-        pub master_factor: f32 = 0.54,
-        pub master_count: usize = 1,
+        pub main_factor: f32 = 0.54,
+        pub main_count: usize = 1,
     }
 
     #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -264,10 +264,10 @@ pub struct Config {
     pub windows: Vec<WindowRule>,
     pub input: Input,
     #[serde(deserialize_with = "de_keys")]
-    pub keybinds: Vec<(Vec<Mod>, Keysym, KeyAction)>,
+    pub keybinds: Vec<(Vec<Mod>, Keysym, Action)>,
     pub mousebinds: Vec<(Vec<Mod>, Button, MouseAction)>,
     #[serde(skip)]
-    pub key_map: HashMap<(Keysym, Mods), KeyAction>,
+    pub key_map: HashMap<(Keysym, Mods), Action>,
     #[serde(skip)]
     pub mouse_map: HashMap<(u32, Mods), MouseAction>,
     #[serde(skip)]
@@ -322,30 +322,48 @@ pub enum Button {
     Middle = 0x112,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum Position {
+    Next,
+    Prev,
+    First,
+    Last,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum Direction {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
 #[derive(Debug, Clone, Deserialize)]
-pub enum KeyAction {
+pub enum Action {
     Noop,
 
-    FocusMon(i32),
-    FocusStack(i32),
-    MoveMon(i32),
-    MoveStack(i32),
+    Focus(Position),
+    Swap(Position),
+    Close,
+    ToggleFloat,
+    ToggleFullscreen,
 
     FocusTag(usize),
-    FocusTagPrev,
+    FocusPrevTag,
     SetTag(usize),
     ToggleTag(usize),
 
-    MasterCount(i32),
-    MasterRatio(f32),
-    ToggleFloating,
-    ToggleFullscreen,
-    SwapMaster,
+    FocusOutput(Direction),
+    SendToOutput(Direction),
 
-    Close,
-    Quit,
-    ReloadConfig,
+    AdjustMainCount(i32),
+    SetMainCount(usize),
+    AdjustMainRatio(f32),
+    SetMainRatio(f32),
+
     Spawn(Vec<String>),
+    Exit,
+    ReloadConfig,
     ChangeVt(i32),
 }
 
@@ -360,8 +378,8 @@ pub enum MouseAction {
 
 fn de_keys<'de, D: Deserializer<'de>>(
     d: D,
-) -> Result<Vec<(Vec<Mod>, Keysym, KeyAction)>, D::Error> {
-    let raw: Vec<(Vec<Mod>, String, KeyAction)> = Vec::deserialize(d)?;
+) -> Result<Vec<(Vec<Mod>, Keysym, Action)>, D::Error> {
+    let raw: Vec<(Vec<Mod>, String, Action)> = Vec::deserialize(d)?;
     raw.into_iter()
         .map(|(mods, name, action)| {
             let sym = resolve_keysym(&name);

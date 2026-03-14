@@ -15,8 +15,8 @@ fn area() -> Rectangle<i32, Logical> {
 
 fn layout(mcount: usize, mfact: f32) -> TilingLayout {
     TilingLayout {
-        master_count: mcount,
-        master_factor: mfact,
+        main_count: mcount,
+        main_factor: mfact,
     }
 }
 
@@ -54,8 +54,8 @@ fn two_windows_even_split() {
     let rects = compute(&layout(1, mfact), 2);
     assert_eq!(rects.len(), 2, "two windows should produce 2 rects");
 
-    assert_eq!(rects[0].loc, (outer, outer).into(), "master loc");
-    assert_eq!(rects[0].size, (mw - half, usable_h).into(), "master size");
+    assert_eq!(rects[0].loc, (outer, outer).into(), "main loc");
+    assert_eq!(rects[0].size, (mw - half, usable_h).into(), "main size");
 
     let stack_x = outer + mw + inner - half;
     let stack_w = usable_w - mw - inner + half;
@@ -80,8 +80,8 @@ fn three_windows_stack_splits_vertically() {
     let rects = compute(&layout(1, mfact), 3);
     assert_eq!(rects.len(), 3, "three windows should produce 3 rects");
 
-    assert_eq!(rects[0].loc, (outer, outer).into(), "master loc");
-    assert_eq!(rects[0].size, (mw - half, usable_h).into(), "master size");
+    assert_eq!(rects[0].loc, (outer, outer).into(), "main loc");
+    assert_eq!(rects[0].size, (mw - half, usable_h).into(), "main size");
 
     assert_eq!(rects[1].loc, (stack_x, outer).into(), "stack[0] loc");
     assert_eq!(rects[1].size, (stack_w, stack_h).into(), "stack[0] size");
@@ -92,24 +92,24 @@ fn three_windows_stack_splits_vertically() {
 }
 
 #[test]
-fn master_count_two() {
+fn main_count_two() {
     let rects = compute(&layout(2, 0.5), 3);
     assert_eq!(rects.len(), 3, "should produce 3 rects");
 
-    assert_eq!(rects[0].loc.x, rects[1].loc.x, "masters should share x");
+    assert_eq!(rects[0].loc.x, rects[1].loc.x, "mains should share x");
     assert!(
         rects[0].loc.y < rects[1].loc.y,
-        "master[0] should be above master[1]"
+        "main[0] should be above main[1]"
     );
 
     assert!(
         rects[2].loc.x > rects[0].loc.x,
-        "stack should be right of master"
+        "stack should be right of main"
     );
 }
 
 #[test]
-fn master_count_exceeds_window_count() {
+fn main_count_exceeds_window_count() {
     let rects = compute(&layout(3, 0.5), 2);
     assert_eq!(rects.len(), 2, "should produce 2 rects");
     assert_eq!(rects[0].loc.x, rects[1].loc.x, "both should share x");
@@ -122,19 +122,19 @@ fn master_count_exceeds_window_count() {
 #[test]
 fn mfact_extremes() {
     let rects = compute(&layout(1, 0.1), 2);
-    let master_w = rects[0].size.w;
+    let main_w = rects[0].size.w;
     let stack_w = rects[1].size.w;
     assert!(
-        stack_w > master_w * 5,
-        "stack should be much wider: m={master_w} s={stack_w}",
+        stack_w > main_w * 5,
+        "stack should be much wider: m={main_w} s={stack_w}",
     );
 
     let rects = compute(&layout(1, 0.9), 2);
-    let master_w = rects[0].size.w;
+    let main_w = rects[0].size.w;
     let stack_w = rects[1].size.w;
     assert!(
-        master_w > stack_w * 5,
-        "master should be much wider: m={master_w} s={stack_w}",
+        main_w > stack_w * 5,
+        "main should be much wider: m={main_w} s={stack_w}",
     );
 }
 

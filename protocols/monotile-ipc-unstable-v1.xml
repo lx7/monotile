@@ -143,15 +143,13 @@
     <request name="destroy" type="destructor"/>
 
     <enum name="direction">
-      <entry name="next" value="0"/>
-      <entry name="previous" value="1"/>
-      <entry name="up" value="2"/>
-      <entry name="down" value="3"/>
-      <entry name="left" value="4"/>
-      <entry name="right" value="5"/>
+      <entry name="up" value="0"/>
+      <entry name="down" value="1"/>
+      <entry name="left" value="2"/>
+      <entry name="right" value="3"/>
     </enum>
 
-    <enum name="order">
+    <enum name="position">
       <entry name="next" value="0"/>
       <entry name="previous" value="1"/>
       <entry name="first" value="2"/>
@@ -182,13 +180,13 @@
     <!-- Toplevel operations -->
 
     <request name="focus_toplevel">
-      <description summary="focus a toplevel by stack order"/>
-      <arg name="order" type="uint" enum="order"/>
+      <description summary="focus a toplevel by stack position"/>
+      <arg name="position" type="uint" enum="position"/>
     </request>
 
     <request name="swap">
       <description summary="swap focused toplevel in the stack"/>
-      <arg name="order" type="uint" enum="order"/>
+      <arg name="position" type="uint" enum="position"/>
     </request>
 
     <request name="close">

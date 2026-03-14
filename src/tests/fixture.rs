@@ -65,6 +65,10 @@ impl Fixture {
         &mut self.clients[idx]
     }
 
+    pub fn drop_client(&mut self, idx: usize) {
+        self.clients.remove(idx);
+    }
+
     pub fn roundtrip(&mut self, client_idx: usize) {
         let done = self.clients[client_idx].start_sync();
 

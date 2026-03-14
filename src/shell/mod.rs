@@ -3,6 +3,7 @@
 mod layout;
 pub use layout::TilingLayout;
 
+use crate::config::Position;
 use derive_more::{Deref, DerefMut};
 use std::time::{Duration, Instant};
 
@@ -335,15 +336,39 @@ impl Tag {
         self.tiled.iter().chain(self.floating.iter()).copied()
     }
 
-    pub fn focus(&mut self, id: WindowId) {
+    pub fn promote(&mut self, id: WindowId) {
         self.focus_stack.retain(|&x| x != id);
         self.focus_stack.insert(0, id);
     }
 
-    pub fn focus_cycle(&self, delta: i32) -> Option<WindowId> {
-        let pos = self.focused_tiled_pos()?;
-        let next = (pos as i32 + delta).rem_euclid(self.tiled.len() as i32) as usize;
-        Some(self.tiled[next])
+    pub fn focus(&self, pos: Position) -> Option<WindowId> {
+        match pos {
+            Position::Next => {
+                let cur = self.focused_tiled_pos()?;
+                Some(self.tiled[(cur + 1) % self.tiled.len()])
+            }
+            Position::Prev => {
+                let cur = self.focused_tiled_pos()?;
+                Some(self.tiled[(cur + self.tiled.len() - 1) % self.tiled.len()])
+            }
+            Position::First => self.tiled.first().copied(),
+            Position::Last => self.tiled.last().copied(),
+        }
+    }
+
+    pub fn swap(&mut self, pos: Position) {
+        let Some(cur) = self.focused_tiled_pos() else {
+            return;
+        };
+        let target = match pos {
+            Position::Next => (cur + 1) % self.tiled.len(),
+            Position::Prev => (cur + self.tiled.len() - 1) % self.tiled.len(),
+            Position::First => 0,
+            Position::Last => self.tiled.len() - 1,
+        };
+        if cur != target {
+            self.tiled.swap(cur, target);
+        }
     }
 
     pub fn focused_id(&self) -> Option<WindowId> {
@@ -362,29 +387,20 @@ impl Tag {
         }
     }
 
-    pub fn move_in_stack(&mut self, delta: i32) {
-        let Some(pos) = self.focused_tiled_pos() else {
-            return;
-        };
-        let next = (pos as i32 + delta).rem_euclid(self.tiled.len() as i32) as usize;
-        self.tiled.swap(pos, next);
+    pub fn adjust_main_factor(&mut self, delta: f32) {
+        self.layout.main_factor = (self.layout.main_factor + delta).clamp(0.1, 0.9);
     }
 
-    pub fn zoom(&mut self) {
-        let Some(pos) = self.focused_tiled_pos() else {
-            return;
-        };
-        if pos > 0 {
-            self.tiled.swap(0, pos);
-        }
+    pub fn set_main_factor(&mut self, ratio: f32) {
+        self.layout.main_factor = ratio.clamp(0.1, 0.9);
     }
 
-    pub fn adjust_mfact(&mut self, delta: f32) {
-        self.layout.master_factor = (self.layout.master_factor + delta).clamp(0.1, 0.9);
+    pub fn adjust_main_count(&mut self, delta: i32) {
+        self.layout.main_count = (self.layout.main_count as i32 + delta).max(1) as usize;
     }
 
-    pub fn adjust_nmaster(&mut self, delta: i32) {
-        self.layout.master_count = (self.layout.master_count as i32 + delta).max(1) as usize;
+    pub fn set_main_count(&mut self, count: usize) {
+        self.layout.main_count = count.max(1);
     }
 }
 
@@ -590,6 +606,12 @@ impl Monitor {
 pub struct Monitors(pub Vec<Monitor>);
 
 impl Monitors {
+    pub fn by_output(&self, output: &Output) -> Option<(usize, &Monitor)> {
+        self.iter()
+            .enumerate()
+            .find(|(_, m)| m.output == *output)
+    }
+
     pub fn update_rules(&mut self, rules: &[config::OutputRule]) {
         for mon in self.iter_mut() {
             mon.resolve(rules);
