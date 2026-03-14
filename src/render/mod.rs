@@ -242,6 +242,9 @@ pub fn output_elements(
             let disable_border = config.layout.smart_borders && single_tiled;
             let radius = we.radius;
 
+            // popups above all decorations
+            elems.extend(popup_elements(renderer, &wl, win.loc - buf.loc, scale));
+
             // rev: render pipeline is back-to-front
             for step in we.render.iter().rev() {
                 match step {
@@ -271,8 +274,6 @@ pub fn output_elements(
                     }
                     RenderStep::WindowSurface { fill, .. } => {
                         let clip_r = if disable_gaps { 0.0 } else { radius };
-                        // popups on top of surface
-                        elems.extend(popup_elements(renderer, &wl, win.loc - buf.loc, scale));
 
                         // surfaces (clipped if radius > 0)
                         let surfs = render_elements_from_surface_tree(
