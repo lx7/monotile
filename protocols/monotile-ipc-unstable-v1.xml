@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="utf-8"?>
+<protocol name="monotile_ipc_unstable_v1">
+  <copyright>
+    Copyright 2025 The Monotile Authors
+
+    Permission to use, copy, modify, and/or distribute this software for any
+    purpose with or without fee is hereby granted, provided that the above
+    copyright notice and this permission notice appear in all copies.
+
+    THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+    WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+    MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+    ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+    WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+    ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+    OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+  </copyright>
+
+  <!-- Status: read-only compositor state for bars -->
+
+  <interface name="zmonotile_status_manager_v1" version="1">
+    <description summary="factory for status objects"/>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the manager">
+        Objects created through this instance are not affected.
+      </description>
+    </request>
+
+    <request name="get_output_status">
+      <description summary="create a per-output status object"/>
+      <arg name="id" type="new_id" interface="zmonotile_output_status_v1"/>
+      <arg name="output" type="object" interface="wl_output"/>
+    </request>
+
+    <request name="get_seat_status">
+      <description summary="create a per-seat status object"/>
+      <arg name="id" type="new_id" interface="zmonotile_seat_status_v1"/>
+      <arg name="seat" type="object" interface="wl_seat"/>
+    </request>
+  </interface>
+
+  <interface name="zmonotile_output_status_v1" version="1">
+    <description summary="per-output tag and layout state">
+      Events are sent on creation and when state changes.
+      Bitfield events carry complete state per category.
+    </description>
+
+    <request name="destroy" type="destructor"/>
+
+    <event name="tag_count">
+      <description summary="number of tags on this output">
+        Sent once before any other events.
+      </description>
+      <arg name="count" type="uint"/>
+    </event>
+
+    <event name="tag_name">
+      <description summary="display name for a tag">
+        Sent once per tag on creation, in index order.
+      </description>
+      <arg name="index" type="uint"/>
+      <arg name="name" type="string"/>
+    </event>
+
+    <event name="focused_tags">
+      <description summary="currently focused tags (bitfield)"/>
+      <arg name="tags" type="uint"/>
+    </event>
+
+    <event name="occupied_tags">
+      <description summary="tags with toplevels (bitfield)"/>
+      <arg name="tags" type="uint"/>
+    </event>
+
+    <event name="urgent_tags">
+      <description summary="tags with urgent toplevels (bitfield)"/>
+      <arg name="tags" type="uint"/>
+    </event>
+
+    <event name="layout">
+      <description summary="active layout"/>
+      <arg name="name" type="string" summary="identifier (e.g. tile, monocle)"/>
+      <arg name="symbol" type="string" summary="display symbol (e.g. []=, [M])"/>
+    </event>
+  </interface>
+
+  <interface name="zmonotile_seat_status_v1" version="1">
+    <description summary="per-seat focus state">
+      Events are sent on creation and when state changes.
+    </description>
+
+    <request name="destroy" type="destructor"/>
+
+    <event name="focused_output">
+      <description summary="output that has seat focus"/>
+      <arg name="output" type="object" interface="wl_output"/>
+    </event>
+
+    <event name="focused_toplevel">
+      <description summary="focused toplevel and its properties"/>
+      <arg name="title" type="string" allow-null="true"/>
+      <arg name="app_id" type="string"/>
+      <arg name="fullscreen" type="uint" summary="nonzero if fullscreen"/>
+      <arg name="floating" type="uint" summary="nonzero if floating"/>
+    </event>
+  </interface>
+
+  <!-- Control: compositor commands for monoctl and scripts -->
+
+  <interface name="zmonotile_control_v1" version="1">
+    <description summary="compositor control">
+      All requests are fire-and-forget; invalid arguments are ignored.
+    </description>
+
+    <request name="destroy" type="destructor"/>
+
+    <request name="get_seat_control">
+      <description summary="create a per-seat control object"/>
+      <arg name="id" type="new_id" interface="zmonotile_seat_control_v1"/>
+      <arg name="seat" type="object" interface="wl_seat"/>
+    </request>
+
+    <request name="spawn">
+      <description summary="run a command via sh -c"/>
+      <arg name="command" type="string"/>
+    </request>
+
+    <request name="reload_config">
+      <description summary="reload configuration"/>
+    </request>
+
+    <request name="exit">
+      <description summary="exit the compositor"/>
+    </request>
+  </interface>
+
+  <interface name="zmonotile_seat_control_v1" version="1">
+    <description summary="per-seat compositor control">
+      Requests operate on the seat's active output and focused toplevel.
+    </description>
+
+    <request name="destroy" type="destructor"/>
+
+    <enum name="direction">
+      <entry name="next" value="0"/>
+      <entry name="previous" value="1"/>
+      <entry name="up" value="2"/>
+      <entry name="down" value="3"/>
+      <entry name="left" value="4"/>
+      <entry name="right" value="5"/>
+    </enum>
+
+    <enum name="order">
+      <entry name="next" value="0"/>
+      <entry name="previous" value="1"/>
+      <entry name="first" value="2"/>
+      <entry name="last" value="3"/>
+    </enum>
+
+    <!-- Tag operations -->
+
+    <request name="focus_tag">
+      <description summary="switch to a tag by index"/>
+      <arg name="index" type="uint"/>
+    </request>
+
+    <request name="focus_previous_tag">
+      <description summary="switch to the previously focused tag"/>
+    </request>
+
+    <request name="set_toplevel_tag">
+      <description summary="move focused toplevel to a tag"/>
+      <arg name="index" type="uint"/>
+    </request>
+
+    <request name="toggle_toplevel_tag">
+      <description summary="toggle a tag on the focused toplevel"/>
+      <arg name="index" type="uint"/>
+    </request>
+
+    <!-- Toplevel operations -->
+
+    <request name="focus_toplevel">
+      <description summary="focus a toplevel by stack order"/>
+      <arg name="order" type="uint" enum="order"/>
+    </request>
+
+    <request name="swap">
+      <description summary="swap focused toplevel in the stack"/>
+      <arg name="order" type="uint" enum="order"/>
+    </request>
+
+    <request name="close">
+      <description summary="close the focused toplevel"/>
+    </request>
+
+    <request name="toggle_float">
+      <description summary="toggle floating"/>
+    </request>
+
+    <request name="toggle_fullscreen">
+      <description summary="toggle fullscreen"/>
+    </request>
+
+    <!-- Output operations -->
+
+    <request name="focus_output">
+      <description summary="focus an output"/>
+      <arg name="direction" type="uint" enum="direction"/>
+    </request>
+
+    <request name="send_to_output">
+      <description summary="send focused toplevel to an output"/>
+      <arg name="direction" type="uint" enum="direction"/>
+    </request>
+
+    <!-- Layout operations -->
+
+    <request name="adjust_main_count">
+      <description summary="adjust main area count"/>
+      <arg name="delta" type="int"/>
+    </request>
+
+    <request name="set_main_count">
+      <description summary="set main area count"/>
+      <arg name="count" type="uint"/>
+    </request>
+
+    <request name="adjust_main_ratio">
+      <description summary="adjust main area ratio"/>
+      <arg name="delta" type="fixed"/>
+    </request>
+
+    <request name="set_main_ratio">
+      <description summary="set main area ratio"/>
+      <arg name="ratio" type="fixed"/>
+    </request>
+  </interface>
+</protocol>
