@@ -1,5 +1,7 @@
 use super::Fixture;
 use super::client::IpcEvent;
+use super::ipc_client_protocol::monotile::zmonotile_seat_control_v1::Position;
+use crate::config::Action;
 
 fn open_window(f: &mut Fixture, c: usize) -> usize {
     let w = f.client_mut(c).create_window();
@@ -10,16 +12,14 @@ fn open_window(f: &mut Fixture, c: usize) -> usize {
     w
 }
 
-#[test]
-fn status_manager_binds() {
-    let mut f = Fixture::new();
-    let c = f.add_client();
-    f.client_mut(c).bind_output_status();
+fn control_roundtrip(f: &mut Fixture, c: usize) {
+    f.client(c).flush();
     f.roundtrip(c);
-
-    let events = f.client_mut(c).take_ipc_events();
-    assert!(!events.is_empty(), "should receive initial burst");
+    f.mt.state.flush_clients();
+    f.roundtrip(c);
 }
+
+// ── Output Status ───────────────────────────────────
 
 #[test]
 fn output_status_initial_burst() {
@@ -53,6 +53,14 @@ fn output_status_initial_burst() {
     assert!(
         events.contains(&IpcEvent::OccupiedTags(0)),
         "no tags occupied"
+    );
+    assert!(events.contains(&IpcEvent::UrgentTags(0)), "no tags urgent");
+    assert!(
+        events.contains(&IpcEvent::Layout {
+            name: "tile".into(),
+            symbol: "[]=".into(),
+        }),
+        "should contain layout event, got {events:?}"
     );
 }
 
@@ -96,6 +104,8 @@ fn output_status_occupied_tags_on_map() {
     );
 }
 
+// ── Seat Status ─────────────────────────────────────
+
 #[test]
 fn seat_status_no_focus() {
     let mut f = Fixture::new();
@@ -104,6 +114,10 @@ fn seat_status_no_focus() {
     f.roundtrip(c);
 
     let events = f.client_mut(c).take_ipc_events();
+    assert!(
+        events.contains(&IpcEvent::FocusedOutput),
+        "should receive focused_output, got {events:?}"
+    );
     let toplevel = events.iter().find_map(|e| match e {
         IpcEvent::FocusedToplevel { title, app_id, .. } => Some((title.clone(), app_id.clone())),
         _ => None,
@@ -116,6 +130,120 @@ fn seat_status_no_focus() {
 }
 
 #[test]
+fn seat_status_focused_toplevel() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+
+    let w = open_window(&mut f, c);
+    f.client(c).window(w).toplevel.set_title("hello".into());
+    f.client(c).window(w).toplevel.set_app_id("test.app".into());
+    f.client(c).flush();
+    f.roundtrip(c);
+
+    f.client_mut(c).bind_seat_status();
+    f.roundtrip(c);
+
+    let events = f.client_mut(c).take_ipc_events();
+    assert!(
+        events.contains(&IpcEvent::FocusedToplevel {
+            title: Some("hello".into()),
+            app_id: "test.app".into(),
+            fullscreen: false,
+            floating: false,
+        }),
+        "should reflect window metadata, got {events:?}"
+    );
+}
+
+#[test]
+fn seat_status_title_change() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+
+    let w = open_window(&mut f, c);
+    f.client_mut(c).bind_seat_status();
+    f.roundtrip(c);
+    f.client_mut(c).take_ipc_events();
+
+    f.client(c).window(w).toplevel.set_title("new title".into());
+    f.client(c).flush();
+    f.roundtrip(c);
+    f.mt.state.flush_clients();
+    f.roundtrip(c);
+
+    let events = f.client_mut(c).take_ipc_events();
+    let title = events.iter().find_map(|e| match e {
+        IpcEvent::FocusedToplevel { title, .. } => title.clone(),
+        _ => None,
+    });
+    assert_eq!(
+        title,
+        Some("new title".into()),
+        "title should update, got {events:?}"
+    );
+}
+
+#[test]
+fn seat_status_fullscreen_floating() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+
+    open_window(&mut f, c);
+    f.client_mut(c).bind_seat_status();
+    f.roundtrip(c);
+    f.client_mut(c).take_ipc_events();
+
+    // toggle fullscreen
+    f.mt.handle_action(Action::ToggleFullscreen);
+    f.mt.state.flush_clients();
+    f.roundtrip(c);
+
+    let events = f.client_mut(c).take_ipc_events();
+    assert!(
+        events.iter().any(|e| matches!(
+            e,
+            IpcEvent::FocusedToplevel {
+                fullscreen: true,
+                ..
+            }
+        )),
+        "should be fullscreen, got {events:?}"
+    );
+
+    // unfullscreen
+    f.mt.handle_action(Action::ToggleFullscreen);
+    f.mt.state.flush_clients();
+    f.roundtrip(c);
+
+    let events = f.client_mut(c).take_ipc_events();
+    assert!(
+        events.iter().any(|e| matches!(
+            e,
+            IpcEvent::FocusedToplevel {
+                fullscreen: false,
+                ..
+            }
+        )),
+        "should not be fullscreen, got {events:?}"
+    );
+
+    // toggle floating
+    f.mt.handle_action(Action::ToggleFloat);
+    f.mt.state.flush_clients();
+    f.roundtrip(c);
+
+    let events = f.client_mut(c).take_ipc_events();
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, IpcEvent::FocusedToplevel { floating: true, .. })),
+        "should be floating, got {events:?}"
+    );
+}
+
+// ── Control: global ─────────────────────────────────
+
+#[test]
 fn control_exit() {
     let mut f = Fixture::new();
     let c = f.add_client();
@@ -123,6 +251,8 @@ fn control_exit() {
     f.client(c).flush();
     f.roundtrip(c);
 }
+
+// ── Control: tag operations ─────────────────────────
 
 #[test]
 fn seat_control_focus_tag() {
@@ -134,17 +264,147 @@ fn seat_control_focus_tag() {
     f.client_mut(c).take_ipc_events();
 
     f.client(c).seat_control().focus_tag(3);
-    f.client(c).flush();
-    f.roundtrip(c);
-
-    f.mt.state.flush_clients();
-    f.roundtrip(c);
+    control_roundtrip(&mut f, c);
 
     let events = f.client_mut(c).take_ipc_events();
     assert!(
         events.contains(&IpcEvent::FocusedTags(1 << 3)),
         "should switch to tag 3, got {events:?}",
     );
+}
+
+#[test]
+fn seat_control_focus_previous_tag() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    f.client_mut(c).bind_output_status();
+    f.client_mut(c).bind_seat_control();
+    f.roundtrip(c);
+    f.client_mut(c).take_ipc_events();
+
+    // switch to tag 2
+    f.client(c).seat_control().focus_tag(2);
+    control_roundtrip(&mut f, c);
+    f.client_mut(c).take_ipc_events();
+
+    // toggle back
+    f.client(c).seat_control().focus_previous_tag();
+    control_roundtrip(&mut f, c);
+
+    let events = f.client_mut(c).take_ipc_events();
+    assert!(
+        events.contains(&IpcEvent::FocusedTags(1)),
+        "should toggle back to tag 0, got {events:?}"
+    );
+}
+
+#[test]
+fn seat_control_set_toplevel_tag() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+
+    open_window(&mut f, c);
+    f.client_mut(c).bind_output_status();
+    f.client_mut(c).bind_seat_control();
+    f.roundtrip(c);
+    f.client_mut(c).take_ipc_events();
+
+    // move window to tag 2
+    f.client(c).seat_control().set_toplevel_tag(2);
+    control_roundtrip(&mut f, c);
+
+    let events = f.client_mut(c).take_ipc_events();
+    assert!(
+        events.contains(&IpcEvent::OccupiedTags(0b100)),
+        "tag 2 should be occupied, got {events:?}"
+    );
+    // tag 0 no longer occupied
+    assert!(
+        !events.contains(&IpcEvent::OccupiedTags(1)),
+        "tag 0 should not be occupied"
+    );
+}
+
+#[test]
+fn seat_control_toggle_toplevel_tag() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+
+    open_window(&mut f, c);
+    f.client_mut(c).bind_output_status();
+    f.client_mut(c).bind_seat_control();
+    f.roundtrip(c);
+    f.client_mut(c).take_ipc_events();
+
+    // toggle tag 2 on the window (window now on tags 0 and 2)
+    f.client(c).seat_control().toggle_toplevel_tag(2);
+    control_roundtrip(&mut f, c);
+
+    let events = f.client_mut(c).take_ipc_events();
+    assert!(
+        events.contains(&IpcEvent::OccupiedTags(0b101)),
+        "tags 0 and 2 should be occupied, got {events:?}"
+    );
+}
+
+// ── Control: toplevel operations ────────────────────
+
+#[test]
+fn seat_control_focus_toplevel() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+
+    let w0 = open_window(&mut f, c);
+    f.client(c).window(w0).toplevel.set_title("first".into());
+    f.client(c).flush();
+    f.roundtrip(c);
+
+    let w1 = open_window(&mut f, c);
+    f.client(c).window(w1).toplevel.set_title("second".into());
+    f.client(c).flush();
+    f.roundtrip(c);
+
+    // second window should be focused now
+    f.client_mut(c).bind_seat_status();
+    f.client_mut(c).bind_seat_control();
+    f.roundtrip(c);
+    f.client_mut(c).take_ipc_events();
+
+    // focus next (wraps to first)
+    f.client(c).seat_control().focus_toplevel(Position::Next);
+    control_roundtrip(&mut f, c);
+
+    let events = f.client_mut(c).take_ipc_events();
+    let title = events.iter().find_map(|e| match e {
+        IpcEvent::FocusedToplevel { title, .. } => title.clone(),
+        _ => None,
+    });
+    assert_eq!(
+        title,
+        Some("first".into()),
+        "focus should cycle to first, got {events:?}"
+    );
+}
+
+#[test]
+fn seat_control_swap() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+
+    open_window(&mut f, c);
+    open_window(&mut f, c);
+
+    f.client_mut(c).bind_seat_control();
+    f.roundtrip(c);
+
+    // swap focused window with next
+    let before: Vec<_> = f.mt.state.mon().tag().tiled.clone();
+    f.client(c).seat_control().swap(Position::Next);
+    f.client(c).flush();
+    f.roundtrip(c);
+
+    let after: Vec<_> = f.mt.state.mon().tag().tiled.clone();
+    assert_ne!(before, after, "tiled order should change after swap");
 }
 
 #[test]
@@ -168,6 +428,94 @@ fn seat_control_close() {
     let ws = f.client(c).window(w);
     assert!(ws.closed, "window should receive close event");
 }
+
+#[test]
+fn seat_control_toggle_float() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+
+    open_window(&mut f, c);
+    f.client_mut(c).bind_seat_status();
+    f.client_mut(c).bind_seat_control();
+    f.roundtrip(c);
+    f.client_mut(c).take_ipc_events();
+
+    f.client(c).seat_control().toggle_float();
+    control_roundtrip(&mut f, c);
+
+    let events = f.client_mut(c).take_ipc_events();
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, IpcEvent::FocusedToplevel { floating: true, .. })),
+        "should be floating, got {events:?}"
+    );
+}
+
+#[test]
+fn seat_control_toggle_fullscreen() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+
+    open_window(&mut f, c);
+    f.client_mut(c).bind_seat_status();
+    f.client_mut(c).bind_seat_control();
+    f.roundtrip(c);
+    f.client_mut(c).take_ipc_events();
+
+    f.client(c).seat_control().toggle_fullscreen();
+    control_roundtrip(&mut f, c);
+
+    let events = f.client_mut(c).take_ipc_events();
+    assert!(
+        events.iter().any(|e| matches!(
+            e,
+            IpcEvent::FocusedToplevel {
+                fullscreen: true,
+                ..
+            }
+        )),
+        "should be fullscreen, got {events:?}"
+    );
+}
+
+// ── Control: layout operations ──────────────────────
+
+#[test]
+fn seat_control_adjust_main_count() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    f.client_mut(c).bind_seat_control();
+    f.roundtrip(c);
+
+    let before = f.mt.state.mon().tag().layout.main_count;
+    f.client(c).seat_control().adjust_main_count(1);
+    f.client(c).flush();
+    f.roundtrip(c);
+
+    let after = f.mt.state.mon().tag().layout.main_count;
+    assert_eq!(after, before + 1, "main_count should increase by 1");
+}
+
+#[test]
+fn seat_control_set_main_ratio() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    f.client_mut(c).bind_seat_control();
+    f.roundtrip(c);
+
+    f.client(c).seat_control().set_main_ratio(0.7);
+    f.client(c).flush();
+    f.roundtrip(c);
+
+    let ratio = f.mt.state.mon().tag().layout.main_factor;
+    assert!(
+        (ratio - 0.7).abs() < 0.01,
+        "main_factor should be ~0.7, got {ratio}"
+    );
+}
+
+// ── Lifecycle ───────────────────────────────────────
 
 #[test]
 fn client_disconnect_no_crash() {

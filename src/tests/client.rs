@@ -15,7 +15,10 @@ use wayland_client::{
 };
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
-use super::monotile_ipc_client_protocol::{
+use super::ipc_client_protocol::dwl::{
+    zdwl_ipc_manager_v2::ZdwlIpcManagerV2, zdwl_ipc_output_v2::ZdwlIpcOutputV2,
+};
+use super::ipc_client_protocol::monotile::{
     zmonotile_control_v1::ZmonotileControlV1, zmonotile_output_status_v1::ZmonotileOutputStatusV1,
     zmonotile_seat_control_v1::ZmonotileSeatControlV1,
     zmonotile_seat_status_v1::ZmonotileSeatStatusV1,
@@ -45,6 +48,10 @@ struct ClientData {
     ipc_seat_status: Option<ZmonotileSeatStatusV1>,
     ipc_seat_control: Option<ZmonotileSeatControlV1>,
     pub ipc_events: Vec<IpcEvent>,
+
+    ipc_dwl_manager: Option<ZdwlIpcManagerV2>,
+    ipc_dwl_output: Option<ZdwlIpcOutputV2>,
+    pub ipc_dwl_events: Vec<DwlEvent>,
 }
 
 pub struct WindowState {
@@ -54,6 +61,27 @@ pub struct WindowState {
     pub configures: Vec<Configure>,
     pub closed: bool,
     last_serial: u32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DwlEvent {
+    Tags(u32),
+    ManagerLayout(String),
+    ToggleVisibility,
+    Active(u32),
+    Tag {
+        tag: u32,
+        state: u32,
+        clients: u32,
+        focused: u32,
+    },
+    Layout(u32),
+    Title(String),
+    AppId(String),
+    LayoutSymbol(String),
+    Frame,
+    Fullscreen(u32),
+    Floating(u32),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -70,6 +98,7 @@ pub enum IpcEvent {
         name: String,
         symbol: String,
     },
+    FocusedOutput,
     FocusedToplevel {
         title: Option<String>,
         app_id: String,
@@ -108,6 +137,10 @@ impl Client {
             ipc_seat_status: None,
             ipc_seat_control: None,
             ipc_events: Vec::new(),
+
+            ipc_dwl_manager: None,
+            ipc_dwl_output: None,
+            ipc_dwl_events: Vec::new(),
         };
 
         let mut client = Client { conn, queue, data };
@@ -186,11 +219,15 @@ impl Client {
         self.data.windows[win].configures.drain(..).collect()
     }
 
-    // IPC
+    // monotile-ipc
 
     pub fn bind_output_status(&mut self) {
         let qh = self.queue.handle();
-        let mgr = self.data.ipc_status_manager.as_ref().expect("ipc_status_manager");
+        let mgr = self
+            .data
+            .ipc_status_manager
+            .as_ref()
+            .expect("ipc_status_manager");
         let output = self.data.ipc_output.as_ref().expect("ipc_output");
         self.data.ipc_output_status = Some(mgr.get_output_status(output, &qh, ()));
         let _ = self.queue.flush();
@@ -198,7 +235,11 @@ impl Client {
 
     pub fn bind_seat_status(&mut self) {
         let qh = self.queue.handle();
-        let mgr = self.data.ipc_status_manager.as_ref().expect("ipc_status_manager");
+        let mgr = self
+            .data
+            .ipc_status_manager
+            .as_ref()
+            .expect("ipc_status_manager");
         let seat = self.data.ipc_seat.as_ref().expect("ipc_seat");
         self.data.ipc_seat_status = Some(mgr.get_seat_status(seat, &qh, ()));
         let _ = self.queue.flush();
@@ -213,7 +254,10 @@ impl Client {
     }
 
     pub fn seat_control(&self) -> &ZmonotileSeatControlV1 {
-        self.data.ipc_seat_control.as_ref().expect("ipc_seat_control")
+        self.data
+            .ipc_seat_control
+            .as_ref()
+            .expect("ipc_seat_control")
     }
 
     pub fn control(&self) -> &ZmonotileControlV1 {
@@ -240,6 +284,31 @@ impl Client {
 
     pub fn flush(&self) {
         let _ = self.queue.flush();
+    }
+
+    // dwl-ipc
+
+    pub fn bind_dwl_output(&mut self) {
+        let qh = self.queue.handle();
+        let mgr = self.data.ipc_dwl_manager.as_ref().expect("dwl_manager");
+        let output = self.data.ipc_output.as_ref().expect("ipc_output");
+        self.data.ipc_dwl_output = Some(mgr.get_output(output, &qh, ()));
+        let _ = self.queue.flush();
+    }
+
+    pub fn dwl_output(&self) -> &ZdwlIpcOutputV2 {
+        self.data.ipc_dwl_output.as_ref().expect("dwl_output")
+    }
+
+    pub fn destroy_dwl_output(&mut self) {
+        if let Some(o) = self.data.ipc_dwl_output.take() {
+            o.release();
+            let _ = self.queue.flush();
+        }
+    }
+
+    pub fn take_dwl_events(&mut self) -> Vec<DwlEvent> {
+        self.data.ipc_dwl_events.drain(..).collect()
     }
 }
 
@@ -281,6 +350,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientData {
                 }
                 "zmonotile_control_v1" => {
                     state.ipc_control = Some(registry.bind(name, version, qh, ()));
+                }
+                "zdwl_ipc_manager_v2" => {
+                    state.ipc_dwl_manager = Some(registry.bind(name, version, qh, ()));
                 }
                 _ => {}
             }
@@ -492,7 +564,7 @@ impl Dispatch<ZmonotileOutputStatusV1, ()> for ClientData {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        use super::monotile_ipc_client_protocol::zmonotile_output_status_v1::Event;
+        use super::ipc_client_protocol::monotile::zmonotile_output_status_v1::Event;
         match event {
             Event::TagCount { count } => state.ipc_events.push(IpcEvent::TagCount(count)),
             Event::TagName { index, name } => {
@@ -517,8 +589,11 @@ impl Dispatch<ZmonotileSeatStatusV1, ()> for ClientData {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        use super::monotile_ipc_client_protocol::zmonotile_seat_status_v1::Event;
+        use super::ipc_client_protocol::monotile::zmonotile_seat_status_v1::Event;
         match event {
+            Event::FocusedOutput { .. } => {
+                state.ipc_events.push(IpcEvent::FocusedOutput);
+            }
             Event::FocusedToplevel {
                 title,
                 app_id,
@@ -532,7 +607,6 @@ impl Dispatch<ZmonotileSeatStatusV1, ()> for ClientData {
                     floating: floating != 0,
                 });
             }
-            _ => {}
         }
     }
 }
@@ -558,5 +632,65 @@ impl Dispatch<ZmonotileSeatControlV1, ()> for ClientData {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+    }
+}
+
+// ── DWL IPC Dispatch impls ─────────────────────────
+
+impl Dispatch<ZdwlIpcManagerV2, ()> for ClientData {
+    fn event(
+        state: &mut Self,
+        _: &ZdwlIpcManagerV2,
+        event: <ZdwlIpcManagerV2 as wayland_client::Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use super::ipc_client_protocol::dwl::zdwl_ipc_manager_v2::Event;
+        match event {
+            Event::Tags { amount } => state.ipc_dwl_events.push(DwlEvent::Tags(amount)),
+            Event::Layout { name } => state.ipc_dwl_events.push(DwlEvent::ManagerLayout(name)),
+        }
+    }
+}
+
+impl Dispatch<ZdwlIpcOutputV2, ()> for ClientData {
+    fn event(
+        state: &mut Self,
+        _: &ZdwlIpcOutputV2,
+        event: <ZdwlIpcOutputV2 as wayland_client::Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use super::ipc_client_protocol::dwl::zdwl_ipc_output_v2::Event;
+        match event {
+            Event::ToggleVisibility => state.ipc_dwl_events.push(DwlEvent::ToggleVisibility),
+            Event::Active { active } => state.ipc_dwl_events.push(DwlEvent::Active(active)),
+            Event::Tag {
+                tag,
+                state: tag_state,
+                clients,
+                focused,
+            } => state.ipc_dwl_events.push(DwlEvent::Tag {
+                tag,
+                state: tag_state.into(),
+                clients,
+                focused,
+            }),
+            Event::Layout { layout } => state.ipc_dwl_events.push(DwlEvent::Layout(layout)),
+            Event::Title { title } => state.ipc_dwl_events.push(DwlEvent::Title(title)),
+            Event::Appid { appid } => state.ipc_dwl_events.push(DwlEvent::AppId(appid)),
+            Event::LayoutSymbol { layout } => {
+                state.ipc_dwl_events.push(DwlEvent::LayoutSymbol(layout))
+            }
+            Event::Frame => state.ipc_dwl_events.push(DwlEvent::Frame),
+            Event::Fullscreen { is_fullscreen } => state
+                .ipc_dwl_events
+                .push(DwlEvent::Fullscreen(is_fullscreen)),
+            Event::Floating { is_floating } => {
+                state.ipc_dwl_events.push(DwlEvent::Floating(is_floating))
+            }
+        }
     }
 }
