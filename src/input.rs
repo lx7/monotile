@@ -2,7 +2,7 @@
 
 use crate::{
     Monotile,
-    config::{Action, Config, Mods, MouseAction},
+    config::{Action, Config, Mods, Trigger},
     grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
     spawn::spawn,
 };
@@ -67,7 +67,9 @@ impl Monotile {
                         // key binds
                         let mods = Mods::from(modifiers);
                         for sym in handle.raw_syms() {
-                            if let Some(action) = monotile.state.config.keybinds.get(&(sym, mods)) {
+                            if let Some(action) =
+                                monotile.state.config.binds.get(&(Trigger::Key(sym), mods))
+                            {
                                 return FilterResult::Intercept(Some(action.clone()));
                             }
                         }
@@ -101,7 +103,9 @@ impl Monotile {
                     && !self.state.locked
                 {
                     let mods = Mods::from(&keyboard.modifier_state());
-                    if let Some(action) = self.state.config.mousebinds.get(&(button, mods)) {
+                    if let Some(action) =
+                        self.state.config.binds.get(&(Trigger::Mouse(button), mods))
+                    {
                         self.handle_mouse_action(
                             action.clone(),
                             button,
@@ -288,6 +292,8 @@ impl Monotile {
             }
             // TODO: implement multi-monitor
             FocusOutput(_) | SendToOutput(_) => {}
+            // mouse-only actions - no-op for keyboard
+            Move | Resize => {}
         }
         self.recompute_layout();
         self.backend.schedule_render(&self.state.mon().output);
@@ -295,11 +301,19 @@ impl Monotile {
 
     fn handle_mouse_action(
         &mut self,
-        action: MouseAction,
+        action: Action,
         btn: u32,
         pos: Point<f64, Logical>,
         serial: smithay::utils::Serial,
     ) {
+        match action {
+            Action::Move | Action::Resize => {}
+            other => {
+                self.handle_action(other);
+                return;
+            }
+        }
+
         let tag = self.state.mon().tag();
         let we = match self.state.windows.window_under(tag, pos) {
             Some(we) if we.floating => we,
@@ -309,7 +323,7 @@ impl Monotile {
         let geo = we.geo();
         let ptr = self.state.seat.get_pointer().unwrap();
         match action {
-            MouseAction::Move => {
+            Action::Move => {
                 self.state.cursor.override_icon = Some(CursorIcon::Grabbing);
                 let start = GrabStartData {
                     focus: self.state.surface_under(pos).0,
@@ -319,7 +333,7 @@ impl Monotile {
                 let grab = MoveSurfaceGrab::start(start, id, geo);
                 ptr.set_grab(self, grab, serial, Focus::Clear);
             }
-            MouseAction::Resize => {
+            Action::Resize => {
                 self.state.cursor.override_icon = Some(CursorIcon::SeResize);
                 let corner = (geo.loc + geo.size).to_f64();
                 ptr.set_location(corner);
@@ -331,9 +345,7 @@ impl Monotile {
                 let grab = ResizeSurfaceGrab::start(start, id, geo);
                 ptr.set_grab(self, grab, serial, Focus::Clear);
             }
-            MouseAction::ToggleFloating => {
-                // TODO: implement ToggleFloating
-            }
+            _ => unreachable!(),
         }
     }
 }

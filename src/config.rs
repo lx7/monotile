@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-// TODO: remove when config handling is complete
-#![allow(dead_code)]
-
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -64,13 +61,13 @@ thread_local! {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct Palette(HashMap<String, Color>);
+pub struct Palette;
 
 impl<'de> Deserialize<'de> for Palette {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let map = HashMap::<String, Color>::deserialize(d)?;
-        PALETTE.with(|p| *p.borrow_mut() = map.clone());
-        Ok(Palette(map))
+        PALETTE.with(|p| *p.borrow_mut() = map);
+        Ok(Palette)
     }
 }
 
@@ -296,8 +293,7 @@ pub struct Config {
     pub layout: Layout,
     pub windows: Vec<WindowRule>,
     pub input: Input,
-    pub keybinds: KeyMap,
-    pub mousebinds: MouseMap,
+    pub binds: BindMap,
     #[serde(skip)]
     pub path: PathBuf,
 }
@@ -409,50 +405,54 @@ pub enum Action {
     AdjustMainRatio(f32),
     SetMainRatio(f32),
 
+    Move,
+    Resize,
+
     Spawn(Vec<String>),
     Exit,
     ReloadConfig,
     ChangeVt(i32),
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
-pub enum MouseAction {
-    Move,
-    Resize,
-    ToggleFloating,
+// --- Bindings ---
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Trigger {
+    Key(Keysym),
+    Mouse(u32),
 }
 
-// --- KeyMap / MouseMap ---
-
-#[derive(Debug, Default, Clone, Deref)]
-pub struct KeyMap(HashMap<(Keysym, Mods), Action>);
-
-impl<'de> Deserialize<'de> for KeyMap {
+impl<'de> Deserialize<'de> for Trigger {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let raw: Vec<(Vec<Mod>, String, Action)> = Vec::deserialize(d)?;
-        let mut map = HashMap::new();
-        for (mods, name, action) in raw {
-            let sym = xkb::keysym_from_name(&name, xkb::KEYSYM_CASE_INSENSITIVE);
-            if sym.raw() == 0 {
-                return Err(Error::custom(format!("unknown key: {name}")));
-            }
-            map.insert((sym, Mods::from(mods.as_slice())), action);
+        #[derive(Deserialize)]
+        enum Raw {
+            Key(String),
+            Mouse(Button),
         }
-        Ok(KeyMap(map))
+        match Raw::deserialize(d)? {
+            Raw::Key(name) => {
+                let sym = xkb::keysym_from_name(&name, xkb::KEYSYM_CASE_INSENSITIVE);
+                if sym.raw() == 0 {
+                    return Err(Error::custom(format!("unknown key: {name}")));
+                }
+                Ok(Trigger::Key(sym))
+            }
+            Raw::Mouse(btn) => Ok(Trigger::Mouse(btn as u32)),
+        }
     }
 }
 
 #[derive(Debug, Default, Clone, Deref)]
-pub struct MouseMap(HashMap<(u32, Mods), MouseAction>);
+pub struct BindMap(HashMap<(Trigger, Mods), Action>);
 
-impl<'de> Deserialize<'de> for MouseMap {
+impl<'de> Deserialize<'de> for BindMap {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let raw: Vec<(Vec<Mod>, Button, MouseAction)> = Vec::deserialize(d)?;
+        let raw: Vec<(Vec<Mod>, Trigger, Action)> = Vec::deserialize(d)?;
         let mut map = HashMap::new();
-        for (mods, btn, action) in raw {
-            map.insert((btn as u32, Mods::from(mods.as_slice())), action);
+        for (mods, trigger, action) in raw {
+            map.insert((trigger, Mods::from(mods.as_slice())), action);
         }
-        Ok(MouseMap(map))
+        Ok(BindMap(map))
     }
 }
 
@@ -542,15 +542,13 @@ mod tests {
         assert_eq!(file.layout, code.layout);
         assert_eq!(file.input, code.input);
 
-        assert!(!file.keybinds.is_empty(), "keybinds empty");
-        assert!(!file.mousebinds.is_empty(), "mousebinds empty");
+        assert!(!file.binds.is_empty(), "binds empty");
     }
 
     #[test]
     fn load_defaults_file() {
         let config = Config::load(Some(defaults_path())).unwrap();
-        assert!(!config.keybinds.is_empty());
-        assert!(!config.mousebinds.is_empty());
+        assert!(!config.binds.is_empty());
     }
 
     #[test]
@@ -614,7 +612,7 @@ mod tests {
 
     #[test]
     fn keysym_unknown() {
-        let ron = r#"(keybinds: [([Logo], "NonExistentKey_XYZ", Quit)])"#;
+        let ron = r#"(binds: [([Logo], Key("NonExistentKey_XYZ"), Quit)])"#;
         let r = ron::from_str::<Config>(ron);
         assert!(r.is_err());
     }
