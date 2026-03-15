@@ -5,9 +5,10 @@ use smithay::{
     backend::renderer::utils::with_renderer_surface_state,
     delegate_kde_decoration, delegate_xdg_decoration, delegate_xdg_shell,
     desktop::{
-        PopupKind, Window, WindowSurfaceType, find_popup_root_surface, get_popup_toplevel_coords,
-        layer_map_for_output,
+        PopupKeyboardGrab, PopupKind, PopupPointerGrab, Window, WindowSurfaceType,
+        find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output,
     },
+    input::{Seat, pointer::Focus},
     reexports::{
         wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode,
         wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::OrgKdeKwinServerDecoration,
@@ -144,8 +145,22 @@ impl XdgShellHandler for Monotile {
         }
     }
 
-    fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
-        // TODO: implement popup grabs
+    fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
+        let seat: Seat<Monotile> = Seat::from_resource(&seat).unwrap();
+        let kind = PopupKind::Xdg(surface);
+        let Ok(root) = find_popup_root_surface(&kind) else {
+            return;
+        };
+        let Ok(grab) = self.state.popups.grab_popup(root, kind, &seat, serial) else {
+            return;
+        };
+        if let Some(kb) = seat.get_keyboard() {
+            kb.set_focus(self, grab.current_grab(), serial);
+            kb.set_grab(self, PopupKeyboardGrab::new(&grab), serial);
+        }
+        if let Some(ptr) = seat.get_pointer() {
+            ptr.set_grab(self, PopupPointerGrab::new(&grab), serial, Focus::Keep);
+        }
     }
 }
 
