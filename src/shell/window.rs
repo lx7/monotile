@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use derive_more::{Deref, DerefMut};
 use slotmap::SlotMap;
 use smithay::{
-    desktop::Window,
+    desktop::{Window, WindowSurfaceType},
     reexports::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::protocol::wl_surface::WlSurface,
@@ -276,6 +276,22 @@ impl Windows {
     pub fn any_pending_resize(&self, tag: &Tag) -> bool {
         tag.window_ids()
             .any(|id| self.get(id).is_some_and(|we| we.has_pending_resize()))
+    }
+
+    pub fn window_id_under(&self, tag: &Tag, pos: Point<f64, Logical>) -> Option<WindowId> {
+        for id in tag.window_ids().rev() {
+            let Some(we) = self.get(id) else { continue };
+            let loc = we.geo().loc - we.window.geometry().loc;
+            let rel = pos - loc.to_f64();
+            if we
+                .window
+                .surface_under(rel, WindowSurfaceType::ALL)
+                .is_some()
+            {
+                return Some(id);
+            }
+        }
+        None
     }
 
     pub fn window_under(&self, tag: &Tag, pos: Point<f64, Logical>) -> Option<&WindowElement> {

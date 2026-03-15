@@ -160,7 +160,11 @@ impl DrmState {
             &mut self.renderer,
             &elems,
             mon.background,
-            FrameFlags::DEFAULT | FrameFlags::ALLOW_PRIMARY_PLANE_SCANOUT_ANY,
+            FrameFlags::DEFAULT
+                | FrameFlags::ALLOW_PRIMARY_PLANE_SCANOUT_ANY
+                | FrameFlags::ALLOW_OVERLAY_PLANE_SCANOUT
+                | FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT
+                | FrameFlags::SKIP_CURSOR_ONLY_UPDATES,
         ) {
             Ok(result) => result,
             Err(err) => {

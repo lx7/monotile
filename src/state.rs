@@ -112,7 +112,6 @@ impl Monotile {
         self.update_focus();
     }
 
-
     pub fn reload_config(&mut self) {
         let path = self.state.config.path.clone();
         let config = match config::load(Some(path)) {
@@ -211,6 +210,7 @@ pub struct State {
     pub viewporter_state: ViewporterState,
     pub single_pixel_buffer_state: SinglePixelBufferState,
     pub idle_notifier_state: IdleNotifierState<Monotile>,
+    pub idle_notifier_activity: bool,
     pub idle_inhibit_state: IdleInhibitManagerState,
     pub popups: PopupManager,
     pub seat: Seat<Monotile>,
@@ -291,6 +291,7 @@ impl State {
             viewporter_state,
             single_pixel_buffer_state,
             idle_notifier_state,
+            idle_notifier_activity: false,
             idle_inhibit_state,
             popups: PopupManager::default(),
             seat,
@@ -346,13 +347,14 @@ impl State {
     pub fn surface_under(
         &self,
         pos: Point<f64, Logical>,
-    ) -> Option<(WlSurface, Point<f64, Logical>)> {
+    ) -> (Option<(WlSurface, Point<f64, Logical>)>, Option<WindowId>) {
         if self.locked {
-            return self
+            let surface = self
                 .mon()
                 .lock_surface
                 .as_ref()
                 .map(|ls| (ls.wl_surface().clone(), pos));
+            return (surface, None);
         }
 
         let mon = self.mon();
@@ -367,21 +369,24 @@ impl State {
 
         // overlay / top layers
         if let Some(hit) = layer_hit(Layer::Overlay).or_else(|| layer_hit(Layer::Top)) {
-            return Some(hit);
+            return (Some(hit), None);
         }
 
-        // windows
-        let we = self.windows.window_under(mon.tag(), pos);
-        if let Some(we) = we {
+        // windows and popups
+        for id in mon.tag().window_ids().rev() {
+            let Some(we) = self.windows.get(id) else {
+                continue;
+            };
             let loc = we.geo().loc - we.window.geometry().loc;
             let rel = pos - loc.to_f64();
             if let Some((s, point)) = we.window.surface_under(rel, WindowSurfaceType::ALL) {
-                return Some((s, (point + loc).to_f64()));
+                return (Some((s, (point + loc).to_f64())), Some(id));
             }
         }
 
         // bottom / background layers
-        layer_hit(Layer::Bottom).or_else(|| layer_hit(Layer::Background))
+        let hit = layer_hit(Layer::Bottom).or_else(|| layer_hit(Layer::Background));
+        (hit, None)
     }
 
     pub fn find_pending(&self, surface: &WlSurface) -> Option<(usize, ToplevelSurface)> {
@@ -401,8 +406,17 @@ impl State {
             .unwrap();
     }
 
+    pub fn notify_activity(&mut self) {
+        if !self.idle_notifier_activity {
+            self.idle_notifier_activity = true;
+            self.idle_notifier_state.notify_activity(&self.seat);
+        }
+    }
+
     pub fn flush_clients(&mut self) {
-        self.ipc.flush(&self.monitors, &self.windows, self.active_monitor);
+        self.idle_notifier_activity = false;
+        self.ipc
+            .flush(&self.monitors, &self.windows, self.active_monitor);
         let _ = self.display_handle.flush_clients();
     }
 }

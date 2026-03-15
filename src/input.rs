@@ -22,9 +22,7 @@ use smithay::{
 
 impl Monotile {
     pub fn process_input_event<I: InputBackend>(&mut self, event: InputEvent<I>) {
-        self.state
-            .idle_notifier_state
-            .notify_activity(&self.state.seat);
+        self.state.notify_activity();
 
         let pointer = self.state.seat.get_pointer().unwrap();
         let keyboard = self.state.seat.get_keyboard().unwrap();
@@ -115,12 +113,8 @@ impl Monotile {
 
                     // raise window and focus
                     let tag = self.state.mon().tag();
-                    if let Some(we) = self
-                        .state
-                        .windows
-                        .window_under(tag, pointer.current_location())
-                    {
-                        let id = we.id;
+                    let pos = pointer.current_location();
+                    if let Some(id) = self.state.windows.window_id_under(tag, pos) {
                         self.state.mon_mut().tag_mut().raise(id);
                         self.set_focus(Some(id));
                     }
@@ -188,16 +182,14 @@ impl Monotile {
     ) {
         let pointer = self.state.seat.get_pointer().unwrap();
 
+        let (target, window_id) = self.state.surface_under(pos);
+
         if self.state.config.input.focus_follows_cursor {
-            let tag = self.state.mon().tag();
-            if let Some(we) = self.state.windows.window_under(tag, pos) {
-                if Some(we.id) != tag.focused_id() {
-                    self.set_focus(Some(we.id));
-                }
+            if window_id.is_some() && window_id != self.state.mon().tag().focused_id() {
+                self.set_focus(window_id);
             }
         }
 
-        let target = self.state.surface_under(pos);
         pointer.motion(
             self,
             target,
@@ -320,7 +312,7 @@ impl Monotile {
             MouseAction::Move => {
                 self.state.cursor.override_icon = Some(CursorIcon::Grabbing);
                 let start = GrabStartData {
-                    focus: self.state.surface_under(pos),
+                    focus: self.state.surface_under(pos).0,
                     button: btn,
                     location: pos,
                 };
@@ -332,7 +324,7 @@ impl Monotile {
                 let corner = (geo.loc + geo.size).to_f64();
                 ptr.set_location(corner);
                 let start = GrabStartData {
-                    focus: self.state.surface_under(corner),
+                    focus: self.state.surface_under(corner).0,
                     button: btn,
                     location: corner,
                 };
