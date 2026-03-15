@@ -7,13 +7,22 @@
 // https://github.com/ron-rs/ron
 
 (
+    // Named colors. Can be used in place of hex strings below.
+    colors: {
+        "black":  "#000000",
+        "gray":   "#444444",
+        "red":    "#cc241d",
+        "blue":   "#458588",
+        "shadow": "#00000073",
+    },
+
     // Output rules: top-to-bottom, later rules override earlier ones.
     outputs: [
         (   // default settings, match all
             match: (), 
             scale: 1.0,
             tags: ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
-            background: "#444444",
+            background: "gray",
         ),
         // all available fields:
         // (
@@ -49,18 +58,18 @@
         (   // tiled defaults, match all
             match: (),
             render: [
-                WindowSurface(fill: "#000000"),
-                Border(width: 2, color: "#444444"),
-                FocusRing(width: 2, color: "#458588"),
+                WindowSurface(fill: "black"),
+                Border(width: 2, color: "gray"),
+                FocusRing(width: 2, color: "blue"),
             ],
         ),
         (   // floating overrides
             match: (floating: true),
             render: [
-                Shadow(softness: 25, spread: 5, offset: (0, 5), color: "#00000073"),
-                WindowSurface(radius: 6.0, fill: "#000000"),
-                Border(width: 2, color: "#444444"),
-                FocusRing(width: 2, color: "#458588"),
+                Shadow(softness: 25, spread: 5, offset: (0, 5), color: "shadow"),
+                WindowSurface(radius: 6.0, fill: "black"),
+                Border(width: 2, color: "gray"),
+                FocusRing(width: 2, color: "blue"),
             ],
         ),
         // examples (match strings are auto-anchored regex):

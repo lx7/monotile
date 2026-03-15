@@ -2,7 +2,7 @@
 
 use monotile::{
     Monotile, backend,
-    config::{self, Args},
+    config::{Args, Config},
     spawn,
 };
 use tracing::info;
@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_logging();
 
     let args = Args::parse();
-    let config = config::load(args.config).unwrap_or_else(|e| {
+    let config = Config::load(args.config).unwrap_or_else(|e| {
         eprintln!("{e}");
         std::process::exit(1);
     });

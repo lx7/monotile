@@ -49,7 +49,7 @@ use smithay::{
 
 use crate::{
     backend::Backend,
-    config::{self, Config},
+    config::Config,
     ipc::IpcState,
     render::cursor::CursorManager,
     shell::{Monitor, Monitors, WindowElement, WindowId, Windows},
@@ -114,7 +114,7 @@ impl Monotile {
 
     pub fn reload_config(&mut self) {
         let path = self.state.config.path.clone();
-        let config = match config::load(Some(path)) {
+        let config = match Config::load(Some(path)) {
             Ok(c) => c,
             Err(e) => {
                 warn!("config reload failed: {e}");

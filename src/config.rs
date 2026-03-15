@@ -3,12 +3,14 @@
 // TODO: remove when config handling is complete
 #![allow(dead_code)]
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use derive_more::Deref;
 use inline_default::inline_default;
 use regex::Regex;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, de::Error};
 use smithay::input::keyboard::{Keysym, ModifiersState, XkbConfig, xkb};
 use smithay::reexports::input::AccelProfile as InputAccelProfile;
 use tracing::{info, warn};
@@ -24,24 +26,52 @@ pub struct Color(pub [f32; 4]);
 impl<'de> Deserialize<'de> for Color {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let s = String::deserialize(d)?;
-        let hex_str = s.strip_prefix('#').unwrap_or(&s);
-        let hex = u32::from_str_radix(hex_str, 16)
-            .map_err(|_| serde::de::Error::custom(format!("invalid color: {s}")))?;
-        match hex_str.len() {
-            6 => Ok(color((hex << 8) | 0xFF)),
-            8 => Ok(color(hex)),
-            _ => Err(serde::de::Error::custom(format!("invalid color: {s}"))),
+        if s.starts_with('#') {
+            Self::from_hex(&s).ok_or_else(|| Error::custom(format!("invalid color: {s}")))
+        } else {
+            Self::from_name(&s).ok_or_else(|| Error::custom(format!("unknown color: {s}")))
         }
     }
 }
 
-fn color(hex: u32) -> Color {
-    Color([
-        ((hex >> 24) & 0xFF) as f32 / 255.0,
-        ((hex >> 16) & 0xFF) as f32 / 255.0,
-        ((hex >> 8) & 0xFF) as f32 / 255.0,
-        (hex & 0xFF) as f32 / 255.0,
-    ])
+impl Color {
+    fn from_rgba(rgba: u32) -> Self {
+        Self([
+            ((rgba >> 24) & 0xFF) as f32 / 255.0,
+            ((rgba >> 16) & 0xFF) as f32 / 255.0,
+            ((rgba >> 8) & 0xFF) as f32 / 255.0,
+            (rgba & 0xFF) as f32 / 255.0,
+        ])
+    }
+
+    fn from_hex(s: &str) -> Option<Self> {
+        let hex_str = s.strip_prefix('#').unwrap_or(s);
+        let hex = u32::from_str_radix(hex_str, 16).ok()?;
+        match hex_str.len() {
+            6 => Some(Self::from_rgba((hex << 8) | 0xFF)),
+            8 => Some(Self::from_rgba(hex)),
+            _ => None,
+        }
+    }
+
+    fn from_name(name: &str) -> Option<Self> {
+        PALETTE.with(|p| p.borrow().get(name).copied())
+    }
+}
+
+thread_local! {
+    static PALETTE: RefCell<HashMap<String, Color>> = RefCell::new(HashMap::new());
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct Palette(HashMap<String, Color>);
+
+impl<'de> Deserialize<'de> for Palette {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let map = HashMap::<String, Color>::deserialize(d)?;
+        PALETTE.with(|p| *p.borrow_mut() = map.clone());
+        Ok(Palette(map))
+    }
 }
 
 // --- Rules and pattern matching ---
@@ -59,9 +89,7 @@ impl<'de> Deserialize<'de> for Pattern {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let s = String::deserialize(d)?;
         let exp = format!("^(?:{s})$");
-        Regex::new(&exp)
-            .map(Pattern)
-            .map_err(serde::de::Error::custom)
+        Regex::new(&exp).map(Pattern).map_err(Error::custom)
     }
 }
 
@@ -263,19 +291,35 @@ impl Keyboard {
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    pub colors: Palette,
     pub outputs: Vec<OutputRule>,
     pub layout: Layout,
     pub windows: Vec<WindowRule>,
     pub input: Input,
-    #[serde(deserialize_with = "de_keys")]
-    pub keybinds: Vec<(Vec<Mod>, Keysym, Action)>,
-    pub mousebinds: Vec<(Vec<Mod>, Button, MouseAction)>,
-    #[serde(skip)]
-    pub key_map: HashMap<(Keysym, Mods), Action>,
-    #[serde(skip)]
-    pub mouse_map: HashMap<(u32, Mods), MouseAction>,
+    pub keybinds: KeyMap,
+    pub mousebinds: MouseMap,
     #[serde(skip)]
     pub path: PathBuf,
+}
+
+impl Config {
+    pub fn new() -> Self {
+        Self::parse(DEFAULT_CONFIG).expect("default config")
+    }
+
+    pub fn parse(text: &str) -> Result<Self, String> {
+        ron::from_str::<Config>(text).map_err(|e| e.to_string())
+    }
+
+    pub fn load(explicit: Option<PathBuf>) -> Result<Self, String> {
+        let path = resolve(explicit, "config.ron", DEFAULT_CONFIG);
+        let disp = path.display();
+        let text = std::fs::read_to_string(&path).map_err(|e| format!("{disp}: {e}"))?;
+        let mut config = Self::parse(&text).map_err(|e| format!("{disp}: {e}"))?;
+        info!("config: {disp}");
+        config.path = path;
+        Ok(config)
+    }
 }
 
 // --- Bindings ---
@@ -378,59 +422,38 @@ pub enum MouseAction {
     ToggleFloating,
 }
 
-// --- Keysym serde ---
+// --- KeyMap / MouseMap ---
 
-fn de_keys<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<(Vec<Mod>, Keysym, Action)>, D::Error> {
-    let raw: Vec<(Vec<Mod>, String, Action)> = Vec::deserialize(d)?;
-    raw.into_iter()
-        .map(|(mods, name, action)| {
-            let sym = resolve_keysym(&name);
+#[derive(Debug, Default, Clone, Deref)]
+pub struct KeyMap(HashMap<(Keysym, Mods), Action>);
+
+impl<'de> Deserialize<'de> for KeyMap {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let raw: Vec<(Vec<Mod>, String, Action)> = Vec::deserialize(d)?;
+        let mut map = HashMap::new();
+        for (mods, name, action) in raw {
+            let sym = xkb::keysym_from_name(&name, xkb::KEYSYM_CASE_INSENSITIVE);
             if sym.raw() == 0 {
-                return Err(serde::de::Error::custom(format!("unknown key: {name}")));
+                return Err(Error::custom(format!("unknown key: {name}")));
             }
-            Ok((mods, sym, action))
-        })
-        .collect()
-}
-
-fn resolve_keysym(name: &str) -> Keysym {
-    let sym = xkb::keysym_from_name(name, xkb::KEYSYM_NO_FLAGS);
-    if sym.raw() != 0 {
-        return sym;
-    }
-    xkb::keysym_from_name(name, xkb::KEYSYM_CASE_INSENSITIVE)
-}
-
-// --- Loading ---
-
-impl Config {
-    pub fn new() -> Self {
-        let mut config: Self = ron::from_str(DEFAULT_CONFIG).expect("default config");
-        config.build_maps();
-        config
-    }
-
-    pub fn build_maps(&mut self) {
-        for (mods, sym, action) in &self.keybinds {
-            self.key_map
-                .insert((*sym, Mods::from(mods.as_slice())), action.clone());
+            map.insert((sym, Mods::from(mods.as_slice())), action);
         }
-        for (mods, btn, action) in &self.mousebinds {
-            self.mouse_map
-                .insert((*btn as u32, Mods::from(mods.as_slice())), action.clone());
-        }
+        Ok(KeyMap(map))
     }
 }
 
-pub fn load(explicit: Option<PathBuf>) -> Result<Config, String> {
-    let path = resolve(explicit, "config.ron", DEFAULT_CONFIG);
-    let disp = path.display();
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("{disp}: {e}"))?;
-    let mut config: Config = ron::from_str(&text).map_err(|e| format!("{disp}: {e}"))?;
-    config.build_maps();
-    info!("config: {disp}");
-    config.path = path;
-    Ok(config)
+#[derive(Debug, Default, Clone, Deref)]
+pub struct MouseMap(HashMap<(u32, Mods), MouseAction>);
+
+impl<'de> Deserialize<'de> for MouseMap {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let raw: Vec<(Vec<Mod>, Button, MouseAction)> = Vec::deserialize(d)?;
+        let mut map = HashMap::new();
+        for (mods, btn, action) in raw {
+            map.insert((btn as u32, Mods::from(mods.as_slice())), action);
+        }
+        Ok(MouseMap(map))
+    }
 }
 
 // --- CLI ---
@@ -513,7 +536,7 @@ mod tests {
 
     #[test]
     fn default_config_matches_inline_defaults() {
-        let file: Config = ron::from_str(DEFAULT_CONFIG).expect("default config");
+        let file = Config::parse(DEFAULT_CONFIG).expect("default config");
         let code = Config::default();
 
         assert_eq!(file.layout, code.layout);
@@ -525,22 +548,21 @@ mod tests {
 
     #[test]
     fn load_defaults_file() {
-        let config = load(Some(defaults_path())).unwrap();
+        let config = Config::load(Some(defaults_path())).unwrap();
         assert!(!config.keybinds.is_empty());
-        assert!(!config.key_map.is_empty(), "should populate key_map");
-        assert!(!config.mouse_map.is_empty(), "should populate mouse_map");
+        assert!(!config.mousebinds.is_empty());
     }
 
     #[test]
     fn color_hex6() {
         let c: Color = ron::from_str("\"#ff8800\"").unwrap();
-        assert_eq!(c, color(0xFF8800FF));
+        assert_eq!(c, Color::from_rgba(0xFF8800FF));
     }
 
     #[test]
     fn color_hex8() {
         let c: Color = ron::from_str("\"#ff880080\"").unwrap();
-        assert_eq!(c, color(0xFF880080));
+        assert_eq!(c, Color::from_rgba(0xFF880080));
     }
 
     #[test]
@@ -556,10 +578,38 @@ mod tests {
     }
 
     #[test]
-    fn keysym_case_insensitive() {
-        let sym = resolve_keysym("return");
-        assert_ne!(sym.raw(), 0);
-        assert_eq!(sym, resolve_keysym("Return"));
+    fn color_palette_lookup() {
+        let ron = r##"#![enable(implicit_some)]
+(colors: {"red": "#ff0000"}, outputs: [(match: (), background: "red")])"##;
+        let config = Config::parse(ron).unwrap();
+        assert_eq!(
+            config.outputs[0].background.unwrap(),
+            Color::from_rgba(0xFF0000FF)
+        );
+    }
+
+    #[test]
+    fn color_palette_hex_alongside_names() {
+        let ron = r##"#![enable(implicit_some)]
+(colors: {"red": "#ff0000"}, outputs: [(match: (), background: "#00ff00")])"##;
+        let config = Config::parse(ron).unwrap();
+        assert_eq!(
+            config.outputs[0].background.unwrap(),
+            Color::from_rgba(0x00FF00FF)
+        );
+    }
+
+    #[test]
+    fn color_unknown_name_errors() {
+        let ron = r#"#![enable(implicit_some)]
+(outputs: [(match: (), background: "nonexistent")])"#;
+        assert!(Config::parse(ron).is_err());
+    }
+
+    #[test]
+    fn color_palette_invalid_hex_errors() {
+        let ron = r##"(colors: {"bad": "#not-hex"})"##;
+        assert!(Config::parse(ron).is_err());
     }
 
     #[test]

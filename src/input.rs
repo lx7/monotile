@@ -67,7 +67,7 @@ impl Monotile {
                         // key binds
                         let mods = Mods::from(modifiers);
                         for sym in handle.raw_syms() {
-                            if let Some(action) = monotile.state.config.key_map.get(&(sym, mods)) {
+                            if let Some(action) = monotile.state.config.keybinds.get(&(sym, mods)) {
                                 return FilterResult::Intercept(Some(action.clone()));
                             }
                         }
@@ -101,7 +101,7 @@ impl Monotile {
                     && !self.state.locked
                 {
                     let mods = Mods::from(&keyboard.modifier_state());
-                    if let Some(action) = self.state.config.mouse_map.get(&(button, mods)) {
+                    if let Some(action) = self.state.config.mousebinds.get(&(button, mods)) {
                         self.handle_mouse_action(
                             action.clone(),
                             button,
