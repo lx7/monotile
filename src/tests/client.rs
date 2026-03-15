@@ -14,6 +14,10 @@ use wayland_client::{
     },
 };
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
+use wayland_protocols_wlr::layer_shell::v1::client::{
+    zwlr_layer_shell_v1::{self, ZwlrLayerShellV1},
+    zwlr_layer_surface_v1::{self, ZwlrLayerSurfaceV1},
+};
 
 use super::ipc_client_protocol::dwl::{
     zdwl_ipc_manager_v2::ZdwlIpcManagerV2, zdwl_ipc_output_v2::ZdwlIpcOutputV2,
@@ -38,6 +42,8 @@ struct ClientData {
     wm_base: Option<xdg_wm_base::XdgWmBase>,
     shm: Option<wl_shm::WlShm>,
     buffer: Option<wl_buffer::WlBuffer>,
+    layer_shell: Option<ZwlrLayerShellV1>,
+    layers: Vec<LayerState>,
     windows: Vec<WindowState>,
 
     ipc_output: Option<wl_output::WlOutput>,
@@ -52,6 +58,12 @@ struct ClientData {
     ipc_dwl_manager: Option<ZdwlIpcManagerV2>,
     ipc_dwl_output: Option<ZdwlIpcOutputV2>,
     pub ipc_dwl_events: Vec<DwlEvent>,
+}
+
+pub struct LayerState {
+    pub surface: wl_surface::WlSurface,
+    pub layer_surface: ZwlrLayerSurfaceV1,
+    pub last_serial: u32,
 }
 
 pub struct WindowState {
@@ -128,6 +140,8 @@ impl Client {
             wm_base: None,
             shm: None,
             buffer: None,
+            layer_shell: None,
+            layers: Vec::new(),
             windows: Vec::new(),
             ipc_output: None,
             ipc_seat: None,
@@ -217,6 +231,61 @@ impl Client {
 
     pub fn take_configures(&mut self, win: usize) -> Vec<Configure> {
         self.data.windows[win].configures.drain(..).collect()
+    }
+
+    // layer shell
+
+    pub fn create_layer_surface(&mut self) -> usize {
+        let qh = self.queue.handle();
+        let comp = self.data.compositor.as_ref().unwrap();
+        let shell = self.data.layer_shell.as_ref().unwrap();
+        let output = self.data.ipc_output.as_ref().unwrap();
+
+        let surface = comp.create_surface(&qh, ());
+        let ls = shell.get_layer_surface(
+            &surface,
+            Some(output),
+            zwlr_layer_shell_v1::Layer::Top,
+            "test".to_string(),
+            &qh,
+            (),
+        );
+        ls.set_size(0, 30);
+        ls.set_anchor(
+            zwlr_layer_surface_v1::Anchor::Top
+                | zwlr_layer_surface_v1::Anchor::Left
+                | zwlr_layer_surface_v1::Anchor::Right,
+        );
+
+        let idx = self.data.layers.len();
+        self.data.layers.push(LayerState {
+            surface,
+            layer_surface: ls,
+            last_serial: 0,
+        });
+        let _ = self.queue.flush();
+        idx
+    }
+
+    pub fn layer_commit(&self, ls: usize) {
+        self.data.layers[ls].surface.commit();
+        let _ = self.queue.flush();
+    }
+
+    pub fn layer_attach_and_commit(&mut self, ls: usize) {
+        let qh = self.queue.handle();
+        if self.data.buffer.is_none() {
+            let shm = self.data.shm.as_ref().unwrap();
+            let mut tmp = tempfile::tempfile().unwrap();
+            tmp.write_all(&[0u8; 4]).unwrap();
+            let pool = shm.create_pool(tmp.as_fd(), 4, &qh, ());
+            self.data.buffer =
+                Some(pool.create_buffer(0, 1, 1, 4, wl_shm::Format::Argb8888, &qh, ()));
+        }
+        let layer = &self.data.layers[ls];
+        layer.surface.attach(self.data.buffer.as_ref(), 0, 0);
+        layer.surface.commit();
+        let _ = self.queue.flush();
     }
 
     // monotile-ipc
@@ -350,6 +419,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientData {
                 }
                 "zmonotile_control_v1" => {
                     state.ipc_control = Some(registry.bind(name, version, qh, ()));
+                }
+                "zwlr_layer_shell_v1" => {
+                    state.layer_shell = Some(registry.bind(name, version, qh, ()));
                 }
                 "zdwl_ipc_manager_v2" => {
                     state.ipc_dwl_manager = Some(registry.bind(name, version, qh, ()));
@@ -538,6 +610,40 @@ impl Dispatch<wl_seat::WlSeat, ()> for ClientData {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+    }
+}
+
+// ── Layer shell Dispatch impls ──────────────────────
+
+impl Dispatch<ZwlrLayerShellV1, ()> for ClientData {
+    fn event(
+        _: &mut Self,
+        _: &ZwlrLayerShellV1,
+        _: zwlr_layer_shell_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ZwlrLayerSurfaceV1, ()> for ClientData {
+    fn event(
+        state: &mut Self,
+        ls: &ZwlrLayerSurfaceV1,
+        event: zwlr_layer_surface_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let zwlr_layer_surface_v1::Event::Configure { serial, .. } = event {
+            for l in &mut state.layers {
+                if l.layer_surface == *ls {
+                    l.last_serial = serial;
+                    break;
+                }
+            }
+        }
     }
 }
 

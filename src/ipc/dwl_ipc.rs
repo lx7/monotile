@@ -14,7 +14,11 @@ use super::dwl_ipc_protocol::{
     zdwl_ipc_manager_v2::ZdwlIpcManagerV2,
     zdwl_ipc_output_v2::{self, ZdwlIpcOutputV2},
 };
-use crate::{Monotile, config::{self, Action}, shell::Monitor};
+use crate::{
+    Monotile,
+    config::{self, Action},
+    shell::Monitor,
+};
 
 #[derive(Default)]
 pub struct DwlIpcState {
@@ -38,6 +42,7 @@ fn send_snapshot(handle: &ZdwlIpcOutputV2, snap: &TagSnapshot, mon: &Monitor, ac
         let focused = (snap.focused_tags >> i) & 1;
         handle.tag(i as u32, state, clients, focused);
     }
+    handle.layout(0);
     handle.layout_symbol(snap.layout_symbol.clone());
     handle.title(snap.title.clone());
     handle.appid(snap.app_id.clone());
@@ -96,6 +101,7 @@ impl GlobalDispatch<ZdwlIpcManagerV2, DwlIpcManagerData> for Monotile {
     ) {
         let mgr = data_init.init(resource, ());
         mgr.tags(data.tag_count);
+        mgr.layout("tile".to_string());
     }
 }
 

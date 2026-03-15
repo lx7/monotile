@@ -17,7 +17,7 @@ use smithay::{
             CompositorClientState, CompositorHandler, CompositorState, get_parent,
             is_sync_subsurface, with_states,
         },
-        shell::wlr_layer::LayerSurfaceData,
+        shell::wlr_layer::{LayerSurfaceConfigure, LayerSurfaceData, LayerSurfaceState},
         shm::{ShmHandler, ShmState},
     },
 };
@@ -56,23 +56,49 @@ impl CompositorHandler for Monotile {
 
 impl Monotile {
     fn handle_layer_commit(&mut self, surface: &WlSurface) -> bool {
-        let output = self.state.mon().output.clone();
-        let mut map = layer_map_for_output(&output);
-        if let Some(layer) = map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL) {
-            let sent = with_states(surface, |s| {
-                let mutex = s.data_map.get::<LayerSurfaceData>().unwrap();
-                mutex.lock().unwrap().initial_configure_sent
+        for (i, mon) in self.state.monitors.iter().enumerate() {
+            let mut map = layer_map_for_output(&mon.output);
+            let Some(layer) = map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL) else {
+                continue;
+            };
+            let initial = with_states(surface, |s| {
+                !s.data_map
+                    .get::<LayerSurfaceData>()
+                    .unwrap()
+                    .lock()
+                    .unwrap()
+                    .initial_configure_sent
             });
-            if !sent {
-                layer.layer_surface().send_configure();
+            if initial {
+                let serial = layer.layer_surface().send_configure();
+                // INFO: This is a workawound for clients that batch the
+                // initial (empty) commit and a buffer commit in the same
+                // socket write. The protocol says there must be an ack
+                // before attaching a buffer, so this is a violation of the
+                // protocol.
+                // The server processes both commits before the configure
+                // round-trips. To fix this, pre-set last_acked so the
+                // pre_commit_hook accepts the buffer.
+                with_states(surface, |s| {
+                    s.data_map
+                        .get::<LayerSurfaceData>()
+                        .unwrap()
+                        .lock()
+                        .unwrap()
+                        .last_acked = Some(LayerSurfaceConfigure {
+                        serial,
+                        state: LayerSurfaceState::default(),
+                    });
+                });
             }
+            let changed = map.arrange();
+            drop(map);
+            if changed {
+                self.state.monitors[i].update_exclusive_layer();
+            }
+            return changed;
         }
-        let changed = map.arrange();
-        drop(map);
-        if changed {
-            self.state.mon_mut().update_exclusive_layer();
-        }
-        changed
+        false
     }
 }
 

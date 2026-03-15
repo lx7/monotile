@@ -28,6 +28,10 @@ fn manager_sends_tags_on_bind() {
         events.contains(&DwlEvent::Tags(9)),
         "should receive tags(9), got {events:?}"
     );
+    assert!(
+        events.contains(&DwlEvent::ManagerLayout("tile".into())),
+        "should receive layout on bind, got {events:?}"
+    );
 }
 
 // ── B. Initial State on get_output ──────────────────
@@ -47,6 +51,10 @@ fn output_initial_burst_structure() {
         .count();
     assert_eq!(tag_count, 9, "should have 9 tag events");
 
+    assert!(
+        events.iter().any(|e| matches!(e, DwlEvent::Layout(_))),
+        "missing layout index"
+    );
     assert!(
         events
             .iter()
