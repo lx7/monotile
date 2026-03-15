@@ -29,7 +29,13 @@ impl Tag {
 
     pub fn add(&mut self, id: WindowId) {
         self.remove(id);
-        self.focus_stack.insert(0, id);
+
+        if self.fullscreen.is_some() {
+            let pos = 1.min(self.focus_stack.len());
+            self.focus_stack.insert(pos, id);
+        } else {
+            self.focus_stack.insert(0, id);
+        }
     }
 
     pub fn window_ids(&self) -> impl DoubleEndedIterator<Item = WindowId> + '_ {
