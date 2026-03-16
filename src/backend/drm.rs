@@ -41,7 +41,10 @@ use smithay_drm_extras::{
 use tracing::{error, info, warn};
 
 use crate::{
-    Monotile, input::configure_device, render::Shaders, render::send_frame_callbacks, state::State,
+    Monotile,
+    input::configure_device,
+    render::{Shaders, send_frame_callbacks},
+    state::State,
 };
 
 type Allocator = GbmAllocator<DrmDeviceFd>;

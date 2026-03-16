@@ -53,6 +53,7 @@ use crate::{
     ipc::IpcState,
     render::cursor::CursorManager,
     shell::{Monitor, Monitors, WindowElement, WindowId, Windows},
+    spawn::notify,
 };
 
 pub struct Monotile {
@@ -115,9 +116,13 @@ impl Monotile {
     pub fn reload_config(&mut self) {
         let path = self.state.config.path.clone();
         let config = match Config::load(Some(path)) {
-            Ok(c) => c,
+            Ok(c) => {
+                notify("normal", "config", "reloaded");
+                c
+            }
             Err(e) => {
                 warn!("config reload failed: {e}");
+                notify("critical", "config", &format!("reload failed: {e}"));
                 return;
             }
         };

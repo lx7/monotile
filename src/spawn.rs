@@ -16,6 +16,21 @@ pub fn spawn_shell(command: &str) {
     spawn("sh", &["-c".into(), command.into()], false);
 }
 
+pub fn notify(level: &str, title: &str, msg: &str) {
+    spawn(
+        "notify-send",
+        &[
+            "-a".into(),
+            "monotile".into(),
+            "-u".into(),
+            level.into(),
+            title.into(),
+            msg.into(),
+        ],
+        false,
+    );
+}
+
 pub fn spawn(cmd: &str, args: &[String], log: bool) {
     let mut proc = Command::new(cmd);
     proc.args(args)
