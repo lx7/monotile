@@ -128,6 +128,10 @@ impl DrmState {
         if surface.render != RenderState::Queued {
             return;
         }
+        if !self.session.is_active() {
+            surface.render = RenderState::Idle;
+            return;
+        }
         surface.render = RenderState::Idle;
         let Some(mon) = state.monitors.iter().find(|m| m.output == surface.output) else {
             return;
