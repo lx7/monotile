@@ -377,7 +377,7 @@ impl State {
             let Some(we) = self.windows.get(id) else {
                 continue;
             };
-            let loc = we.geo().loc - we.window.geometry().loc;
+            let loc = we.surface_loc();
             let rel = pos - loc.to_f64();
             if let Some((s, point)) = we.window.surface_under(rel, WindowSurfaceType::ALL) {
                 return (Some((s, (point + loc).to_f64())), Some(id));

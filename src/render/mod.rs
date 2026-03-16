@@ -204,15 +204,13 @@ pub fn output_elements(
         ));
         elems.extend(layer_elements(renderer, output, &[Layer::Overlay], scale));
 
-        let win = we.geo();
-        let buf = we.window.geometry();
         let wl = we.window.wl_surface().unwrap();
-        elems.extend(popup_elements(renderer, &wl, win.loc - buf.loc, scale));
+        elems.extend(popup_elements(renderer, &wl, we.geo().loc, scale));
 
         let surfs = render_elements_from_surface_tree(
             renderer,
             &wl,
-            (win.loc - buf.loc).to_physical_precise_round(scale),
+            we.surface_loc().to_physical_precise_round(scale),
             scale,
             1.0,
             Kind::ScanoutCandidate,
@@ -234,7 +232,6 @@ pub fn output_elements(
         for id in tag.window_ids().rev() {
             let Some(we) = windows.get(id) else { continue };
             let win = we.geo();
-            let buf = we.window.geometry();
             let wl = we.window.wl_surface().unwrap();
 
             let single_tiled = tiled == 1 && !we.floating;
@@ -243,7 +240,7 @@ pub fn output_elements(
             let radius = we.radius;
 
             // popups above all decorations
-            elems.extend(popup_elements(renderer, &wl, win.loc - buf.loc, scale));
+            elems.extend(popup_elements(renderer, &wl, win.loc, scale));
 
             // rev: render pipeline is back-to-front
             for step in we.render.iter().rev() {
@@ -279,7 +276,7 @@ pub fn output_elements(
                         let surfs = render_elements_from_surface_tree(
                             renderer,
                             &wl,
-                            (win.loc - buf.loc).to_physical_precise_round(scale),
+                            we.surface_loc().to_physical_precise_round(scale),
                             scale,
                             1.0,
                             Kind::Unspecified,

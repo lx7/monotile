@@ -149,6 +149,10 @@ impl WindowElement {
         }
     }
 
+    pub fn surface_loc(&self) -> Point<i32, Logical> {
+        self.geo().loc - self.window.geometry().loc
+    }
+
     pub fn set_app_id(&mut self, app_id: String) {
         self.app_id = app_id;
         self.resolve_render();
@@ -281,7 +285,7 @@ impl Windows {
     pub fn window_id_under(&self, tag: &Tag, pos: Point<f64, Logical>) -> Option<WindowId> {
         for id in tag.window_ids().rev() {
             let Some(we) = self.get(id) else { continue };
-            let loc = we.geo().loc - we.window.geometry().loc;
+            let loc = we.surface_loc();
             let rel = pos - loc.to_f64();
             if we
                 .window

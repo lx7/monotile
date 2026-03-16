@@ -263,7 +263,7 @@ impl Monotile {
         let mon = self.state.mon();
 
         let parent_loc = if let Some(we) = parent {
-            we.geo().loc
+            we.surface_loc()
         } else {
             let map = layer_map_for_output(&mon.output);
             let Some(l) = map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL) else {
