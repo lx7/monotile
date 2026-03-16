@@ -49,6 +49,7 @@ rev = "14a2009cd"
 wayland-client = "0.31"
 wayland-backend = "0.3"
 wayland-protocols = { version = "0.32", features = ["client"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 tempfile = "3.25.0"
 
 [[bin]]

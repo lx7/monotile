@@ -275,7 +275,7 @@ fn set_tags_switches_tag() {
     f.roundtrip(c);
     f.client_mut(c).take_dwl_events();
 
-    // FocusTag(3)
+    // FocusTag(3) via click (toggle_tagset=0)
     f.client(c).dwl_output().set_tags(1 << 3, 0);
     f.client(c).flush();
     f.roundtrip(c);
@@ -294,24 +294,10 @@ fn set_tags_switches_tag() {
         tags.contains(&(3, TAG_ACTIVE)),
         "should switch to tag 3, got {tags:?}"
     );
-}
 
-#[test]
-fn set_tags_toggle_previous() {
-    let mut f = Fixture::new();
-    let c = f.add_client();
-    f.client_mut(c).bind_dwl_output();
-    f.roundtrip(c);
-
-    // switch to tag 2
-    f.mt.state.mon_mut().set_active_tag(2);
-    f.mt.state.ipc.mark_dirty();
-    f.mt.state.flush_clients();
-    f.roundtrip(c);
-    f.client_mut(c).take_dwl_events();
-
-    // FocusPrevTag -> back to tag 0
-    f.client(c).dwl_output().set_tags(0, 1);
+    // FocusTag(5) via click (toggle_tagset=1, different tag)
+    // should switch to that tag - ignore toggle
+    f.client(c).dwl_output().set_tags(1 << 5, 1);
     f.client(c).flush();
     f.roundtrip(c);
     f.mt.state.flush_clients();
@@ -326,8 +312,44 @@ fn set_tags_toggle_previous() {
         })
         .collect();
     assert!(
-        tags.contains(&(0, TAG_ACTIVE)),
-        "should toggle back to tag 0, got {tags:?}"
+        tags.contains(&(5, TAG_ACTIVE)),
+        "should switch to tag 5, got {tags:?}"
+    );
+}
+
+#[test]
+fn set_tags_same_tag_is_noop() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    f.client_mut(c).bind_dwl_output();
+    f.roundtrip(c);
+
+    // switch to tag 2
+    f.mt.state.mon_mut().set_active_tag(2);
+    f.mt.state.ipc.mark_dirty();
+    f.mt.state.flush_clients();
+    f.roundtrip(c);
+    f.client_mut(c).take_dwl_events();
+
+    // Click current tag (2) with toggle_tagset=1 - should stay on tag 2
+    f.client(c).dwl_output().set_tags(1 << 2, 1);
+    f.client(c).flush();
+    f.roundtrip(c);
+    f.mt.state.flush_clients();
+    f.roundtrip(c);
+
+    let events = f.client_mut(c).take_dwl_events();
+    let tags: Vec<_> = events
+        .iter()
+        .filter_map(|e| match e {
+            DwlEvent::Tag { tag, state, .. } => Some((*tag, *state)),
+            _ => None,
+        })
+        .collect();
+    // No tag change - either empty or tag 2 still active
+    assert!(
+        tags.is_empty() || tags.contains(&(2, TAG_ACTIVE)),
+        "should stay on tag 2, got {tags:?}"
     );
 }
 

@@ -148,16 +148,9 @@ impl Dispatch<ZdwlIpcOutputV2, ()> for Monotile {
     ) {
         use super::dwl_ipc_protocol::zdwl_ipc_output_v2::Request;
         match request {
-            Request::SetTags {
-                tagmask,
-                toggle_tagset,
-            } => {
-                if toggle_tagset != 0 {
-                    monotile.handle_action(Action::FocusPrevTag);
-                } else {
-                    let tag = tagmask.trailing_zeros() as usize;
-                    monotile.handle_action(Action::FocusTag(tag));
-                }
+            Request::SetTags { tagmask, .. } => {
+                let tag = tagmask.trailing_zeros() as usize;
+                monotile.handle_action(Action::FocusTag(tag));
             }
             Request::SetClientTags { and_tags, xor_tags } => {
                 let tag = xor_tags.trailing_zeros() as usize;
