@@ -55,8 +55,8 @@
       <arg name="count" type="uint"/>
     </event>
 
-    <event name="tag_name">
-      <description summary="display name for a tag">
+    <event name="tag_info">
+      <description summary="static properties of a tag">
         Sent once per tag on creation, in index order.
       </description>
       <arg name="index" type="uint"/>

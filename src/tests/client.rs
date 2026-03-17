@@ -99,7 +99,7 @@ pub enum DwlEvent {
 #[derive(Debug, Clone, PartialEq)]
 pub enum IpcEvent {
     TagCount(u32),
-    TagName {
+    TagInfo {
         index: u32,
         name: String,
     },
@@ -673,8 +673,8 @@ impl Dispatch<ZmonotileOutputStatusV1, ()> for ClientData {
         use super::ipc_client_protocol::monotile::zmonotile_output_status_v1::Event;
         match event {
             Event::TagCount { count } => state.ipc_events.push(IpcEvent::TagCount(count)),
-            Event::TagName { index, name } => {
-                state.ipc_events.push(IpcEvent::TagName { index, name });
+            Event::TagInfo { index, name } => {
+                state.ipc_events.push(IpcEvent::TagInfo { index, name });
             }
             Event::FocusedTags { tags } => state.ipc_events.push(IpcEvent::FocusedTags(tags)),
             Event::OccupiedTags { tags } => state.ipc_events.push(IpcEvent::OccupiedTags(tags)),

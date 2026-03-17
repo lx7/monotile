@@ -39,7 +39,7 @@ pub fn spawn(cmd: &str, args: &[String], log: bool) {
         .stderr(if log { Stdio::inherit() } else { Stdio::null() });
     match proc.spawn() {
         Ok(mut child) => {
-            tracing::info!("{cmd} {}", args.join(" "));
+            tracing::debug!("{cmd} {}", args.join(" "));
             std::thread::spawn(move || {
                 let _ = child.wait();
             });

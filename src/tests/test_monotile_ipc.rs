@@ -38,7 +38,7 @@ fn output_status_initial_burst() {
     let names: Vec<_> = events
         .iter()
         .filter_map(|e| match e {
-            IpcEvent::TagName { index, name } => Some((*index, name.clone())),
+            IpcEvent::TagInfo { index, name } => Some((*index, name.clone())),
             _ => None,
         })
         .collect();

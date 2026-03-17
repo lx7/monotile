@@ -117,7 +117,7 @@ impl Monotile {
         let path = self.state.config.path.clone();
         let config = match Config::load(Some(path)) {
             Ok(c) => {
-                notify("normal", "config", "reloaded");
+                notify("normal", "config", &format!("reloaded"));
                 c
             }
             Err(e) => {

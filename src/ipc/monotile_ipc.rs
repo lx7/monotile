@@ -133,7 +133,7 @@ impl Dispatch<ZmonotileStatusManagerV1, ()> for Monotile {
                     // send tag metadata
                     handle.tag_count(mon.tag_names.len() as u32);
                     for (i, name) in mon.tag_names.iter().enumerate() {
-                        handle.tag_name(i as u32, name.clone());
+                        handle.tag_info(i as u32, name.clone());
                     }
                     // send initial state
                     let snap = mon.snapshot(&monotile.state.windows);
