@@ -10,6 +10,7 @@ repository = "https://github.com/lx7/monotile"
 [dependencies]
 tracing = "0.1"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
+anyhow = "1"
 calloop = "0.14"
 slotmap = "1.0"
 xcursor = "0.3"

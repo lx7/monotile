@@ -50,6 +50,7 @@ use smithay::{
 use crate::{
     backend::Backend,
     config::Config,
+    handlers::screencopy::ScreencopyState,
     ipc::IpcState,
     render::cursor::CursorManager,
     shell::{Monitor, Monitors, WindowElement, WindowId, Windows},
@@ -231,6 +232,7 @@ pub struct State {
     pub pending: Vec<Window>,
     pub locked: bool,
     pub session_lock_state: SessionLockManagerState,
+    pub screencopy: ScreencopyState,
     pub ipc: IpcState,
 }
 
@@ -270,7 +272,7 @@ impl State {
 
         let cursor_shape_state = CursorShapeManagerState::new::<Monotile>(&dh);
         let cursor = CursorManager::new(1.0);
-
+        let screencopy = ScreencopyState::new(&dh);
         let ipc = IpcState::new(&dh);
 
         Self {
@@ -308,6 +310,7 @@ impl State {
             pending: Vec::new(),
             locked: false,
             session_lock_state,
+            screencopy,
             ipc,
         }
     }
@@ -373,7 +376,8 @@ impl State {
         };
 
         // overlay / top layers
-        if let Some(hit) = layer_hit(Layer::Overlay).or_else(|| layer_hit(Layer::Top)) {
+        let hit = layer_hit(Layer::Overlay).or_else(|| layer_hit(Layer::Top));
+        if let Some(hit) = hit {
             return (Some(hit), None);
         }
 
@@ -420,6 +424,7 @@ impl State {
 
     pub fn flush_clients(&mut self) {
         self.idle_notifier_activity = false;
+        self.screencopy.cleanup();
         self.ipc
             .flush(&self.monitors, &self.windows, self.active_monitor);
         let _ = self.display_handle.flush_clients();

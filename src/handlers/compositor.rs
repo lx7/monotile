@@ -93,9 +93,7 @@ impl Monotile {
             }
             let changed = map.arrange();
             drop(map);
-            if changed {
-                self.state.monitors[i].update_exclusive_layer();
-            }
+            self.state.monitors[i].update_exclusive_layer();
             return changed;
         }
         false

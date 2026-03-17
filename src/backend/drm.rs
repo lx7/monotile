@@ -31,6 +31,7 @@ use smithay::{
         wayland_server::backend::GlobalId,
     },
     utils::DeviceFd,
+    wayland::image_copy_capture::DmabufConstraints,
 };
 
 use smithay_drm_extras::{
@@ -75,6 +76,7 @@ pub struct DrmState {
     pub allocator: Allocator,
     pub exporter: Exporter,
     pub render_formats: FormatSet,
+    pub dma_constraints: Option<DmabufConstraints>,
     pub surfaces: HashMap<crtc::Handle, OutputSurface>,
     pub loop_handle: LoopHandle<'static, Monotile>,
     pub input_devices: Vec<Device>,
@@ -175,6 +177,18 @@ impl DrmState {
                 return;
             }
         };
+
+        // capture pending screencopy frames for this output
+        if !state.screencopy.pending.is_empty() {
+            crate::handlers::screencopy::capture_output(
+                &mut self.renderer,
+                &mut state.screencopy,
+                &surface.output,
+                &elems,
+                mon.background,
+                state.start_time.elapsed(),
+            );
+        }
 
         if result.is_empty {
             return;
@@ -338,6 +352,10 @@ fn connector_connected(
 fn connector_disconnected(drm: &mut DrmState, state: &mut State, crtc: crtc::Handle) {
     if let Some(surface) = drm.surfaces.remove(&crtc) {
         info!("disconnected: {}", surface.output.name());
+        let weak = surface.output.downgrade();
+        state.screencopy.remove_output(&weak);
+
+        // drop monitors without output
         state.monitors.retain(|m| m.output != surface.output);
         if state.active_monitor >= state.monitors.len() && !state.monitors.is_empty() {
             state.active_monitor = state.monitors.len() - 1;
@@ -381,6 +399,16 @@ pub fn init(
     );
     let exporter = GbmFramebufferExporter::new(gbm.clone(), render_node.into());
     let render_formats = renderer.egl_context().dmabuf_render_formats().clone();
+    let dma_constraints = {
+        let mut formats = HashMap::<Fourcc, Vec<_>>::new();
+        for f in render_formats.iter() {
+            formats.entry(f.code).or_default().push(f.modifier);
+        }
+        Some(DmabufConstraints {
+            node: render_node,
+            formats: formats.into_iter().collect(),
+        })
+    };
 
     monotile.state.dmabuf_global = Some(
         monotile
@@ -398,6 +426,7 @@ pub fn init(
         allocator,
         exporter,
         render_formats,
+        dma_constraints,
         surfaces: HashMap::new(),
         loop_handle: loop_handle.clone(),
         input_devices: Vec::new(),

@@ -101,6 +101,7 @@ impl Monotile {
                 if button_state == ButtonState::Pressed
                     && !pointer.is_grabbed()
                     && !self.state.locked
+                    && self.state.mon().exclusive_layer.is_none()
                 {
                     let mods = Mods::from(&keyboard.modifier_state());
                     if let Some(action) =
