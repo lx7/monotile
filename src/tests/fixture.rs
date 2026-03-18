@@ -5,7 +5,7 @@ use smithay::output::{Mode, Output, PhysicalProperties, Subpixel};
 use smithay::reexports::calloop::EventLoop;
 
 use super::client::Client;
-use crate::{Monotile, config::Config};
+use crate::{Monotile, config::Config, shell::MonitorSettings};
 
 pub struct Fixture {
     pub event_loop: EventLoop<'static, Monotile>,
@@ -35,7 +35,7 @@ impl Fixture {
         output.create_global::<Monotile>(&mt.state.display_handle);
         output.change_current_state(Some(mode), None, None, Some((0, 0).into()));
         output.set_preferred(mode);
-        mt.state.add_monitor(output);
+        mt.state.add_monitor(output, MonitorSettings::default());
 
         Fixture {
             event_loop,

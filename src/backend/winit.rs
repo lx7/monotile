@@ -2,7 +2,7 @@
 
 use tracing::info;
 
-use crate::{Monotile, state::State};
+use crate::{Monotile, shell::MonitorSettings, state::State};
 use smithay::{
     backend::{
         renderer::{damage::OutputDamageTracker, glow::GlowRenderer},
@@ -52,7 +52,7 @@ impl WinitState {
             &mut fb,
             age,
             &elems,
-            state.mon().background,
+            state.mon().settings.background,
         )?;
 
         std::mem::drop(fb);
@@ -113,7 +113,7 @@ pub fn init(
     );
     output.set_preferred(mode);
 
-    monotile.state.add_monitor(output.clone());
+    monotile.state.add_monitor(output.clone(), MonitorSettings::default());
     info!("output: winit {}x{}", mode.size.w, mode.size.h);
 
     let damage_tracker = OutputDamageTracker::from_output(&output);

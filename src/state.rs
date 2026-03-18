@@ -53,7 +53,7 @@ use crate::{
     handlers::screencopy::ScreencopyState,
     ipc::IpcState,
     render::cursor::CursorManager,
-    shell::{Monitor, Monitors, WindowElement, WindowId, Windows},
+    shell::{Monitor, MonitorSettings, Monitors, Tag, WindowElement, WindowId, Windows},
     spawn::notify,
 };
 
@@ -331,8 +331,18 @@ impl State {
         &mut self.monitors[self.active_monitor]
     }
 
-    pub fn add_monitor(&mut self, output: Output) {
-        self.monitors.push(Monitor::new(output, &self.config));
+    pub fn add_monitor(&mut self, output: Output, settings: MonitorSettings) {
+        let mut tags = Vec::new();
+        tags.resize_with(settings.tags.len(), Tag::default);
+        self.monitors.push(Monitor {
+            output,
+            settings,
+            tags,
+            active_tag: 0,
+            prev_tag: 0,
+            exclusive_layer: None,
+            lock_surface: None,
+        });
     }
 
     pub fn monitor_idx(&self, name: &str) -> usize {

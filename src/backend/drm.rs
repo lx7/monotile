@@ -25,7 +25,7 @@ use smithay::{
     output::{Output, OutputModeSource, PhysicalProperties, Subpixel},
     reexports::{
         calloop::{EventLoop, LoopHandle},
-        drm::control::{ModeTypeFlags, connector, crtc},
+        drm::control::{self, ModeTypeFlags, connector, crtc},
         input::{Device, Libinput},
         rustix::fs::OFlags,
         wayland_server::backend::GlobalId,
@@ -45,6 +45,7 @@ use crate::{
     Monotile,
     input::configure_device,
     render::{Shaders, send_frame_callbacks},
+    shell::MonitorSettings,
     state::State,
 };
 
@@ -168,7 +169,7 @@ impl DrmState {
         let result = match surface.compositor.render_frame(
             &mut self.renderer,
             &elems,
-            mon.background,
+            mon.settings.background,
             FrameFlags::DEFAULT,
         ) {
             Ok(result) => result,
@@ -185,7 +186,7 @@ impl DrmState {
                 &mut state.screencopy,
                 &surface.output,
                 &elems,
-                mon.background,
+                mon.settings.background,
                 state.start_time.elapsed(),
             );
         }
@@ -266,8 +267,6 @@ fn connector_connected(
         connector.interface().as_str(),
         connector.interface_id()
     );
-    info!("connected: {name}");
-
     let di = display_info::for_connector(&drm.drm, connector.handle());
     let (make, model, serial) = if let Some(di) = &di {
         (
@@ -278,22 +277,14 @@ fn connector_connected(
     } else {
         ("Unknown".into(), "Unknown".into(), "Unknown".into())
     };
+    info!("'{name}': make={make} model={model} serial={serial}");
 
-    let Some(mode) = connector
-        .modes()
-        .iter()
-        .find(|m| m.mode_type().contains(ModeTypeFlags::PREFERRED))
-        .or(connector.modes().first())
-        .copied()
-    else {
+    let s = MonitorSettings::resolve(&state.config.outputs, &name, &make, &model, &serial);
+    let Some((preferred, selected)) = drm_mode_for_config(connector.modes(), &s) else {
         warn!("connector {name} has no modes, skipping");
         return;
     };
 
-    let (mw, mh) = (mode.size().0, mode.size().1);
-    info!("  mode: {mw}x{mh}@{}Hz {make} {model}", mode.vrefresh());
-
-    // TODO: output positioning
     let (output_w, output_h) = connector.size().unwrap_or((0, 0));
     let output = Output::new(
         name,
@@ -305,11 +296,16 @@ fn connector_connected(
             serial_number: serial,
         },
     );
-    let wl_mode = mode.into();
-    output.change_current_state(Some(wl_mode), None, None, Some((0, 0).into()));
-    output.set_preferred(wl_mode);
+    output.set_preferred(preferred.into());
+    output.change_current_state(Some(selected.into()), s.transform, s.scale, Some(s.pos));
 
-    let surface = match drm.drm.create_surface(crtc, mode, &[connector.handle()]) {
+    let (mw, mh) = (selected.size().0, selected.size().1);
+    info!("{}: {mw}x{mh}@{}Hz", output.name(), selected.vrefresh());
+
+    let surface = match drm
+        .drm
+        .create_surface(crtc, selected, &[connector.handle()])
+    {
         Ok(s) => s,
         Err(err) => {
             warn!(?err, "Failed to create DRM surface");
@@ -336,7 +332,7 @@ fn connector_connected(
     };
 
     let global = output.create_global::<Monotile>(&state.display_handle);
-    state.add_monitor(output.clone());
+    state.add_monitor(output.clone(), s);
     drm.surfaces.insert(
         crtc,
         OutputSurface {
@@ -351,7 +347,7 @@ fn connector_connected(
 
 fn connector_disconnected(drm: &mut DrmState, state: &mut State, crtc: crtc::Handle) {
     if let Some(surface) = drm.surfaces.remove(&crtc) {
-        info!("disconnected: {}", surface.output.name());
+        info!("{}: disconnected", surface.output.name());
         let weak = surface.output.downgrade();
         state.screencopy.remove_output(&weak);
 
@@ -528,4 +524,30 @@ fn find_gpu(seat: &str) -> Result<(DrmNode, DrmNode), Box<dyn std::error::Error>
         _ => render_node,
     };
     Ok((render_node, card_node))
+}
+
+fn drm_mode_for_config(
+    modes: &[control::Mode],
+    s: &MonitorSettings,
+) -> Option<(control::Mode, control::Mode)> {
+    let mut preferred = None;
+    let mut matching: Option<control::Mode> = None;
+    for &mode in modes {
+        if mode.mode_type().contains(ModeTypeFlags::PREFERRED) {
+            preferred = Some(mode);
+        }
+        if let Some(requested) = s.mode
+            && mode.size() == requested.size
+        {
+            match requested.refresh {
+                Some(hz) if mode.vrefresh() == hz => matching = Some(mode),
+                None if matching.is_none_or(|b| mode.vrefresh() > b.vrefresh()) => {
+                    matching = Some(mode)
+                }
+                _ => {}
+            }
+        }
+    }
+    let preferred = preferred.or(modes.first().copied())?;
+    Some((preferred, matching.unwrap_or(preferred)))
 }

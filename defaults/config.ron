@@ -24,13 +24,13 @@
                 // name: "regex"      // connector name (eDP-1, DP-1, HDMI-A-1, ...)
                 // make: "regex"      // manufacturer (EDID)
                 // model: "regex"     // model (EDID)
-                // serial: "regex"    /7 serial number (EDID)
+                // serial: "regex"    // serial number (EDID)
             ),
             scale: 1.0,
             tags: ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
             // pos: (0, 0),
             // mode: (size: (2560, 1440), refresh: 144),
-            // transform: Normal,
+            // transform: Normal,  // _90, _180, _270, Flipped, Flipped90, Flipped180, Flipped270
             background: "gray",
         ),
     ],
@@ -123,7 +123,7 @@
 
             touchpad: (
                 match: (),
-                accel_profile: Adaptive,
+                accel_profile: Adaptive,  // Flat, Adaptive
                 accel_speed: 0.4,
                 natural_scroll: true,
                 left_handed: false,
@@ -136,7 +136,7 @@
 
             mouse: (
                 match: (),
-                accel_profile: Flat,
+                accel_profile: Flat,  // Flat, Adaptive
                 accel_speed: 0.0,
                 natural_scroll: false,
                 left_handed: false,

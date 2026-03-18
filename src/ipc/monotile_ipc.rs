@@ -82,11 +82,7 @@ fn send_seat_status(h: &ZmonotileSeatStatusV1, snap: &TagSnapshot, output: &Outp
             h.focused_output(&wl_output);
         }
     }
-    let title = if snap.title.is_empty() {
-        None
-    } else {
-        Some(snap.title.clone())
-    };
+    let title = if snap.title.is_empty() { None } else { Some(snap.title.clone()) };
     h.focused_toplevel(
         title,
         snap.app_id.clone(),
@@ -131,8 +127,8 @@ impl Dispatch<ZmonotileStatusManagerV1, ()> for Monotile {
 
                 if let Some((_, mon)) = monotile.state.monitors.by_output(&output) {
                     // send tag metadata
-                    handle.tag_count(mon.tag_names.len() as u32);
-                    for (i, name) in mon.tag_names.iter().enumerate() {
+                    handle.tag_count(mon.settings.tags.len() as u32);
+                    for (i, name) in mon.settings.tags.iter().enumerate() {
                         handle.tag_info(i as u32, name.clone());
                     }
                     // send initial state

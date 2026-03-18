@@ -95,23 +95,16 @@ impl WindowElement {
                 .r#match
                 .matches(&self.app_id, &self.title, self.floating)
             {
-                if let Some(ref init) = rule.init {
-                    if let Some(f) = init.floating {
-                        self.floating = f;
-                    }
-                    if let Some((w, h)) = init.size {
-                        self.float_geo.size = (w, h).into();
-                    }
-                    if let Some((x, y)) = init.position {
-                        self.float_geo.loc = (x, y).into();
-                    }
-                    if let Some(ref o) = init.output {
-                        output = Some(o.clone());
-                    }
-                    if let Some(ref t) = init.tags {
-                        tags = Some(t.clone());
-                    }
+                let Some(init) = &rule.init else { continue };
+                self.floating = init.floating.unwrap_or(self.floating);
+                if let Some((w, h)) = init.size {
+                    self.float_geo.size = (w, h).into();
                 }
+                if let Some((x, y)) = init.position {
+                    self.float_geo.loc = (x, y).into();
+                }
+                output = init.output.clone().or(output);
+                tags = init.tags.clone().or(tags);
             }
         }
         (output, tags)

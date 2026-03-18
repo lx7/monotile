@@ -6,7 +6,7 @@ mod tag;
 mod window;
 
 pub use layout::TilingLayout;
-pub use monitor::{Monitor, Monitors};
+pub use monitor::{Monitor, MonitorSettings, Monitors};
 pub use tag::Tag;
 pub use window::{WindowElement, Windows, should_float};
 

@@ -128,6 +128,40 @@ pub fn default_tags() -> Vec<String> {
     (1..=9).map(|i| i.to_string()).collect()
 }
 
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub struct ModeConfig {
+    pub size: (u16, u16),
+    pub refresh: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+pub enum OutputTransform {
+    #[default]
+    Normal,
+    _90,
+    _180,
+    _270,
+    Flipped,
+    Flipped90,
+    Flipped180,
+    Flipped270,
+}
+
+impl From<OutputTransform> for smithay::utils::Transform {
+    fn from(t: OutputTransform) -> Self {
+        match t {
+            OutputTransform::Normal => Self::Normal,
+            OutputTransform::_90 => Self::_90,
+            OutputTransform::_180 => Self::_180,
+            OutputTransform::_270 => Self::_270,
+            OutputTransform::Flipped => Self::Flipped,
+            OutputTransform::Flipped90 => Self::Flipped90,
+            OutputTransform::Flipped180 => Self::Flipped180,
+            OutputTransform::Flipped270 => Self::Flipped270,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct OutputRule {
@@ -135,7 +169,8 @@ pub struct OutputRule {
     pub tags: Option<Vec<String>>,
     pub scale: Option<f64>,
     pub pos: Option<(i32, i32)>,
-    // TODO: add mode and transform when output config is implemented
+    pub mode: Option<ModeConfig>,
+    pub transform: Option<OutputTransform>,
     pub background: Option<Color>,
 }
 
