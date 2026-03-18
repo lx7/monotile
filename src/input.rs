@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
+use tracing::info;
+
 use crate::{
     Monotile,
     config::{Action, Config, Mods, Trigger},
@@ -354,8 +356,9 @@ impl Monotile {
 pub fn configure_device(dev: &mut Device, config: &Config) {
     let is_touchpad = dev.config_tap_finger_count() > 0;
     let is_mouse = !is_touchpad && dev.has_capability(DeviceCapability::Pointer.into());
+    let is_keyboard = dev.has_capability(DeviceCapability::Keyboard.into());
 
-    if is_touchpad {
+    let kind = if is_touchpad {
         let tp = &config.seats["seat0"].touchpad;
         let _ = dev.config_accel_set_profile(tp.accel_profile.into());
         let _ = dev.config_accel_set_speed(tp.accel_speed);
@@ -366,6 +369,7 @@ pub fn configure_device(dev: &mut Device, config: &Config) {
         let _ = dev.config_dwt_set_enabled(tp.disable_while_typing);
         let _ = dev.config_left_handed_set(tp.left_handed);
         let _ = dev.config_middle_emulation_set_enabled(tp.middle_emulation);
+        "touchpad"
     } else if is_mouse {
         let m = &config.seats["seat0"].mouse;
         let _ = dev.config_accel_set_profile(m.accel_profile.into());
@@ -373,5 +377,17 @@ pub fn configure_device(dev: &mut Device, config: &Config) {
         let _ = dev.config_scroll_set_natural_scroll_enabled(m.natural_scroll);
         let _ = dev.config_left_handed_set(m.left_handed);
         let _ = dev.config_middle_emulation_set_enabled(m.middle_emulation);
-    }
+        "mouse"
+    } else if is_keyboard {
+        "keyboard"
+    } else {
+        "input"
+    };
+    info!(
+        "{kind}: '{}' vendor={:#06x} product={:#06x} sysname={}",
+        dev.name(),
+        dev.id_vendor(),
+        dev.id_product(),
+        dev.sysname(),
+    );
 }
