@@ -189,7 +189,7 @@ impl Monotile {
 
         let (target, window_id) = self.state.surface_under(pos);
 
-        if self.state.config.input.focus_follows_cursor {
+        if self.state.config.seats["seat0"].focus_follows_cursor {
             if window_id.is_some() && window_id != self.state.mon().tag().focused_id() {
                 self.set_focus(window_id);
             }
@@ -356,7 +356,7 @@ pub fn configure_device(dev: &mut Device, config: &Config) {
     let is_mouse = !is_touchpad && dev.has_capability(DeviceCapability::Pointer.into());
 
     if is_touchpad {
-        let tp = &config.input.touchpad;
+        let tp = &config.seats["seat0"].touchpad;
         let _ = dev.config_accel_set_profile(tp.accel_profile.into());
         let _ = dev.config_accel_set_speed(tp.accel_speed);
         let _ = dev.config_tap_set_enabled(tp.tap);
@@ -367,7 +367,7 @@ pub fn configure_device(dev: &mut Device, config: &Config) {
         let _ = dev.config_left_handed_set(tp.left_handed);
         let _ = dev.config_middle_emulation_set_enabled(tp.middle_emulation);
     } else if is_mouse {
-        let m = &config.input.mouse;
+        let m = &config.seats["seat0"].mouse;
         let _ = dev.config_accel_set_profile(m.accel_profile.into());
         let _ = dev.config_accel_set_speed(m.accel_speed);
         let _ = dev.config_scroll_set_natural_scroll_enabled(m.natural_scroll);

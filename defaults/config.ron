@@ -18,22 +18,21 @@
 
     // Output rules: top-to-bottom, later rules override earlier ones.
     outputs: [
-        (   // default settings, match all
-            match: (), 
+        (
+            // Match: () = catch-all, matches any output.
+            match: (
+                // name: "regex"      // connector name (eDP-1, DP-1, HDMI-A-1, ...)
+                // make: "regex"      // manufacturer (EDID)
+                // model: "regex"     // model (EDID)
+                // serial: "regex"    /7 serial number (EDID)
+            ),
             scale: 1.0,
             tags: ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
+            // pos: (0, 0),
+            // mode: (size: (2560, 1440), refresh: 144),
+            // transform: Normal,
             background: "gray",
         ),
-        // all available fields:
-        // (
-        //     match: (name: "DP-1", make: "Dell", model: "U2723QE", serial: "ABC123"),
-        //     tags: ["1", "2", "3", "music", "mail", "chat", "7", "8", "9"],
-        //     scale: 2.0,
-        //     pos: (0, 0),
-        //     mode: (size: (2560, 1440), refresh: 144),
-        //     transform: Normal,
-        //     background: "#222222",
-        // ),
     ],
 
     // Tiling layout settings.
@@ -51,19 +50,33 @@
     ),
 
     // Window rules: top-to-bottom, later rules override earlier ones.
-    // - init is evaluated once when a window maps (fields override)
-    // - render defines the per-window render pipeline and is re-evaluated 
-    //   on window state change (entire render pipeline overrides)
     windows: [
-        (   // tiled defaults, match all
-            match: (),
+        (  
+            // Match: () = catch-all, matches any window.
+            match: (
+                // app_id: "regex"        
+                // title: "regex"         
+                // floating: true/false   
+            ),
+            
+            // Init: evaluated once when a window maps.
+            init: (
+                // floating: true, 
+                // size: (600, 400), 
+                // position: (30, 30), 
+                // output: "DP-1", 
+                // tags: [0, 1],
+            ),
+
+            // Render: per-window render pipeline, re-evaluated on state change.
             render: [
                 WindowSurface(fill: "black"),
                 Border(width: 2, color: "gray"),
                 FocusRing(width: 2, color: "blue"),
             ],
         ),
-        (   // floating overrides
+        (
+            // Match: override for floating windows.
             match: (floating: true),
             render: [
                 Shadow(softness: 25, spread: 5, offset: (0, 5), color: "shadow"),
@@ -72,71 +85,65 @@
                 FocusRing(width: 2, color: "blue"),
             ],
         ),
-        // examples (match strings are auto-anchored regex):
-        // (   // browser picture-in-picture: float in bottom-right corner
+        // Examples:
+        // (
         //     match: (app_id: "firefox|chromium", title: "Picture.in.[Pp]icture"),
         //     init: (floating: true, size: (480, 270), position: (1400, 770)),
         // ),
-        // (   // music on tag 8
+        // (
         //     match: (app_id: "spotify"),
         //     init: (tags: [8]),
         // ),
-        //
-        // all available fields:
-        // (
-        //     match: (app_id: "firefox", title: ".*YouTube.*", floating: true),
-        //     init: (
-        //         floating: true,
-        //         size: (600, 400),
-        //         position: (30, 30),
-        //         output: "DP-1",
-        //         tags: [0, 1, 2],
-        //     ),
-        //     render: [
-        //         Shadow(softness: 25, spread: 5, offset: (0, 5), color: "#00000073"),
-        //         WindowSurface(radius: 6.0, fill: "#000000"),
-        //         Border(width: 2, color: "#444444"),
-        //         FocusRing(width: 2, color: "#458588"),
-        //     ],
-        // ),
     ],
 
-    // Input devices and cursor behavior.
-    input: (
-        focus_follows_cursor: true,
-        hide_cursor_when_typing: true,
-        cursor_warp: false,
-        cursor_theme: "default",
-        cursor_size: 24,
+    // Seats: input devices, cursor, and keybinds.
+    seats: {
+        "seat0": (
+            focus_follows_cursor: true,
+            hide_cursor_when_typing: true,
+            cursor_warp: false,
+            cursor_theme: "default",
+            cursor_size: 24,
 
-        keyboard: (
-            layout: "de",
-            variant: "nodeadkeys",
-            options: "",
-            repeat_rate: 30,
-            repeat_delay: 300,
-        ),
+            keyboard: (
+                // Match: () = catch-all, matches any device of this type.
+                match: (
+                    // name: "regex"          // libinput device name
+                    // vendor_id: 0x046d      // USB vendor ID
+                    // product_id: 0xc52b     // USB product ID
+                    // serial: "regex"        // device serial (if available)
+                    // path: "regex"          // udev ID_PATH (physical port)
+                ),
+                layout: "de",
+                variant: "nodeadkeys",
+                options: "",
+                repeat_rate: 30,
+                repeat_delay: 300,
+            ),
 
-        touchpad: (
-            accel_profile: Adaptive,
-            accel_speed: 0.4,
-            natural_scroll: true,
-            left_handed: false,
-            middle_emulation: false,
-            tap: true,
-            tap_and_drag: true,
-            drag_lock: true,
-            disable_while_typing: true,
-        ),
+            touchpad: (
+                match: (),
+                accel_profile: Adaptive,
+                accel_speed: 0.4,
+                natural_scroll: true,
+                left_handed: false,
+                middle_emulation: false,
+                tap: true,
+                tap_and_drag: true,
+                drag_lock: true,
+                disable_while_typing: true,
+            ),
 
-        mouse: (
-            accel_profile: Flat,
-            accel_speed: 0.0,
-            natural_scroll: false,
-            left_handed: false,
-            middle_emulation: false,
+            mouse: (
+                match: (),
+                accel_profile: Flat,
+                accel_speed: 0.0,
+                natural_scroll: false,
+                left_handed: false,
+                middle_emulation: false,
+            ),
         ),
-    ),
+    },
 
     // Bindings
     // Keyboard: ([modifiers], Key("name"), Action)
@@ -153,6 +160,8 @@
     ([Logo],              Key("minus"),                 AdjustMainCount(-1)),
     ([Logo, Alt],         Key("Left"),                  AdjustMainRatio(-0.01)),
     ([Logo, Alt],         Key("Right"),                 AdjustMainRatio(0.01)),
+    // ([Logo],              Key("???"),                   SetMainCount(1)),
+    // ([Logo],              Key("???"),                   SetMainRatio(0.54)),
     ([Logo],              Key("comma"),                 FocusOutput(Left)),
     ([Logo],              Key("period"),                FocusOutput(Right)),
     ([Logo, Shift],       Key("less"),                  SendToOutput(Left)),
@@ -223,4 +232,4 @@
     ],
 )
 
-// vim: set autoindent expandtab tabstop=4 shiftwidth=4 :
+// vim: set autoindent expandtab tabstop=4 shiftwidth=4 nowrap :

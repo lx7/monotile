@@ -76,6 +76,12 @@ impl<'de> Deserialize<'de> for Palette {
 #[derive(Debug, Clone)]
 pub struct Pattern(Regex);
 
+impl PartialEq for Pattern {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.as_str() == other.0.as_str()
+    }
+}
+
 impl Pattern {
     pub fn is_match(&self, s: &str) -> bool {
         self.0.is_match(s)
@@ -106,6 +112,16 @@ impl OutputMatch {
             && self.model.as_ref().is_none_or(|p| p.is_match(model))
             && self.serial.as_ref().is_none_or(|p| p.is_match(serial))
     }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct InputMatch {
+    pub name: Option<Pattern>,
+    pub vendor_id: Option<u32>,
+    pub product_id: Option<u32>,
+    pub serial: Option<Pattern>,
+    pub path: Option<Pattern>,
 }
 
 pub fn default_tags() -> Vec<String> {
@@ -207,11 +223,11 @@ inline_default! {
         pub tile: TileConfig = TileConfig::default(),
     }
 
-    // --- Input ---
+    // --- Seats and input ---
 
     #[derive(Debug, Clone, PartialEq, Deserialize)]
     #[serde(default)]
-    pub struct Input {
+    pub struct SeatConfig {
         pub focus_follows_cursor: bool = true,
         pub hide_cursor_when_typing: bool = true,
         pub cursor_warp: bool,
@@ -225,6 +241,7 @@ inline_default! {
     #[derive(Debug, Clone, PartialEq, Deserialize)]
     #[serde(default)]
     pub struct Keyboard {
+        pub r#match: InputMatch,
         pub layout: String = "de".into(),
         pub variant: String = "nodeadkeys".into(),
         pub options: String,
@@ -235,6 +252,7 @@ inline_default! {
     #[derive(Debug, Clone, PartialEq, Deserialize)]
     #[serde(default)]
     pub struct Touchpad {
+        pub r#match: InputMatch,
         pub accel_profile: AccelProfile = AccelProfile::Adaptive,
         pub accel_speed: f64 = 0.4,
         pub natural_scroll: bool = true,
@@ -249,6 +267,7 @@ inline_default! {
     #[derive(Debug, Clone, PartialEq, Deserialize)]
     #[serde(default)]
     pub struct Mouse {
+        pub r#match: InputMatch,
         pub accel_profile: AccelProfile = AccelProfile::Flat,
         pub accel_speed: f64,
         pub natural_scroll: bool,
@@ -272,6 +291,15 @@ impl From<AccelProfile> for InputAccelProfile {
     }
 }
 
+#[derive(Debug, Default, Clone, Deref)]
+pub struct SeatMap(HashMap<String, SeatConfig>);
+
+impl<'de> Deserialize<'de> for SeatMap {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        HashMap::<String, SeatConfig>::deserialize(d).map(Self)
+    }
+}
+
 impl Keyboard {
     pub fn xkb_config(&self) -> XkbConfig<'_> {
         XkbConfig {
@@ -292,7 +320,7 @@ pub struct Config {
     pub outputs: Vec<OutputRule>,
     pub layout: Layout,
     pub windows: Vec<WindowRule>,
-    pub input: Input,
+    pub seats: SeatMap,
     pub binds: BindMap,
     #[serde(skip)]
     pub path: PathBuf,
@@ -540,8 +568,7 @@ mod tests {
         let code = Config::default();
 
         assert_eq!(file.layout, code.layout);
-        assert_eq!(file.input, code.input);
-
+        assert_eq!(file.seats["seat0"], SeatConfig::default());
         assert!(!file.binds.is_empty(), "binds empty");
     }
 
@@ -623,7 +650,6 @@ mod tests {
         let config: Config = ron::from_str(ron).unwrap();
         assert_eq!(config.layout.inner_gap, 10);
         assert_eq!(config.layout.outer_gap, Layout::default().outer_gap);
-        assert_eq!(config.input, Input::default());
     }
 
     #[test]

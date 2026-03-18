@@ -128,9 +128,10 @@ impl Monotile {
             }
         };
 
-        let kb_changed = config.input.keyboard != self.state.config.input.keyboard;
+        let seat_conf = &config.seats["seat0"];
+        let kb_changed = seat_conf.keyboard != self.state.config.seats["seat0"].keyboard;
         if kb_changed {
-            let kb_conf = &config.input.keyboard;
+            let kb_conf = &seat_conf.keyboard;
             let kb = self.state.seat.get_keyboard().unwrap();
             let _ = kb.set_xkb_config(self, kb_conf.xkb_config());
             kb.change_repeat_info(kb_conf.repeat_rate, kb_conf.repeat_delay);
@@ -264,11 +265,18 @@ impl State {
 
         let mut seat_state = SeatState::new();
         let mut seat = seat_state.new_wl_seat(&dh, "seat0");
-        let kb = &config.input.keyboard;
-        seat.add_keyboard(kb.xkb_config(), kb.repeat_delay, kb.repeat_rate)
-            .unwrap();
+        let kb_conf = &config.seats["seat0"].keyboard;
+        seat.add_keyboard(
+            kb_conf.xkb_config(),
+            kb_conf.repeat_delay,
+            kb_conf.repeat_rate,
+        )
+        .unwrap();
         seat.add_pointer();
-        info!("keyboard: layout={} variant={}", kb.layout, kb.variant);
+        info!(
+            "keyboard: layout={} variant={}",
+            kb_conf.layout, kb_conf.variant
+        );
 
         let cursor_shape_state = CursorShapeManagerState::new::<Monotile>(&dh);
         let cursor = CursorManager::new(1.0);
