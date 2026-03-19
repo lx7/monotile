@@ -238,7 +238,22 @@ impl Monitors {
                 &props.model,
                 &props.serial_number,
             );
-            mon.tags.resize_with(s.tags.len(), Tag::default);
+            // move windows from removed tags to the last remaining tag
+            let new_len = s.tags.len();
+            if new_len < mon.tags.len() {
+                let mut orphaned = Vec::new();
+                for tag in &mon.tags[new_len..] {
+                    orphaned.extend_from_slice(&tag.focus_stack);
+                }
+                mon.tags.truncate(new_len);
+                let dest = new_len - 1;
+                for id in orphaned {
+                    mon.tags[dest].add(id);
+                }
+            }
+            mon.tags.resize_with(new_len, Tag::default);
+            mon.active_tag = mon.active_tag.min(new_len - 1);
+            mon.prev_tag = mon.prev_tag.min(new_len - 1);
             mon.settings = s;
         }
     }

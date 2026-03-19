@@ -21,11 +21,11 @@ use smithay::{
         session::{Event as SessionEvent, Session, libseat::LibSeatSession},
         udev::{UdevBackend, UdevEvent, all_gpus, primary_gpu},
     },
-    desktop::utils::send_frames_surface_tree,
+    desktop::{layer_map_for_output, utils::send_frames_surface_tree},
     output::{Output, OutputModeSource, PhysicalProperties, Subpixel},
     reexports::{
         calloop::{EventLoop, LoopHandle},
-        drm::control::{self, ModeTypeFlags, connector, crtc},
+        drm::control::{self, Device as ControlDevice, ModeTypeFlags, connector, crtc},
         input::{Device, Libinput},
         rustix::fs::OFlags,
         wayland_server::backend::GlobalId,
@@ -45,7 +45,7 @@ use crate::{
     Monotile,
     input::configure_device,
     render::{Shaders, send_frame_callbacks},
-    shell::MonitorSettings,
+    shell::{MonitorSettings, Monitors},
     state::State,
 };
 
@@ -66,6 +66,7 @@ pub struct OutputSurface {
     pub global: GlobalId,
     pub compositor: Surface,
     pub render: RenderState,
+    pub connector: connector::Handle,
 }
 
 pub struct DrmState {
@@ -231,6 +232,48 @@ impl DrmState {
             self.schedule_render_crtc(crtc);
         }
     }
+
+    pub fn apply_output_settings(&mut self, monitors: &Monitors) {
+        let DrmState { surfaces, drm, .. } = self;
+        for surface in surfaces.values_mut() {
+            let Some((_, mon)) = monitors.by_output(&surface.output) else {
+                continue;
+            };
+            let settings = &mon.settings;
+            let output = &surface.output;
+
+            // get connector modes, resolve and diff against pending_mode.
+            if let Some(Err(err)) = drm
+                .get_connector(surface.connector, false)
+                .ok()
+                .and_then(|c| drm_mode_for_config(c.modes(), settings))
+                .filter(|(_, sel)| surface.compositor.pending_mode() != *sel)
+                .map(|(_, sel)| surface.compositor.use_mode(sel))
+            {
+                warn!(?err, "failed to set mode on {}", output.name());
+            }
+
+            // diff and change output state only if necessary
+            let mode = surface.compositor.pending_mode().into();
+            let transform = settings.transform.unwrap_or(output.current_transform());
+            let scale = settings.scale.unwrap_or(output.current_scale());
+
+            let changed = output.current_mode() != Some(mode)
+                || output.current_transform() != transform
+                || output.current_scale().fractional_scale() != scale.fractional_scale()
+                || output.current_location() != settings.pos;
+
+            if changed {
+                output.change_current_state(
+                    Some(mode),
+                    Some(transform),
+                    Some(scale),
+                    Some(settings.pos),
+                );
+                layer_map_for_output(&surface.output).arrange();
+            }
+        }
+    }
 }
 
 pub fn device_changed(drm: &mut DrmState, state: &mut State) {
@@ -340,6 +383,7 @@ fn connector_connected(
             global,
             compositor,
             render: RenderState::default(),
+            connector: connector.handle(),
         },
     );
     drm.schedule_render_crtc(crtc);

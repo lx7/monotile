@@ -144,9 +144,16 @@ impl Monotile {
         self.state.config = config;
         self.state.windows.update_rules(&self.state.config.windows);
         self.state.monitors.update_rules(&self.state.config.outputs);
+        self.backend.apply_output_settings(&self.state.monitors);
         self.backend.reconfigure_devices(&self.state.config);
-        self.recompute_layout();
-        self.backend.schedule_render(&self.state.mon().output);
+        for i in 0..self.state.monitors.len() {
+            self.state.monitors[i].recompute_layout(&mut self.state.windows, &self.state.config);
+            self.state.windows.configure_visible(self.state.monitors[i].tag());
+        }
+        self.update_focus();
+        for mon in self.state.monitors.iter() {
+            self.backend.schedule_render(&mon.output);
+        }
 
         info!("config reloaded");
     }

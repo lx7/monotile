@@ -11,7 +11,7 @@ use tracing::warn;
 use winit::WinitState;
 
 use self::drm::DrmState;
-use crate::{config::Config, input::configure_device};
+use crate::{config::Config, input::configure_device, shell::Monitors};
 
 /// Enum over all supported backends
 #[derive(Debug)]
@@ -61,6 +61,12 @@ impl Backend {
             if let Err(err) = drm.session.change_vt(vt) {
                 warn!("failed to switch VT: {err}");
             }
+        }
+    }
+
+    pub fn apply_output_settings(&mut self, monitors: &Monitors) {
+        if let Backend::Drm(drm) = self {
+            drm.apply_output_settings(monitors);
         }
     }
 
