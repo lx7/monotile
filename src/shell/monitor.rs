@@ -4,7 +4,7 @@ use derive_more::{Deref, DerefMut};
 use smithay::{
     desktop::layer_map_for_output,
     output::{Output, Scale},
-    reexports::wayland_server::protocol::wl_surface::WlSurface,
+    reexports::wayland_server::{backend::GlobalId, protocol::wl_surface::WlSurface},
     utils::{Logical, Point, Rectangle, Transform},
     wayland::{
         session_lock::LockSurface,
@@ -73,6 +73,7 @@ impl MonitorSettings {
 #[derive(Debug)]
 pub struct Monitor {
     pub output: Output,
+    pub global: GlobalId,
     pub settings: MonitorSettings,
     pub tags: Vec<Tag>,
     pub active_tag: usize,
@@ -204,6 +205,10 @@ impl Monitor {
                 we.tiled_geo = rect;
             }
         }
+    }
+
+    pub fn window_ids(&self) -> Vec<WindowId> {
+        self.tags.iter().flat_map(|t| &t.focus_stack).copied().collect()
     }
 
     pub fn update_exclusive_layer(&mut self) {

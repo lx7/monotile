@@ -28,7 +28,6 @@ use smithay::{
         drm::control::{self, Device as ControlDevice, ModeTypeFlags, connector, crtc},
         input::{Device, Libinput},
         rustix::fs::OFlags,
-        wayland_server::backend::GlobalId,
     },
     utils::DeviceFd,
     wayland::image_copy_capture::DmabufConstraints,
@@ -63,7 +62,6 @@ pub enum RenderState {
 
 pub struct OutputSurface {
     pub output: Output,
-    pub global: GlobalId,
     pub compositor: Surface,
     pub render: RenderState,
     pub connector: connector::Handle,
@@ -140,7 +138,7 @@ impl DrmState {
             return;
         }
         surface.render = RenderState::Idle;
-        let Some(mon) = state.monitors.iter().find(|m| m.output == surface.output) else {
+        let Some((_, mon)) = state.monitors.by_output(&surface.output) else {
             return;
         };
 
@@ -374,13 +372,11 @@ fn connector_connected(
         }
     };
 
-    let global = output.create_global::<Monotile>(&state.display_handle);
     state.add_monitor(output.clone(), s);
     drm.surfaces.insert(
         crtc,
         OutputSurface {
             output,
-            global,
             compositor,
             render: RenderState::default(),
             connector: connector.handle(),
@@ -390,16 +386,13 @@ fn connector_connected(
 }
 
 fn connector_disconnected(drm: &mut DrmState, state: &mut State, crtc: crtc::Handle) {
-    if let Some(surface) = drm.surfaces.remove(&crtc) {
-        info!("{}: disconnected", surface.output.name());
-        let weak = surface.output.downgrade();
-        state.screencopy.remove_output(&weak);
-
-        // drop monitors without output
-        state.monitors.retain(|m| m.output != surface.output);
-        if state.active_monitor >= state.monitors.len() && !state.monitors.is_empty() {
-            state.active_monitor = state.monitors.len() - 1;
-        }
+    let Some(surface) = drm.surfaces.remove(&crtc) else {
+        return;
+    };
+    info!("{}: disconnected", surface.output.name());
+    state.remove_monitor(&surface.output);
+    if !state.monitors.is_empty() {
+        drm.schedule_render(&state.monitors[state.active_monitor].output);
     }
 }
 
@@ -521,6 +514,7 @@ pub fn init(
     loop_handle.insert_source(udev, |event, _, mt| {
         if let UdevEvent::Changed { .. } = event {
             device_changed(mt.backend.drm(), &mut mt.state);
+            mt.update_focus();
         }
     })?;
 

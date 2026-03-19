@@ -148,7 +148,9 @@ impl Monotile {
         self.backend.reconfigure_devices(&self.state.config);
         for i in 0..self.state.monitors.len() {
             self.state.monitors[i].recompute_layout(&mut self.state.windows, &self.state.config);
-            self.state.windows.configure_visible(self.state.monitors[i].tag());
+            self.state
+                .windows
+                .configure_visible(self.state.monitors[i].tag());
         }
         self.update_focus();
         for mon in self.state.monitors.iter() {
@@ -339,10 +341,12 @@ impl State {
     }
 
     pub fn add_monitor(&mut self, output: Output, settings: MonitorSettings) {
+        let global = output.create_global::<Monotile>(&self.display_handle);
         let mut tags = Vec::new();
         tags.resize_with(settings.tags.len(), Tag::default);
         self.monitors.push(Monitor {
             output,
+            global,
             settings,
             tags,
             active_tag: 0,
@@ -350,6 +354,49 @@ impl State {
             exclusive_layer: None,
             lock_surface: None,
         });
+    }
+
+    pub fn remove_monitor(&mut self, output: &Output) {
+        self.screencopy.remove_output(&output.downgrade());
+
+        let Some(idx) = self.monitors.iter().position(|m| m.output == *output) else {
+            return;
+        };
+        // clean up layer surfaces on this output
+        let mut map = layer_map_for_output(output);
+        let layers: Vec<_> = map.layers().cloned().collect();
+        for layer in &layers {
+            layer.layer_surface().send_close();
+            map.unmap_layer(layer);
+        }
+        drop(map);
+
+        let dead = self.monitors.remove(idx);
+        let ids = dead.window_ids();
+        self.display_handle.remove_global::<Monotile>(dead.global);
+
+        // TODO: replace active_monitor with per-seat focused monitor
+        if !self.monitors.is_empty() {
+            self.active_monitor = self.active_monitor.min(self.monitors.len() - 1);
+        }
+
+        // migrate windows to active monitor / active tag
+        if !ids.is_empty() && !self.monitors.is_empty() {
+            for &id in &ids {
+                if let Some(we) = self.windows.get_mut(id) {
+                    we.set_fullscreen(None);
+                }
+            }
+
+            // TODO: replace active_monitor with per-seat focused monitor
+            let mon = &mut self.monitors[self.active_monitor];
+            for id in ids {
+                mon.tag_mut().add(id);
+            }
+            mon.recompute_layout(&mut self.windows, &self.config);
+            self.windows
+                .configure_visible(self.monitors[self.active_monitor].tag());
+        }
     }
 
     pub fn monitor_idx(&self, name: &str) -> usize {

@@ -103,8 +103,6 @@ pub fn init(
         },
     );
 
-    // the global id is not needed for winit
-    let _global = output.create_global::<Monotile>(&monotile.state.display_handle);
     output.change_current_state(
         Some(mode),
         Some(Transform::Flipped180),
