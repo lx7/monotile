@@ -191,6 +191,12 @@ impl DrmState {
         }
 
         if result.is_empty {
+            send_frame_callbacks(
+                state.windows.visible(mon.tag()),
+                &surface.output,
+                state.start_time.elapsed(),
+                &mut state.popups,
+            );
             return;
         }
 

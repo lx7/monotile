@@ -5,14 +5,22 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
   };
 
-  outputs = { self, nixpkgs }:
+  outputs =
+    { self, nixpkgs }:
     let
-      systems = [ "x86_64-linux" "aarch64-linux" ];
+      systems = [
+        "x86_64-linux"
+        "aarch64-linux"
+      ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
-    in {
-      packages = forAllSystems (system:
-        let pkgs = nixpkgs.legacyPackages.${system};
-        in {
+    in
+    {
+      packages = forAllSystems (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        {
           default = pkgs.rustPlatform.buildRustPackage {
             pname = "monotile";
             version = self.shortRev or self.dirtyShortRev or "unknown";
@@ -21,6 +29,9 @@
               root = ./.;
               fileset = pkgs.lib.fileset.unions [
                 ./src
+                ./protocols
+                ./defaults
+                ./resources
                 ./Cargo.toml
                 ./Cargo.lock
               ];
@@ -33,6 +44,10 @@
 
             strictDeps = true;
 
+            preCheck = ''
+              export XDG_RUNTIME_DIR=$(mktemp -d)
+            '';
+
             nativeBuildInputs = with pkgs; [
               pkg-config
               autoPatchelfHook
@@ -40,17 +55,22 @@
 
             buildInputs = with pkgs; [
               libdisplay-info
+              libgbm
+              libinput
               libxkbcommon
-              stdenv.cc.cc.lib  # libgcc_s
+              seatd # libseat
+              systemd # libudev
+              stdenv.cc.cc.lib # libgcc_s
+              wayland
             ];
 
             runtimeDependencies = with pkgs; [
-              libglvnd     # libEGL, libGL
+              libgbm
+              libglvnd # libEGL, libGL
               libinput
               libxkbcommon
-              seatd        # libseat
-              systemd      # libudev
-              libgbm
+              seatd # libseat
+              systemd # libudev
               wayland
             ];
 
@@ -65,20 +85,22 @@
         }
       );
 
-      devShells = forAllSystems (system:
+      devShells = forAllSystems (
+        system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
           deps = with pkgs; [
             libdisplay-info
-            libglvnd     # libEGL, libGL
+            libglvnd # libEGL, libGL
             libinput
             libxkbcommon
-            seatd        # libseat
-            systemd      # libudev
+            seatd # libseat
+            systemd # libudev
             libgbm
             wayland
           ];
-        in {
+        in
+        {
           default = pkgs.mkShell {
             hardeningDisable = [ "fortify" ];
 
