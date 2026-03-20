@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=monotile
+Comment=A small and light tiling Wayland compositor
+Exec=monotile
+Type=Application
+DesktopNames=monotile
