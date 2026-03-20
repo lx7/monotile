@@ -11,12 +11,13 @@ use crate::{
 use smithay::{
     backend::input::{
         AbsolutePositionEvent, Axis, AxisSource, ButtonState, DeviceCapability, Event,
-        InputBackend, InputEvent, KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
-        PointerMotionEvent,
+        GestureBeginEvent, GestureEndEvent, GesturePinchUpdateEvent as _, InputBackend,
+        InputEvent, KeyState, KeyboardKeyEvent,
+        PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
     },
     input::{
         keyboard::{FilterResult, Keysym},
-        pointer::{AxisFrame, ButtonEvent, CursorIcon, Focus, GrabStartData, MotionEvent},
+        pointer::*,
     },
     reexports::input::Device,
     utils::{Logical, Point, SERIAL_COUNTER},
@@ -176,7 +177,62 @@ impl Monotile {
 
                 pointer.axis(self, frame);
                 pointer.frame(self);
+                self.backend.schedule_render(&self.state.mon().output);
             }
+            InputEvent::GesturePinchBegin { event, .. } => {
+                pointer.gesture_pinch_begin(
+                    self,
+                    &GesturePinchBeginEvent {
+                        serial,
+                        time: event.time_msec(),
+                        fingers: event.fingers(),
+                    },
+                );
+            }
+            InputEvent::GesturePinchUpdate { event, .. } => {
+                pointer.gesture_pinch_update(
+                    self,
+                    &GesturePinchUpdateEvent {
+                        time: event.time_msec(),
+                        delta: event.delta(),
+                        scale: event.scale(),
+                        rotation: event.rotation(),
+                    },
+                );
+            }
+            InputEvent::GesturePinchEnd { event, .. } => {
+                pointer.gesture_pinch_end(
+                    self,
+                    &GesturePinchEndEvent {
+                        serial,
+                        time: event.time_msec(),
+                        cancelled: event.cancelled(),
+                    },
+                );
+            }
+            InputEvent::GestureHoldBegin { event, .. } => {
+                pointer.gesture_hold_begin(
+                    self,
+                    &GestureHoldBeginEvent {
+                        serial,
+                        time: event.time_msec(),
+                        fingers: event.fingers(),
+                    },
+                );
+            }
+            InputEvent::GestureHoldEnd { event, .. } => {
+                pointer.gesture_hold_end(
+                    self,
+                    &GestureHoldEndEvent {
+                        serial,
+                        time: event.time_msec(),
+                        cancelled: event.cancelled(),
+                    },
+                );
+            }
+            InputEvent::GestureSwipeBegin { .. } => {}
+            InputEvent::GestureSwipeUpdate { .. } => {}
+            InputEvent::GestureSwipeEnd { .. } => {}
             _ => {}
         }
     }

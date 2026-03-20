@@ -28,6 +28,7 @@ use smithay::{
         idle_inhibit::IdleInhibitManagerState,
         idle_notify::IdleNotifierState,
         output::OutputManagerState,
+        pointer_gestures::PointerGesturesState,
         selection::{
             data_device::DataDeviceState,
             ext_data_control::DataControlState as ExtDataControlState,
@@ -230,6 +231,7 @@ pub struct State {
     pub idle_inhibit_state: IdleInhibitManagerState,
     pub popups: PopupManager,
     pub seat: Seat<Monotile>,
+    pub pointer_gestures_state: PointerGesturesState,
     pub cursor_shape_state: CursorShapeManagerState,
     pub cursor: CursorManager,
     pub windows: Windows,
@@ -287,6 +289,7 @@ impl State {
             kb_conf.layout, kb_conf.variant
         );
 
+        let pointer_gestures_state = PointerGesturesState::new::<Monotile>(&dh);
         let cursor_shape_state = CursorShapeManagerState::new::<Monotile>(&dh);
         let cursor = CursorManager::new(1.0);
         let screencopy = ScreencopyState::new(&dh);
@@ -319,6 +322,7 @@ impl State {
             idle_inhibit_state,
             popups: PopupManager::default(),
             seat,
+            pointer_gestures_state,
             cursor_shape_state,
             cursor,
             windows: Windows::default(),

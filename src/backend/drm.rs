@@ -150,6 +150,7 @@ impl DrmState {
                 state.start_time.elapsed(),
                 &mut state.popups,
             );
+            self.schedule_render_crtc(crtc);
             return;
         }
 

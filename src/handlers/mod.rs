@@ -139,3 +139,4 @@ delegate_single_pixel_buffer!(Monotile);
 
 impl TabletSeatHandler for Monotile {}
 delegate_cursor_shape!(Monotile);
+smithay::delegate_pointer_gestures!(Monotile);
