@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use smithay::{
     backend::{
@@ -24,7 +24,10 @@ use smithay::{
     desktop::{layer_map_for_output, utils::send_frames_surface_tree},
     output::{Output, OutputModeSource, PhysicalProperties, Subpixel},
     reexports::{
-        calloop::{EventLoop, LoopHandle},
+        calloop::{
+            EventLoop, LoopHandle,
+            timer::{TimeoutAction, Timer},
+        },
         drm::control::{self, Device as ControlDevice, ModeTypeFlags, connector, crtc},
         input::{Device, Libinput},
         rustix::fs::OFlags,
@@ -126,6 +129,11 @@ impl DrmState {
         }
     }
 
+    fn refresh_duration(output: &Output) -> Duration {
+        let refresh = output.current_mode().map(|m| m.refresh).unwrap_or(60_000);
+        Duration::from_micros(1_000_000 / (refresh as u64 / 1000))
+    }
+
     pub fn render(&mut self, crtc: crtc::Handle, state: &mut State) {
         let Some(surface) = self.surfaces.get_mut(&crtc) else {
             return;
@@ -143,6 +151,7 @@ impl DrmState {
         };
 
         // skip frame if a window has a pending resize (no flicker)
+        let throttle = Some(Self::refresh_duration(&surface.output));
         if !state.locked && state.windows.any_pending_resize(mon.tag()) {
             let tag = mon.tag();
             send_frame_callbacks(
@@ -150,6 +159,7 @@ impl DrmState {
                 tag,
                 &surface.output,
                 state.start_time.elapsed(),
+                throttle,
                 &mut state.popups,
             );
             self.schedule_render_crtc(crtc);
@@ -194,6 +204,34 @@ impl DrmState {
         }
 
         if result.is_empty {
+            // no damage, send cefer callbacks on estimated estimated vblank
+            surface.render = RenderState::WaitingForVBlank;
+            let _ = self.loop_handle.insert_source(
+                Timer::from_duration(throttle.unwrap()),
+                move |_, _, mt| {
+                    let drm = mt.backend.drm();
+                    let Some(s) = drm.surfaces.get_mut(&crtc) else {
+                        return TimeoutAction::Drop;
+                    };
+                    let redraw = s.render == RenderState::Queued;
+                    s.render = RenderState::Idle;
+                    let output = s.output.clone();
+                    if redraw {
+                        drm.schedule_render_crtc(crtc);
+                    }
+                    // TODO: multi-monitor
+                    let tag = mt.state.monitors[mt.state.active_monitor].tag();
+                    send_frame_callbacks(
+                        &mut mt.state.windows,
+                        tag,
+                        &output,
+                        mt.state.start_time.elapsed(),
+                        None,
+                        &mut mt.state.popups,
+                    );
+                    TimeoutAction::Drop
+                },
+            );
             return;
         }
 
@@ -218,6 +256,7 @@ impl DrmState {
             tag,
             &surface.output,
             state.start_time.elapsed(),
+            throttle,
             &mut state.popups,
         );
     }

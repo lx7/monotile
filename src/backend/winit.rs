@@ -26,12 +26,14 @@ impl WinitState {
     pub fn render(&mut self, state: &mut State) -> Result<(), Box<dyn std::error::Error>> {
         // skip frame if a window has a pending resize (no flicker)
         let tag = state.monitors[state.active_monitor].tag();
+        let throttle = Some(std::time::Duration::from_millis(16));
         if !state.locked && state.windows.any_pending_resize(tag) {
             crate::render::send_frame_callbacks(
                 &mut state.windows,
                 tag,
                 &self.output,
                 state.start_time.elapsed(),
+                throttle,
                 &mut state.popups,
             );
             self.backend.window().request_redraw();
@@ -78,6 +80,7 @@ impl WinitState {
             tag,
             &self.output,
             state.start_time.elapsed(),
+            throttle,
             &mut state.popups,
         );
 

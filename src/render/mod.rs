@@ -263,22 +263,21 @@ pub fn send_frame_callbacks(
     tag: &Tag,
     output: &Output,
     elapsed: Duration,
+    throttle: Option<Duration>,
     popups: &mut PopupManager,
 ) {
-    // TODO: use predicted frame timing instead of ZERO
-    let time = Some(Duration::ZERO);
     for id in tag.window_ids() {
         if let Some(we) = windows.get_mut(id)
             && we.committed
         {
             we.committed = false;
             we.window
-                .send_frame(output, elapsed, time, |_, _| Some(output.clone()));
+                .send_frame(output, elapsed, throttle, |_, _| Some(output.clone()));
         }
     }
     let mut map = layer_map_for_output(output);
     for layer in map.layers() {
-        layer.send_frame(output, elapsed, time, |_, _| Some(output.clone()));
+        layer.send_frame(output, elapsed, throttle, |_, _| Some(output.clone()));
     }
     popups.cleanup();
     map.cleanup();
