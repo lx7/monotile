@@ -17,7 +17,7 @@ use smithay::{
         egl::{EGLContext, EGLDisplay},
         input::InputEvent,
         libinput::{LibinputInputBackend, LibinputSessionInterface},
-        renderer::{ImportDma, glow::GlowRenderer},
+        renderer::glow::GlowRenderer,
         session::{Event as SessionEvent, Session, libseat::LibSeatSession},
         udev::{UdevBackend, UdevEvent, all_gpus, primary_gpu},
     },
@@ -30,7 +30,7 @@ use smithay::{
         rustix::fs::OFlags,
     },
     utils::DeviceFd,
-    wayland::image_copy_capture::DmabufConstraints,
+    wayland::{dmabuf::DmabufFeedbackBuilder, image_copy_capture::DmabufConstraints},
 };
 
 use smithay_drm_extras::{
@@ -426,6 +426,7 @@ pub fn init(
         OFlags::RDWR | OFlags::CLOEXEC | OFlags::NOCTTY | OFlags::NONBLOCK,
     )?;
     let fd = DrmDeviceFd::new(DeviceFd::from(fd));
+    let dev_id = fd.dev_id()?;
     let (drm, drm_notifier) = DrmDevice::new(fd.clone(), false)?;
     let gbm = GbmDevice::new(fd)?;
     let egl_display = unsafe { EGLDisplay::new(gbm.clone()) }?;
@@ -450,11 +451,15 @@ pub fn init(
         })
     };
 
+    let feedback = DmabufFeedbackBuilder::new(dev_id, render_formats.iter().copied()).build()?;
     monotile.state.dmabuf_global = Some(
         monotile
             .state
             .dmabuf_state
-            .create_global::<Monotile>(&monotile.state.display_handle, renderer.dmabuf_formats()),
+            .create_global_with_default_feedback::<Monotile>(
+                &monotile.state.display_handle,
+                &feedback,
+            ),
     );
 
     monotile.backend = crate::backend::Backend::Drm(DrmState {
