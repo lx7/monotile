@@ -33,9 +33,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::env::set_var("XDG_CURRENT_DESKTOP", "monotile");
     }
 
-    spawn::autostart(args.autostart);
+    let autostart_pgid = spawn::autostart(args.autostart);
 
     event_loop.run(None, &mut monotile, |mt| mt.state.flush_clients())?;
+
+    if let Some(pgid) = autostart_pgid {
+        spawn::kill_autostart(pgid);
+    }
 
     Ok(())
 }
