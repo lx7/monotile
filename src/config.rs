@@ -388,7 +388,7 @@ pub enum Mod {
     Shift,
     Ctrl,
     Alt,
-    Logo,
+    Super,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
@@ -416,7 +416,7 @@ impl From<&[Mod]> for Mods {
             shift: v.contains(&Mod::Shift),
             ctrl: v.contains(&Mod::Ctrl),
             alt: v.contains(&Mod::Alt),
-            logo: v.contains(&Mod::Logo),
+            logo: v.contains(&Mod::Super),
         }
     }
 }
@@ -674,7 +674,7 @@ mod tests {
 
     #[test]
     fn keysym_unknown() {
-        let ron = r#"(binds: [([Logo], Key("NonExistentKey_XYZ"), Quit)])"#;
+        let ron = r#"(binds: [([Super], Key("NonExistentKey_XYZ"), Quit)])"#;
         let r = ron::from_str::<Config>(ron);
         assert!(r.is_err());
     }
