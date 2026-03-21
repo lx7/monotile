@@ -42,6 +42,7 @@ impl PointerGrab<Monotile> for MoveSurfaceGrab {
         if let Some(we) = monotile.state.windows.get_mut(self.window_id) {
             let delta = event.location - self.start_data.location;
             we.float_geo.loc = (self.initial_loc.to_f64() + delta).to_i32_round();
+            we.configure();
         }
     }
 

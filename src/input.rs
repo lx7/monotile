@@ -383,7 +383,7 @@ impl Monotile {
         let ptr = self.state.seat.get_pointer().unwrap();
         match action {
             Action::Move => {
-                self.state.cursor.override_icon = Some(CursorIcon::Grabbing);
+                self.state.cursor.override_icon = Some(CursorIcon::AllScroll);
                 let start = GrabStartData {
                     focus: self.state.surface_under(pos).0,
                     button: btn,

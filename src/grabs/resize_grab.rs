@@ -4,12 +4,8 @@
 use crate::{Monotile, shell::WindowId};
 use smithay::{
     input::pointer::*,
-    reexports::{
-        wayland_protocols::xdg::shell::server::xdg_toplevel,
-        wayland_server::protocol::wl_surface::WlSurface,
-    },
-    utils::{Logical, Point, Rectangle, Size},
-    wayland::{compositor, shell::xdg::SurfaceCachedState},
+    reexports::wayland_server::protocol::wl_surface::WlSurface,
+    utils::{Logical, Point, Rectangle},
 };
 
 pub struct ResizeSurfaceGrab {
@@ -50,25 +46,13 @@ impl PointerGrab<Monotile> for ResizeSurfaceGrab {
         let new_w = self.initial_rect.size.w + delta.x as i32;
         let new_h = self.initial_rect.size.h + delta.y as i32;
 
-        let surface = we.window.toplevel().unwrap();
-        let (min, max) = compositor::with_states(surface.wl_surface(), |states| {
-            let mut data = states.cached_state.get::<SurfaceCachedState>();
-            let cur = data.current();
-            (cur.min_size, cur.max_size)
-        });
-
-        // 0 means unconstrained in xdg-shell spec
+        let (min, max) = we.min_max_size();
         let clamp = |v: i32, lo: i32, hi: i32| {
             let lo = lo.max(1);
             let hi = if hi == 0 { i32::MAX } else { hi };
             v.clamp(lo, hi)
         };
-        we.float_geo.size = Size::from((clamp(new_w, min.w, max.w), clamp(new_h, min.h, max.h)));
-        surface.with_pending_state(|state| {
-            state.states.set(xdg_toplevel::State::Resizing);
-            state.size = Some(we.float_geo.size);
-        });
-        surface.send_pending_configure();
+        we.resize_float((clamp(new_w, min.w, max.w), clamp(new_h, min.h, max.h)).into());
     }
 
     fn relative_motion(
@@ -92,13 +76,8 @@ impl PointerGrab<Monotile> for ResizeSurfaceGrab {
         if !handle.current_pressed().contains(&self.start_data.button) {
             handle.unset_grab(self, monotile, event.serial, event.time, true);
 
-            if let Some(we) = monotile.state.windows.get(self.window_id) {
-                let xdg = we.window.toplevel().unwrap();
-                xdg.with_pending_state(|state| {
-                    state.states.unset(xdg_toplevel::State::Resizing);
-                    state.size = Some(we.float_geo.size);
-                });
-                xdg.send_pending_configure();
+            if let Some(we) = monotile.state.windows.get_mut(self.window_id) {
+                we.finish_resize_float();
             }
         }
     }

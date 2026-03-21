@@ -144,8 +144,10 @@ impl DrmState {
 
         // skip frame if a window has a pending resize (no flicker)
         if !state.locked && state.windows.any_pending_resize(mon.tag()) {
+            let tag = mon.tag();
             send_frame_callbacks(
-                state.windows.visible(mon.tag()),
+                &mut state.windows,
+                tag,
                 &surface.output,
                 state.start_time.elapsed(),
                 &mut state.popups,
@@ -160,7 +162,7 @@ impl DrmState {
         elems.extend(crate::render::output_elements(
             &mut self.renderer,
             mon,
-            &state.windows,
+            &mut state.windows,
             &self.shaders,
             &state.config,
             state.locked,
@@ -192,12 +194,6 @@ impl DrmState {
         }
 
         if result.is_empty {
-            send_frame_callbacks(
-                state.windows.visible(mon.tag()),
-                &surface.output,
-                state.start_time.elapsed(),
-                &mut state.popups,
-            );
             return;
         }
 
@@ -216,8 +212,10 @@ impl DrmState {
                 |_, _| Some(surface.output.clone()),
             );
         }
+        let tag = mon.tag();
         send_frame_callbacks(
-            state.windows.visible(mon.tag()),
+            &mut state.windows,
+            tag,
             &surface.output,
             state.start_time.elapsed(),
             &mut state.popups,

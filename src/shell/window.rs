@@ -17,7 +17,7 @@ use smithay::{
     },
 };
 
-use crate::config;
+use crate::{config, render::RenderStep};
 
 use super::{Tag, WindowId};
 
@@ -36,11 +36,12 @@ pub struct WindowElement {
     pub float_geo: Rectangle<i32, Logical>,
     fullscreen_geo: Rectangle<i32, Logical>,
 
-    pub render: Vec<config::RenderStep>,
+    pub render: Vec<RenderStep>,
     pub radius: f32,
     rules: Vec<config::WindowRule>,
 
     pre_resize_buf: Option<(Size<i32, Logical>, Instant)>,
+    pub committed: bool,
 }
 
 impl WindowElement {
@@ -84,6 +85,7 @@ impl WindowElement {
             radius: 0.0,
             rules: rules.to_vec(),
             pre_resize_buf: None,
+            committed: true,
         }
     }
 
@@ -111,22 +113,25 @@ impl WindowElement {
     }
 
     pub fn resolve_render(&mut self) {
-        self.render.clear();
+        let mut matched = None;
         for rule in &self.rules {
             if rule
                 .r#match
                 .matches(&self.app_id, &self.title, self.floating)
             {
-                if let Some(ref render) = rule.render {
-                    self.render.clone_from(render);
+                if rule.render.is_some() {
+                    matched = rule.render.as_ref();
                 }
             }
         }
+        self.render = matched
+            .map(|steps| steps.iter().map(RenderStep::from_config).collect())
+            .unwrap_or_default();
         self.radius = self
             .render
             .iter()
             .find_map(|s| match s {
-                config::RenderStep::WindowSurface { radius, .. } => Some(*radius),
+                RenderStep::WindowSurface { radius, .. } => Some(*radius),
                 _ => None,
             })
             .unwrap_or(0.0);
@@ -139,6 +144,43 @@ impl WindowElement {
             self.float_geo
         } else {
             self.tiled_geo
+        }
+    }
+
+    pub fn min_max_size(&self) -> (Size<i32, Logical>, Size<i32, Logical>) {
+        self.window
+            .toplevel()
+            .map(|tl| {
+                with_states(tl.wl_surface(), |states| {
+                    let mut data = states.cached_state.get::<SurfaceCachedState>();
+                    let cur = data.current();
+                    (cur.min_size, cur.max_size)
+                })
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn resize_float(&mut self, size: Size<i32, Logical>) {
+        self.float_geo.size = size;
+        for step in &mut self.render {
+            step.clear();
+        }
+        if let Some(tl) = self.window.toplevel() {
+            tl.with_pending_state(|s| {
+                s.states.set(xdg_toplevel::State::Resizing);
+                s.size = Some(size);
+            });
+            tl.send_pending_configure();
+        }
+    }
+
+    pub fn finish_resize_float(&mut self) {
+        if let Some(tl) = self.window.toplevel() {
+            tl.with_pending_state(|s| {
+                s.states.unset(xdg_toplevel::State::Resizing);
+                s.size = Some(self.float_geo.size);
+            });
+            tl.send_pending_configure();
         }
     }
 
@@ -201,10 +243,14 @@ impl WindowElement {
         if tl.send_pending_configure().is_some() {
             self.pre_resize_buf = Some((self.window.geometry().size, Instant::now()));
         }
+        for step in &mut self.render {
+            step.clear();
+        }
     }
 
     pub fn on_commit(&mut self) {
         self.window.on_commit();
+        self.committed = true;
         if let Some((old, _)) = self.pre_resize_buf {
             let buf = self.window.geometry().size;
             if buf != old || buf == self.geo().size {

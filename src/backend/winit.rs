@@ -25,10 +25,11 @@ pub struct WinitState {
 impl WinitState {
     pub fn render(&mut self, state: &mut State) -> Result<(), Box<dyn std::error::Error>> {
         // skip frame if a window has a pending resize (no flicker)
-        if !state.locked && state.windows.any_pending_resize(state.mon().tag()) {
-            let mon = state.mon();
+        let tag = state.monitors[state.active_monitor].tag();
+        if !state.locked && state.windows.any_pending_resize(tag) {
             crate::render::send_frame_callbacks(
-                state.windows.visible(mon.tag()),
+                &mut state.windows,
+                tag,
                 &self.output,
                 state.start_time.elapsed(),
                 &mut state.popups,
@@ -39,10 +40,11 @@ impl WinitState {
 
         let age = self.backend.buffer_age().unwrap_or(0);
         let (renderer, mut fb) = self.backend.bind()?;
+        let mon = &state.monitors[state.active_monitor];
         let elems = crate::render::output_elements(
             renderer,
-            state.mon(),
-            &state.windows,
+            mon,
+            &mut state.windows,
             &self.shaders,
             &state.config,
             state.locked,
@@ -58,18 +60,22 @@ impl WinitState {
         std::mem::drop(fb);
         self.backend.submit(rendered.damage.map(|x| x.as_slice()))?;
 
-        let mon = &state.monitors[state.active_monitor];
-        if let Some(ls) = &mon.lock_surface {
-            send_frames_surface_tree(
-                ls.wl_surface(),
-                &self.output,
-                state.start_time.elapsed(),
-                None,
-                |_, _| Some(self.output.clone()),
-            );
+        {
+            let mon = &state.monitors[state.active_monitor];
+            if let Some(ls) = &mon.lock_surface {
+                send_frames_surface_tree(
+                    ls.wl_surface(),
+                    &self.output,
+                    state.start_time.elapsed(),
+                    None,
+                    |_, _| Some(self.output.clone()),
+                );
+            }
         }
+        let tag = state.monitors[state.active_monitor].tag();
         crate::render::send_frame_callbacks(
-            state.windows.visible(mon.tag()),
+            &mut state.windows,
+            tag,
             &self.output,
             state.start_time.elapsed(),
             &mut state.popups,

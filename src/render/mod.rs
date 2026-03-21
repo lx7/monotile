@@ -4,6 +4,7 @@ mod border;
 pub mod clipped_surface;
 pub mod cursor;
 mod shaders;
+pub mod window;
 
 use std::borrow::BorrowMut;
 use std::time::Duration;
@@ -17,7 +18,7 @@ use smithay::{
             surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
         },
         gles::{
-            GlesPixelProgram, GlesRenderer, GlesTexProgram, Uniform, UniformName, UniformType,
+            GlesPixelProgram, GlesRenderer, GlesTexProgram, UniformName, UniformType,
             element::PixelShaderElement,
         },
         glow::GlowRenderer,
@@ -25,13 +26,15 @@ use smithay::{
     desktop::{PopupManager, layer_map_for_output},
     output::Output,
     reexports::wayland_server::protocol::wl_surface::WlSurface,
-    utils::{Logical, Point, Rectangle, Scale},
+    utils::{Logical, Point, Scale},
     wayland::{seat::WaylandFocus, shell::wlr_layer::Layer},
 };
 
+pub use window::RenderStep;
+
 use crate::{
-    config::{Config, RenderStep},
-    shell::{Monitor, WindowElement, Windows},
+    config::Config,
+    shell::{Monitor, Tag, Windows},
 };
 use clipped_surface::ClippedSurface;
 
@@ -167,7 +170,7 @@ fn popup_elements(
 pub fn output_elements(
     renderer: &mut GlowRenderer,
     mon: &Monitor,
-    windows: &Windows,
+    windows: &mut Windows,
     shaders: &Shaders,
     config: &Config,
     locked: bool,
@@ -191,7 +194,6 @@ pub fn output_elements(
         return vec![];
     }
 
-    let scale_f32 = out_scale as f32;
     let n = mon.tag().tiled.len() + mon.tag().floating.len();
     let mut elems = Vec::with_capacity(n * 20 + 32);
 
@@ -229,136 +231,20 @@ pub fn output_elements(
         let tag = mon.tag();
         let tiled = tag.tiled.len();
 
-        for id in tag.window_ids().rev() {
-            let Some(we) = windows.get(id) else { continue };
-            let win = we.geo();
-            let wl = we.window.wl_surface().unwrap();
-
+        let ids: Vec<_> = tag.window_ids().rev().collect();
+        for id in ids {
+            let Some(we) = windows.get_mut(id) else {
+                continue;
+            };
             let single_tiled = tiled == 1 && !we.floating;
-            let disable_gaps = config.layout.smart_gaps && single_tiled;
-            let disable_border = config.layout.smart_borders && single_tiled;
-            let radius = we.radius;
-
-            // popups above all decorations
-            elems.extend(popup_elements(renderer, &wl, win.loc, scale));
-
-            // rev: render pipeline is back-to-front
-            for step in we.render.iter().rev() {
-                match step {
-                    RenderStep::FocusRing { width, color }
-                        if we.focused && !disable_border && *width > 0 =>
-                    {
-                        border::push_elements(
-                            &mut elems,
-                            &shaders.rect,
-                            win,
-                            radius,
-                            *width,
-                            color.0,
-                            scale_f32,
-                        );
-                    }
-                    RenderStep::Border { width, color } if !disable_border && *width > 0 => {
-                        border::push_elements(
-                            &mut elems,
-                            &shaders.rect,
-                            win,
-                            radius,
-                            *width,
-                            color.0,
-                            scale_f32,
-                        );
-                    }
-                    RenderStep::WindowSurface { fill, .. } => {
-                        let clip_r = if disable_gaps { 0.0 } else { radius };
-
-                        // surfaces (clipped if radius > 0)
-                        let surfs = render_elements_from_surface_tree(
-                            renderer,
-                            &wl,
-                            we.surface_loc().to_physical_precise_round(scale),
-                            scale,
-                            1.0,
-                            Kind::Unspecified,
-                        );
-                        for s in surfs {
-                            if !ClippedSurface::will_clip(&s, win, clip_r, scale) {
-                                elems.push(MonotileElement::Surface(s));
-                            } else {
-                                elems.push(MonotileElement::Clipped(ClippedSurface::new(
-                                    s,
-                                    shaders.clip.clone(),
-                                    win,
-                                    clip_r,
-                                    scale,
-                                )));
-                            }
-                        }
-
-                        // background fill
-                        elems.push(MonotileElement::Decoration(PixelShaderElement::new(
-                            shaders.rect.clone(),
-                            win,
-                            None,
-                            1.0,
-                            vec![
-                                Uniform::new("outer_size", (win.size.w as f32, win.size.h as f32)),
-                                Uniform::new("border_width", 0.0f32),
-                                Uniform::new("outer_radius", clip_r),
-                                Uniform::new("border_color", fill.0),
-                                Uniform::new("piece_offset", (0.0f32, 0.0f32)),
-                                Uniform::new("scale", scale_f32),
-                            ],
-                            Kind::Unspecified,
-                        )));
-                    }
-                    RenderStep::Shadow {
-                        softness,
-                        spread,
-                        offset,
-                        color,
-                    } if !disable_gaps => {
-                        let sigma = *softness as f32 / 2.0;
-                        let blur = (sigma * 3.0).ceil() as i32;
-                        let pad_x = blur + spread + offset.0.abs();
-                        let pad_y = blur + spread + offset.1.abs();
-
-                        elems.push(MonotileElement::Decoration(PixelShaderElement::new(
-                            shaders.shadow.clone(),
-                            Rectangle::new(
-                                (win.loc.x - pad_x, win.loc.y - pad_y).into(),
-                                (win.size.w + 2 * pad_x, win.size.h + 2 * pad_y).into(),
-                            ),
-                            None,
-                            1.0,
-                            vec![
-                                Uniform::new("win_size", (win.size.w as f32, win.size.h as f32)),
-                                Uniform::new("win_offset", (pad_x as f32, pad_y as f32)),
-                                Uniform::new("outer_radius", radius),
-                                Uniform::new(
-                                    "shadow_box_size",
-                                    (
-                                        (win.size.w + 2 * spread) as f32,
-                                        (win.size.h + 2 * spread) as f32,
-                                    ),
-                                ),
-                                Uniform::new(
-                                    "shadow_box_offset",
-                                    (
-                                        (pad_x - spread + offset.0) as f32,
-                                        (pad_y - spread + offset.1) as f32,
-                                    ),
-                                ),
-                                Uniform::new("shadow_sigma", sigma),
-                                Uniform::new("shadow_color", color.0),
-                                Uniform::new("scale", scale_f32),
-                            ],
-                            Kind::Unspecified,
-                        )));
-                    }
-                    _ => {}
-                }
-            }
+            we.render_elements(
+                &mut elems,
+                renderer,
+                shaders,
+                scale,
+                config.layout.smart_borders && single_tiled,
+                config.layout.smart_gaps && single_tiled,
+            );
         }
 
         elems.extend(layer_elements(
@@ -372,17 +258,23 @@ pub fn output_elements(
     elems
 }
 
-pub fn send_frame_callbacks<'a>(
-    windows: impl IntoIterator<Item = &'a WindowElement>,
+pub fn send_frame_callbacks(
+    windows: &mut Windows,
+    tag: &Tag,
     output: &Output,
     elapsed: Duration,
     popups: &mut PopupManager,
 ) {
     // TODO: use predicted frame timing instead of ZERO
     let time = Some(Duration::ZERO);
-    for we in windows {
-        we.window
-            .send_frame(output, elapsed, time, |_, _| Some(output.clone()));
+    for id in tag.window_ids() {
+        if let Some(we) = windows.get_mut(id)
+            && we.committed
+        {
+            we.committed = false;
+            we.window
+                .send_frame(output, elapsed, time, |_, _| Some(output.clone()));
+        }
     }
     let mut map = layer_map_for_output(output);
     for layer in map.layers() {
