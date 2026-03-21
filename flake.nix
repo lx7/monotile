@@ -46,6 +46,7 @@
 
             preCheck = ''
               export XDG_RUNTIME_DIR=$(mktemp -d)
+              export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [ pkgs.wayland ]}"
             '';
 
             nativeBuildInputs = with pkgs; [
