@@ -207,7 +207,7 @@ pub fn output_elements(
         elems.extend(layer_elements(renderer, output, &[Layer::Overlay], scale));
 
         let wl = we.window.wl_surface().unwrap();
-        elems.extend(popup_elements(renderer, &wl, we.geo().loc, scale));
+        elems.extend(popup_elements(renderer, &wl, we.render_geo.loc, scale));
 
         let surfs = render_elements_from_surface_tree(
             renderer,

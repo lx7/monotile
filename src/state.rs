@@ -166,10 +166,11 @@ impl Monotile {
     }
 
     pub fn set_focus(&mut self, id: Option<WindowId>) {
-        for we in self.state.windows.values_mut() {
-            if we.focused {
+        if let Some(old) = self.state.windows.focused {
+            if let Some(we) = self.state.windows.get_mut(old) {
                 we.set_focused(false);
             }
+            self.state.windows.focused = None;
         }
 
         if let Some(ls) = &self.state.mon().lock_surface {
@@ -187,15 +188,16 @@ impl Monotile {
             return;
         }
 
-        let target = id
-            .and_then(|id| {
-                self.state.mon_mut().tag_mut().promote(id);
-                self.state.windows.get_mut(id)
-            })
-            .and_then(|we| {
+        if let Some(id) = id {
+            self.state.mon_mut().tag_mut().promote(id);
+            if let Some(we) = self.state.windows.get_mut(id) {
                 we.set_focused(true);
-                we.window.toplevel().map(|tl| tl.wl_surface().clone())
-            });
+            }
+            self.state.windows.focused = id.into();
+        }
+        let target = self.state.windows.focused.and_then(|id| {
+            self.state.windows.get(id)?.window.toplevel().map(|tl| tl.wl_surface().clone())
+        });
 
         if let Some(kb) = self.state.seat.get_keyboard() {
             kb.set_focus(self, target, SERIAL_COUNTER.next_serial());
@@ -389,6 +391,7 @@ impl State {
             for &id in &ids {
                 if let Some(we) = self.windows.get_mut(id) {
                     we.set_fullscreen(None);
+                    we.monitor = self.active_monitor;
                 }
             }
 
@@ -419,6 +422,7 @@ impl State {
         self.windows[id].resolve_render();
 
         let idx = output.map_or(self.active_monitor, |n| self.monitor_idx(&n));
+        self.windows[id].monitor = idx;
         self.monitors[idx].map(&mut self.windows, id, tags);
         id
     }

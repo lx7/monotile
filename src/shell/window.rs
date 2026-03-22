@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use std::time::{Duration, Instant};
+use std::collections::HashMap;
 
 use derive_more::{Deref, DerefMut};
+
 use slotmap::SlotMap;
 use smithay::{
     desktop::{Window, WindowSurfaceType},
     reexports::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
-        wayland_server::protocol::wl_surface::WlSurface,
+        wayland_server::{Resource, backend::ObjectId, protocol::wl_surface::WlSurface},
     },
     utils::{Logical, Point, Rectangle, Size},
     wayland::{
@@ -26,6 +27,7 @@ pub struct WindowElement {
     pub id: WindowId,
     pub window: Window,
 
+    pub monitor: usize,
     pub app_id: String,
     pub title: String,
     pub floating: bool,
@@ -40,7 +42,9 @@ pub struct WindowElement {
     pub radius: f32,
     rules: Vec<config::WindowRule>,
 
-    pre_resize_buf: Option<(Size<i32, Logical>, Instant)>,
+    // client protocol and rendering
+    configured_geo: Rectangle<i32, Logical>,
+    pub render_geo: Rectangle<i32, Logical>,
     pub committed: bool,
 }
 
@@ -73,6 +77,7 @@ impl WindowElement {
         Self {
             id,
             window,
+            monitor: 0,
             app_id,
             title,
             floating: should_float,
@@ -84,7 +89,8 @@ impl WindowElement {
             render: Vec::new(),
             radius: 0.0,
             rules: rules.to_vec(),
-            pre_resize_buf: None,
+            configured_geo: Rectangle::default(),
+            render_geo: Rectangle::default(),
             committed: false,
         }
     }
@@ -162,9 +168,6 @@ impl WindowElement {
 
     pub fn resize_float(&mut self, size: Size<i32, Logical>) {
         self.float_geo.size = size;
-        for step in &mut self.render {
-            step.clear();
-        }
         if let Some(tl) = self.window.toplevel() {
             tl.with_pending_state(|s| {
                 s.states.set(xdg_toplevel::State::Resizing);
@@ -185,6 +188,10 @@ impl WindowElement {
     }
 
     pub fn surface_loc(&self) -> Point<i32, Logical> {
+        self.render_geo.loc - self.window.geometry().loc
+    }
+
+    pub fn target_loc(&self) -> Point<i32, Logical> {
         self.geo().loc - self.window.geometry().loc
     }
 
@@ -234,39 +241,45 @@ impl WindowElement {
     }
 
     pub fn configure(&mut self) {
+        let target = self.geo();
+        // nothing changed
+        if target == self.configured_geo {
+            return;
+        }
+        // update rendering position + invalidate decoration caches
+        self.render_geo = target;
+        for step in &mut self.render {
+            step.clear();
+        }
+        // position-only change - no configure needed
+        if target.size == self.configured_geo.size {
+            self.configured_geo = target;
+            return;
+        }
+        // size changed - send configure to client
+        self.configured_geo = target;
         let Some(tl) = self.window.toplevel() else {
             return;
         };
         tl.with_pending_state(|s| {
-            s.size = Some(self.geo().size);
+            s.size = Some(target.size);
         });
-        let sent = if tl.is_initial_configure_sent() {
-            tl.send_pending_configure()
+        if tl.is_initial_configure_sent() {
+            tl.send_pending_configure();
         } else {
-            Some(tl.send_configure())
-        };
-        if sent.is_some() {
-            self.pre_resize_buf = Some((self.window.geometry().size, Instant::now()));
-        }
-        for step in &mut self.render {
-            step.clear();
+            tl.send_configure();
         }
     }
 
     pub fn on_commit(&mut self) {
         self.window.on_commit();
         self.committed = true;
-        if let Some((old, _)) = self.pre_resize_buf {
-            let buf = self.window.geometry().size;
-            if buf != old || buf == self.geo().size {
-                self.pre_resize_buf = None;
+        if self.render_geo != self.geo() {
+            self.render_geo = self.geo();
+            for step in &mut self.render {
+                step.clear();
             }
         }
-    }
-
-    pub fn has_pending_resize(&self) -> bool {
-        self.pre_resize_buf
-            .is_some_and(|(_, t)| t.elapsed() < Duration::from_millis(300))
     }
 }
 
@@ -284,25 +297,44 @@ pub fn should_float(tl: &ToplevelSurface) -> bool {
 }
 
 #[derive(Debug, Default, Deref, DerefMut)]
-pub struct Windows(pub SlotMap<WindowId, WindowElement>);
+pub struct Windows {
+    #[deref]
+    #[deref_mut]
+    inner: SlotMap<WindowId, WindowElement>,
+    by_surface: HashMap<ObjectId, WindowId>,
+    pub focused: Option<WindowId>,
+}
 
 impl Windows {
+    pub fn insert_with_key(&mut self, f: impl FnOnce(WindowId) -> WindowElement) -> WindowId {
+        let id = self.inner.insert_with_key(f);
+        if let Some(tl) = self.inner[id].window.toplevel() {
+            self.by_surface.insert(tl.wl_surface().id(), id);
+        }
+        id
+    }
+
+    pub fn remove(&mut self, id: WindowId) -> Option<WindowElement> {
+        if let Some(we) = self.inner.get(id) {
+            if let Some(tl) = we.window.toplevel() {
+                self.by_surface.remove(&tl.wl_surface().id());
+            }
+            if self.focused == Some(id) {
+                self.focused = None;
+            }
+        }
+        self.inner.remove(id)
+    }
+
     pub fn update_rules(&mut self, rules: &[config::WindowRule]) {
-        for we in self.values_mut() {
+        for we in self.inner.values_mut() {
             we.rules = rules.to_vec();
             we.resolve_render();
         }
     }
 
     pub fn find_by_surface(&self, surface: &WlSurface) -> Option<WindowId> {
-        for we in self.values() {
-            if let Some(tl) = we.window.toplevel() {
-                if tl.wl_surface() == surface {
-                    return Some(we.id);
-                }
-            }
-        }
-        None
+        self.by_surface.get(&surface.id()).copied()
     }
 
     pub fn visible(&self, tag: &Tag) -> Vec<&WindowElement> {
@@ -319,11 +351,6 @@ impl Windows {
                 we.configure();
             }
         }
-    }
-
-    pub fn any_pending_resize(&self, tag: &Tag) -> bool {
-        tag.window_ids()
-            .any(|id| self.get(id).is_some_and(|we| we.has_pending_resize()))
     }
 
     pub fn window_id_under(&self, tag: &Tag, pos: Point<f64, Logical>) -> Option<WindowId> {
@@ -348,7 +375,7 @@ impl Windows {
         }
         for id in tag.window_ids().rev() {
             if let Some(we) = self.get(id)
-                && we.geo().to_f64().contains(pos)
+                && we.render_geo.to_f64().contains(pos)
             {
                 return Some(we);
             }

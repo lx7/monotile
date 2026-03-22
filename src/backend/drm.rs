@@ -150,22 +150,7 @@ impl DrmState {
             return;
         };
 
-        // skip frame if a window has a pending resize (no flicker)
         let throttle = Some(Self::refresh_duration(&surface.output));
-        if !state.locked && state.windows.any_pending_resize(mon.tag()) {
-            let tag = mon.tag();
-            send_frame_callbacks(
-                &mut state.windows,
-                tag,
-                &surface.output,
-                state.start_time.elapsed(),
-                throttle,
-                &mut state.popups,
-            );
-            self.schedule_render_crtc(crtc);
-            return;
-        }
-
         let ptr = state.seat.get_pointer().unwrap();
         let pos = ptr.current_location();
         let mut elems = state.cursor.elements(&mut self.renderer, pos);

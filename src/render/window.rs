@@ -238,7 +238,7 @@ impl WindowElement {
         disable_border: bool,
         disable_gaps: bool,
     ) {
-        let win_geo = self.geo();
+        let win_geo = self.render_geo;
         let wl = self.window.wl_surface().unwrap();
         let surf_loc = self.surface_loc().to_physical_precise_round(scale);
         let exact_size = self.window.geometry().size == win_geo.size;
