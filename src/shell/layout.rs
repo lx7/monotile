@@ -86,6 +86,8 @@ impl TilingLayout {
         (0..count)
             .map(|i| {
                 let y = area.loc.y + i as i32 * (h + gap);
+                let remaining_h = area.loc.y + area.size.h - y;
+                let h = if i == count - 1 { remaining_h } else { h };
                 Rectangle::new((area.loc.x, y).into(), (area.size.w, h).into())
             })
             .collect()
