@@ -79,7 +79,7 @@ impl XdgShellHandler for Monotile {
         }
     }
 
-    // ignored, compositor controls window movement
+    // ignored, compositor controls window geometry
     fn maximize_request(&mut self, _surface: ToplevelSurface) {}
     fn unmaximize_request(&mut self, _surface: ToplevelSurface) {}
     fn move_request(&mut self, _: ToplevelSurface, _: wl_seat::WlSeat, _: Serial) {}
