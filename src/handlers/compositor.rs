@@ -111,7 +111,5 @@ impl ShmHandler for Monotile {
     }
 }
 
-// TODO: implement dmabuf
-
 delegate_compositor!(Monotile);
 delegate_shm!(Monotile);

@@ -255,3 +255,20 @@ fn float_geo_preserved_across_toggle() {
         "float_geo should be preserved across tiled round-trip"
     );
 }
+
+#[test]
+fn initial_configure_has_tiled_size() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+
+    let w = open_window(&mut f, c);
+    let cfgs = f.client_mut(c).take_configures(w);
+
+    let first = cfgs.first().expect("should have at least one configure");
+    assert!(
+        first.width > 0 && first.height > 0,
+        "initial configure should have the tiled size, got {}x{}",
+        first.width,
+        first.height,
+    );
+}

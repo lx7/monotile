@@ -204,17 +204,17 @@ pub fn handle_commit(state: &mut crate::state::State, surface: &WlSurface) -> bo
             mutex.lock().unwrap().initial_configure_sent
         });
         if !sent {
-            // send initial configure with (0,0) to get the client's preferred size
-            tl.send_configure();
+            let floating = should_float(&tl);
+            let window = state.pending.remove(idx);
+            state.map(window, floating);
+            mapped = true;
         } else {
             let has_buffer =
                 with_renderer_surface_state(surface, |s| s.buffer().is_some()).unwrap_or(false);
             if has_buffer {
-                let floating = should_float(&tl);
-                let window = state.pending.remove(idx);
-                window.on_commit();
-                state.map(window, floating);
-                mapped = true;
+                if let Some(id) = state.windows.find_by_surface(surface) {
+                    state.windows[id].on_commit();
+                }
             }
         }
     }

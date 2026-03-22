@@ -85,7 +85,7 @@ impl WindowElement {
             radius: 0.0,
             rules: rules.to_vec(),
             pre_resize_buf: None,
-            committed: true,
+            committed: false,
         }
     }
 
@@ -240,7 +240,12 @@ impl WindowElement {
         tl.with_pending_state(|s| {
             s.size = Some(self.geo().size);
         });
-        if tl.send_pending_configure().is_some() {
+        let sent = if tl.is_initial_configure_sent() {
+            tl.send_pending_configure()
+        } else {
+            Some(tl.send_configure())
+        };
+        if sent.is_some() {
             self.pre_resize_buf = Some((self.window.geometry().size, Instant::now()));
         }
         for step in &mut self.render {
