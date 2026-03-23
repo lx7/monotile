@@ -529,6 +529,7 @@ pub fn init(
                     if let Err(err) = surface.compositor.reset_state() {
                         warn!(?err, "failed to reset compositor state");
                     }
+                    surface.compositor.reset_buffers();
                 }
                 for crtc in drm.surfaces.keys().copied().collect::<Vec<_>>() {
                     drm.schedule_render_crtc(crtc);

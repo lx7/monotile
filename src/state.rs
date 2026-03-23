@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use std::{ffi::OsString, os::unix::net::UnixStream, sync::Arc};
+use std::{collections::HashMap, ffi::OsString, os::unix::net::UnixStream, sync::Arc};
 
 use tracing::{info, warn};
 
 use smithay::{
-    desktop::{PopupManager, Window, WindowSurfaceType, layer_map_for_output},
+    desktop::{PopupManager, WindowSurfaceType, layer_map_for_output},
     input::{Seat, SeatState},
     output::Output,
     reexports::{
@@ -16,7 +16,7 @@ use smithay::{
         wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration_manager::Mode as KdeMode,
         wayland_server::{
             Display, DisplayHandle,
-            backend::{ClientData, ClientId, DisconnectReason},
+            backend::{ClientData, ClientId, DisconnectReason, ObjectId},
             protocol::wl_surface::WlSurface,
         },
     },
@@ -39,7 +39,7 @@ use smithay::{
         shell::{
             kde::decoration::KdeDecorationState,
             wlr_layer::{Layer, WlrLayerShellState},
-            xdg::{ToplevelSurface, XdgShellState, decoration::XdgDecorationState},
+            xdg::{XdgShellState, decoration::XdgDecorationState},
         },
         shm::ShmState,
         single_pixel_buffer::SinglePixelBufferState,
@@ -54,7 +54,7 @@ use crate::{
     handlers::screencopy::ScreencopyState,
     ipc::IpcState,
     render::cursor::CursorManager,
-    shell::{Monitor, MonitorSettings, Monitors, Tag, WindowElement, WindowId, Windows},
+    shell::{Monitor, MonitorSettings, Monitors, Tag, Unmapped, WindowElement, WindowId, Windows},
     spawn::notify,
 };
 
@@ -166,6 +166,7 @@ impl Monotile {
     }
 
     pub fn set_focus(&mut self, id: Option<WindowId>) {
+        // unfocus current
         if let Some(old) = self.state.windows.focused {
             if let Some(we) = self.state.windows.get_mut(old) {
                 we.set_focused(false);
@@ -173,6 +174,7 @@ impl Monotile {
             self.state.windows.focused = None;
         }
 
+        // if locked, focus lock surface
         if let Some(ls) = &self.state.mon().lock_surface {
             let surface = ls.wl_surface().clone();
             if let Some(kb) = self.state.seat.get_keyboard() {
@@ -181,6 +183,7 @@ impl Monotile {
             return;
         }
 
+        // if exclusive layer exists, focus it
         if let Some(surface) = self.state.mon().exclusive_layer.clone() {
             if let Some(kb) = self.state.seat.get_keyboard() {
                 kb.set_focus(self, Some(surface), SERIAL_COUNTER.next_serial());
@@ -188,6 +191,7 @@ impl Monotile {
             return;
         }
 
+        // if none of the above, focus window
         if let Some(id) = id {
             self.state.mon_mut().tag_mut().promote(id);
             if let Some(we) = self.state.windows.get_mut(id) {
@@ -195,10 +199,8 @@ impl Monotile {
             }
             self.state.windows.focused = id.into();
         }
-        let target = self.state.windows.focused.and_then(|id| {
-            self.state.windows.get(id)?.window.toplevel().map(|tl| tl.wl_surface().clone())
-        });
 
+        let target = self.state.windows.focused_surface();
         if let Some(kb) = self.state.seat.get_keyboard() {
             kb.set_focus(self, target, SERIAL_COUNTER.next_serial());
         }
@@ -237,13 +239,13 @@ pub struct State {
     pub cursor_shape_state: CursorShapeManagerState,
     pub cursor: CursorManager,
     pub windows: Windows,
+    pub unmapped: HashMap<ObjectId, Unmapped>,
     pub monitors: Monitors,
     // TODO: active_monitor should be derived, not stored.
     // Every lookup (render, map, unmap, focus, layout) really needs
     // "monitor for this output/window/pointer location", not "active".
     // Remove this index when multi-monitor is implemented.
     pub active_monitor: usize,
-    pub pending: Vec<Window>,
     pub locked: bool,
     pub session_lock_state: SessionLockManagerState,
     pub screencopy: ScreencopyState,
@@ -330,7 +332,7 @@ impl State {
             windows: Windows::default(),
             monitors: Monitors::default(),
             active_monitor: 0,
-            pending: Vec::new(),
+            unmapped: HashMap::new(),
             locked: false,
             session_lock_state,
             screencopy,
@@ -413,16 +415,18 @@ impl State {
             .unwrap_or(self.active_monitor)
     }
 
-    pub fn map(&mut self, window: Window, should_float: bool) -> WindowId {
+    pub fn map(&mut self, unmapped: Unmapped) -> WindowId {
         let rules = &self.config.windows;
         let id = self
             .windows
-            .insert_with_key(|id| WindowElement::new(id, window, should_float, rules));
+            .insert_with_key(|id| WindowElement::new(id, unmapped, rules));
         let (output, tags) = self.windows[id].resolve_init();
         self.windows[id].resolve_render();
 
-        let idx = output.map_or(self.active_monitor, |n| self.monitor_idx(&n));
-        self.windows[id].monitor = idx;
+        if let Some(name) = output {
+            self.windows[id].monitor = self.monitor_idx(&name);
+        }
+        let idx = self.windows[id].monitor;
         self.monitors[idx].map(&mut self.windows, id, tags);
         id
     }
@@ -476,17 +480,6 @@ impl State {
         // bottom / background layers
         let hit = layer_hit(Layer::Bottom).or_else(|| layer_hit(Layer::Background));
         (hit, None)
-    }
-
-    pub fn find_pending(&self, surface: &WlSurface) -> Option<(usize, ToplevelSurface)> {
-        for (i, w) in self.pending.iter().enumerate() {
-            if let Some(tl) = w.toplevel()
-                && tl.wl_surface() == surface
-            {
-                return Some((i, tl.clone()));
-            }
-        }
-        None
     }
 
     pub fn insert_client(&mut self, stream: UnixStream) {

@@ -268,9 +268,9 @@ pub fn send_frame_callbacks(
 ) {
     for id in tag.window_ids() {
         if let Some(we) = windows.get_mut(id)
-            && we.committed
+            && we.buffer_committed
         {
-            we.committed = false;
+            we.buffer_committed = false;
             we.window
                 .send_frame(output, elapsed, throttle, |_, _| Some(output.clone()));
         }

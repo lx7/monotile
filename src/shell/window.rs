@@ -11,10 +11,10 @@ use smithay::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::{Resource, backend::ObjectId, protocol::wl_surface::WlSurface},
     },
-    utils::{Logical, Point, Rectangle, Size},
+    utils::{Logical, Point, Rectangle, Serial, Size},
     wayland::{
         compositor::with_states,
-        shell::xdg::{SurfaceCachedState, ToplevelSurface},
+        shell::xdg::{SurfaceCachedState, XdgToplevelSurfaceData},
     },
 };
 
@@ -22,11 +22,48 @@ use crate::{config, render::RenderStep};
 
 use super::{Tag, WindowId};
 
+pub struct Unmapped {
+    pub window: Window,
+    pub placement: Option<Placement>,
+}
+
+pub struct Placement {
+    pub floating: bool,
+    pub monitor: usize,
+    pub configured_size: Size<i32, Logical>,
+}
+
+impl Unmapped {
+    pub fn new(window: Window) -> Self {
+        Self {
+            window,
+            placement: None,
+        }
+    }
+
+    pub fn should_float(&self) -> bool {
+        let Some(tl) = self.window.toplevel() else {
+            return false;
+        };
+        if tl.parent().is_some() {
+            return true;
+        }
+        let (min, max) = with_states(tl.wl_surface(), |states| {
+            let mut data = states.cached_state.get::<SurfaceCachedState>();
+            let cur = data.current();
+            (cur.min_size, cur.max_size)
+        });
+        min.h > 0 && min.h == max.h
+    }
+}
+
 #[derive(Debug)]
 pub struct WindowElement {
+    // identity
     pub id: WindowId,
     pub window: Window,
 
+    // state
     pub monitor: usize,
     pub app_id: String,
     pub title: String,
@@ -34,33 +71,37 @@ pub struct WindowElement {
     pub fullscreen: bool,
     pub focused: bool,
 
+    // target geometry
     pub tiled_geo: Rectangle<i32, Logical>,
     pub float_geo: Rectangle<i32, Logical>,
-    fullscreen_geo: Rectangle<i32, Logical>,
+    pub fullscreen_geo: Rectangle<i32, Logical>,
 
+    // current on-screen geo
+    pub render_geo: Rectangle<i32, Logical>,
+
+    // last configure sent to client
+    configured_geo: Rectangle<i32, Logical>,
+    configured_serial: Option<Serial>,
+
+    // rendering
     pub render: Vec<RenderStep>,
     pub radius: f32,
     rules: Vec<config::WindowRule>,
 
-    // client protocol and rendering
-    configured_geo: Rectangle<i32, Logical>,
-    pub render_geo: Rectangle<i32, Logical>,
-    pub committed: bool,
+    // true after client commits a buffer, cleared after send_frame
+    pub buffer_committed: bool,
 }
 
 impl WindowElement {
-    pub fn new(
-        id: WindowId,
-        window: Window,
-        should_float: bool,
-        rules: &[config::WindowRule],
-    ) -> Self {
+    pub fn new(id: WindowId, unmapped: Unmapped, rules: &[config::WindowRule]) -> Self {
+        let placement = unmapped.placement.unwrap();
+        let window = unmapped.window;
         let (app_id, title) = window
             .toplevel()
             .map(|tl| {
                 with_states(tl.wl_surface(), |s| {
                     s.data_map
-                        .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                        .get::<XdgToplevelSurfaceData>()
                         .and_then(|d| d.lock().ok())
                         .map(|d| {
                             (
@@ -73,25 +114,26 @@ impl WindowElement {
             })
             .unwrap_or_default();
 
-        let window_size = window.geometry().size;
+        let float_size = if placement.floating { window.geometry().size } else { Size::default() };
         Self {
             id,
             window,
-            monitor: 0,
+            monitor: placement.monitor,
             app_id,
             title,
-            floating: should_float,
+            floating: placement.floating,
             fullscreen: false,
             focused: false,
             tiled_geo: Rectangle::default(),
-            float_geo: Rectangle::from_size(window_size),
+            float_geo: Rectangle::from_size(float_size),
             fullscreen_geo: Rectangle::default(),
             render: Vec::new(),
             radius: 0.0,
             rules: rules.to_vec(),
-            configured_geo: Rectangle::default(),
+            configured_geo: Rectangle::from_size(placement.configured_size),
+            configured_serial: None,
             render_geo: Rectangle::default(),
-            committed: false,
+            buffer_committed: false,
         }
     }
 
@@ -169,22 +211,16 @@ impl WindowElement {
     pub fn resize_float(&mut self, size: Size<i32, Logical>) {
         self.float_geo.size = size;
         if let Some(tl) = self.window.toplevel() {
-            tl.with_pending_state(|s| {
-                s.states.set(xdg_toplevel::State::Resizing);
-                s.size = Some(size);
-            });
-            tl.send_pending_configure();
+            tl.with_pending_state(|s| s.states.set(xdg_toplevel::State::Resizing));
         }
+        self.configure();
     }
 
     pub fn finish_resize_float(&mut self) {
         if let Some(tl) = self.window.toplevel() {
-            tl.with_pending_state(|s| {
-                s.states.unset(xdg_toplevel::State::Resizing);
-                s.size = Some(self.float_geo.size);
-            });
-            tl.send_pending_configure();
+            tl.with_pending_state(|s| s.states.unset(xdg_toplevel::State::Resizing));
         }
+        self.configure();
     }
 
     pub fn surface_loc(&self) -> Point<i32, Logical> {
@@ -240,60 +276,65 @@ impl WindowElement {
         }
     }
 
+    fn client_has_committed(&self) -> bool {
+        let Some(sent) = self.configured_serial else {
+            return true;
+        };
+        self.window.toplevel().is_some_and(|tl| {
+            tl.with_cached_state(|c| {
+                c.last_acked
+                    .as_ref()
+                    .is_some_and(|a| a.serial.is_no_older_than(&sent))
+            })
+        })
+    }
+
+    fn clear_render_cache(&mut self) {
+        for step in &mut self.render {
+            step.clear();
+        }
+    }
+
     pub fn configure(&mut self) {
         let target = self.geo();
         // nothing changed
         if target == self.configured_geo {
             return;
         }
-        // update rendering position + invalidate decoration caches
-        self.render_geo = target;
-        for step in &mut self.render {
-            step.clear();
-        }
-        // position-only change - no configure needed
+        // position-only - update render_geo, no client roundtrip
         if target.size == self.configured_geo.size {
+            self.render_geo.loc = target.loc;
             self.configured_geo = target;
+            self.clear_render_cache();
             return;
         }
-        // size changed - send configure to client
-        self.configured_geo = target;
         let Some(tl) = self.window.toplevel() else {
             return;
         };
+        // don't send if client has not committed for the previous configure
+        if !self.client_has_committed() {
+            return;
+        }
+        // size changed - send configure (render_geo is updated on commit)
+        self.configured_geo = target;
         tl.with_pending_state(|s| {
             s.size = Some(target.size);
         });
-        if tl.is_initial_configure_sent() {
-            tl.send_pending_configure();
-        } else {
-            tl.send_configure();
+        if let Some(serial) = tl.send_pending_configure() {
+            self.configured_serial = Some(serial);
         }
     }
 
     pub fn on_commit(&mut self) {
         self.window.on_commit();
-        self.committed = true;
-        if self.render_geo != self.geo() {
+        self.buffer_committed = true;
+
+        // update render_geo when client has committed for the last configure
+        if self.render_geo != self.geo() && self.client_has_committed() {
             self.render_geo = self.geo();
-            for step in &mut self.render {
-                step.clear();
-            }
+            self.clear_render_cache();
         }
     }
-}
-
-pub fn should_float(tl: &ToplevelSurface) -> bool {
-    if tl.parent().is_some() {
-        return true;
-    }
-
-    let (min, max) = with_states(tl.wl_surface(), |states| {
-        let mut data = states.cached_state.get::<SurfaceCachedState>();
-        let cur = data.current();
-        (cur.min_size, cur.max_size)
-    });
-    min.w > 0 && min.h > 0 && (min.w == max.w || min.h == max.h)
 }
 
 #[derive(Debug, Default, Deref, DerefMut)]
@@ -335,6 +376,11 @@ impl Windows {
 
     pub fn find_by_surface(&self, surface: &WlSurface) -> Option<WindowId> {
         self.by_surface.get(&surface.id()).copied()
+    }
+
+    pub fn focused_surface(&self) -> Option<WlSurface> {
+        let we = self.get(self.focused?)?;
+        we.window.toplevel().map(|tl| tl.wl_surface().clone())
     }
 
     pub fn visible(&self, tag: &Tag) -> Vec<&WindowElement> {

@@ -1,18 +1,24 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use crate::{Monotile, shell::should_float};
+use crate::{
+    Monotile,
+    shell::{Placement, Unmapped},
+};
 use smithay::{
     backend::renderer::utils::with_renderer_surface_state,
     delegate_kde_decoration, delegate_xdg_decoration, delegate_xdg_shell,
     desktop::{
-        PopupKeyboardGrab, PopupKind, PopupPointerGrab, Window, WindowSurfaceType,
-        find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output,
+        PopupKeyboardGrab, PopupKind, PopupPointerGrab, WindowSurfaceType, find_popup_root_surface,
+        get_popup_toplevel_coords, layer_map_for_output,
     },
     input::{Seat, pointer::Focus},
     reexports::{
         wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode,
         wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::OrgKdeKwinServerDecoration,
-        wayland_server::protocol::{wl_output, wl_seat, wl_surface::WlSurface},
+        wayland_server::{
+            Resource,
+            protocol::{wl_output, wl_seat, wl_surface::WlSurface},
+        },
     },
     utils::Serial,
     wayland::{
@@ -33,14 +39,14 @@ impl XdgShellHandler for Monotile {
     }
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
-        self.state.pending.push(Window::new_wayland_window(surface));
+        let id = surface.wl_surface().id();
+        let window = smithay::desktop::Window::new_wayland_window(surface);
+        self.state.unmapped.insert(id, Unmapped::new(window));
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
         let wl = surface.wl_surface();
-        self.state
-            .pending
-            .retain(|w| w.toplevel().is_none_or(|tl| tl.wl_surface() != wl));
+        self.state.unmapped.remove(&wl.id());
         if let Some(id) = self.state.windows.find_by_surface(wl) {
             self.state.unmap(id);
             self.recompute_layout();
@@ -103,18 +109,16 @@ impl XdgShellHandler for Monotile {
             let geo = self.state.mon().output_geometry();
             self.state.windows[id].set_fullscreen(Some(geo));
             self.recompute_layout();
-        } else {
-            surface.send_pending_configure();
         }
     }
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
         if let Some(id) = self.state.windows.find_by_surface(surface.wl_surface()) {
+            let monitor = self.state.windows[id].monitor;
             self.state.windows[id].set_fullscreen(None);
             self.recompute_layout();
-            self.backend.schedule_render(&self.state.mon().output);
-        } else {
-            surface.send_pending_configure();
+            self.backend
+                .schedule_render(&self.state.monitors[monitor].output);
         }
     }
 
@@ -195,27 +199,53 @@ impl KdeDecorationHandler for Monotile {
 
 delegate_kde_decoration!(Monotile);
 
-/// called on `WlSurface::commit`.
-/// returns true if a pending window just mapped.
+/// Called on `WlSurface::commit`.
+/// Returns true if an unmapped window just mapped.
 pub fn handle_commit(state: &mut crate::state::State, surface: &WlSurface) -> bool {
     let mut mapped = false;
-    if let Some((idx, tl)) = state.find_pending(surface) {
-        let sent = with_states(surface, |states| {
-            let mutex = states.data_map.get::<XdgToplevelSurfaceData>().unwrap();
-            mutex.lock().unwrap().initial_configure_sent
-        });
-        if !sent {
-            let floating = should_float(&tl);
-            let window = state.pending.remove(idx);
-            state.map(window, floating);
-            mapped = true;
+
+    if let Some(unmapped) = state.unmapped.get_mut(&surface.id()) {
+        if unmapped.placement.is_none() {
+            // phase 1: first commit - send configure with tiled size
+            let floating = unmapped.should_float();
+            let mon = &state.monitors[state.active_monitor];
+            let configured_size = if floating {
+                (0, 0).into()
+            } else {
+                let tag = mon.tag();
+                let count = tag.tiled.len() + 1;
+                let area = layer_map_for_output(&mon.output).non_exclusive_zone();
+                tag.layout
+                    .compute_rects(count, area, &state.config.layout)
+                    .last()
+                    .map(|r| r.size)
+                    .unwrap_or(area.size)
+            };
+            let tl = unmapped.window.toplevel().unwrap();
+            if !floating {
+                tl.with_pending_state(|s| s.size = Some(configured_size));
+            }
+            tl.send_configure();
+            unmapped.placement = Some(Placement {
+                floating,
+                monitor: state.active_monitor,
+                configured_size,
+            });
         } else {
+            // phase 2: configure sent, check for buffer
             let has_buffer =
                 with_renderer_surface_state(surface, |s| s.buffer().is_some()).unwrap_or(false);
             if has_buffer {
-                if let Some(id) = state.windows.find_by_surface(surface) {
-                    state.windows[id].on_commit();
+                let mut unmapped = state.unmapped.remove(&surface.id()).unwrap();
+                unmapped.window.on_commit();
+                // re-check: hints may have arrived after phase 1
+                let floating = unmapped.should_float();
+                if let Some(p) = &mut unmapped.placement {
+                    p.floating |= floating;
                 }
+                let id = state.map(unmapped);
+                state.windows[id].on_commit();
+                mapped = true;
             }
         }
     }
@@ -225,8 +255,6 @@ pub fn handle_commit(state: &mut crate::state::State, surface: &WlSurface) -> bo
         match popup {
             PopupKind::Xdg(ref xdg) => {
                 if !xdg.is_initial_configure_sent() {
-                    // crash when a popup has no parent. should not happen,
-                    // but if it does we want to notice it (crash)
                     xdg.send_configure().expect("initial configure");
                 }
             }

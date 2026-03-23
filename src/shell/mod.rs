@@ -8,7 +8,7 @@ mod window;
 pub use layout::TilingLayout;
 pub use monitor::{Monitor, MonitorSettings, Monitors};
 pub use tag::Tag;
-pub use window::{WindowElement, Windows, should_float};
+pub use window::{Placement, Unmapped, WindowElement, Windows};
 
 use slotmap::new_key_type;
 
