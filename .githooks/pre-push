@@ -1,0 +1,15 @@
+#!/bin/sh
+# .githooks/pre-push
+
+while read local_ref local_sha remote_ref remote_sha; do
+  case "$local_ref" in
+    refs/tags/v*)
+      tag_version="${local_ref#refs/tags/v}"
+      toml_version=$(git show "$local_sha:Cargo.toml" | grep '^version' | head -1 | sed 's/.*"\(.*\)"/\1/')
+      if [ "$tag_version" != "$toml_version" ]; then
+        echo "ERROR: git tag $tag_version does not match Cargo.toml version $toml_version"
+        exit 1
+      fi
+      ;;
+  esac
+done

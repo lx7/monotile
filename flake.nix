@@ -25,6 +25,13 @@
             pname = "monotile";
             version = self.shortRev or self.dirtyShortRev or "unknown";
 
+            env.MONOTILE_VERSION =
+              let
+                cargo = builtins.fromTOML (builtins.readFile ./Cargo.toml);
+                rev = self.shortRev or self.dirtyShortRev or "unknown";
+              in
+              "${cargo.package.version}-${rev}";
+
             src = pkgs.lib.fileset.toSource {
               root = ./.;
               fileset = pkgs.lib.fileset.unions [
@@ -32,6 +39,7 @@
                 ./protocols
                 ./defaults
                 ./resources
+                ./build.rs
                 ./Cargo.toml
                 ./Cargo.lock
               ];
@@ -127,6 +135,7 @@
               export SHELL="${pkgs.bashInteractive}/bin/bash"
               export LLVM_COV="${pkgs.rustc.llvmPackages.llvm}/bin/llvm-cov"
               export LLVM_PROFDATA="${pkgs.rustc.llvmPackages.llvm}/bin/llvm-profdata"
+              git config core.hooksPath .githooks
             '';
           };
         }

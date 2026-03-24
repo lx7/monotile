@@ -545,8 +545,12 @@ impl Args {
                         std::process::exit(1);
                     })));
                 }
+                "-v" | "--version" => {
+                    println!("monotile {}", env!("MONOTILE_VERSION"));
+                    std::process::exit(0);
+                }
                 _ => {
-                    eprintln!("usage: monotile [-c <config>] [-s <autostart>]");
+                    eprintln!("usage: monotile [-c <config>] [-s <autostart>] [-v]");
                     std::process::exit(1);
                 }
             }

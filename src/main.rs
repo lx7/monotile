@@ -10,6 +10,8 @@ use tracing::info;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_logging();
 
+    info!("monotile {}", env!("MONOTILE_VERSION"));
+
     let args = Args::parse();
     let config = Config::load(args.config).unwrap_or_else(|e| {
         eprintln!("{e}");
