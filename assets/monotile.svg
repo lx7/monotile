@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="46.257595mm"
+   height="9.7122469mm"
+   viewBox="0 0 46.257595 9.7122469"
+   version="1.1"
+   id="svg1"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1" />
+  <g
+     id="layer1"
+     transform="translate(-6.4988768,-61.47616)">
+    <path
+       style="font-weight:500;font-size:13.8823px;line-height:1.25;font-family:Geo;-inkscape-font-specification:'Geo Medium';text-align:end;letter-spacing:0px;word-spacing:0px;text-anchor:end;stroke:#000000;stroke-width:0.5"
+       d="M 10.936969,72.10788 H 9.8253002 V 66.969802 H 7.6697477 V 72.10788 H 6.6394207 V 65.993702 H 14.136405 V 72.10788 H 13.05185 v -5.138078 h -2.114881 z m 5.409217,0 v -6.114178 h 4.297548 v 6.114178 z m 3.280778,-5.110964 -2.196223,0.01356 v 4.121308 h 2.196223 z m 7.537654,5.110964 V 65.993702 H 22.86707 v 6.114178 h 1.030327 v -5.138078 h 2.182667 v 5.138078 z m 2.223338,0 v -6.114178 h 4.297548 v 6.114178 z m 3.280778,-5.110964 -2.196223,0.01356 v 4.121308 h 2.196223 z"
+       id="text1"
+       transform="scale(1.0164858,0.98378158)"
+       aria-label="mono" />
+    <path
+       style="font-weight:500;font-size:14.235px;line-height:1.25;font-family:Geo;-inkscape-font-specification:'Geo Medium';text-align:end;letter-spacing:0px;word-spacing:0px;text-anchor:end;fill-opacity:0.245479;stroke-width:0"
+       d="m 41.193014,68.880119 h -2.557851 v -5.268618 h -1.278926 v -1.000898 h 1.278926 v -1.848882 h 1.056504 v 1.848882 h 1.501347 v 1.000898 h -1.501347 v 4.26772 h 1.501347 z m 2.279824,-6.255615 v 6.255615 h 1.056504 v -6.269516 z m 0,-3.141709 v 1.848882 h 1.056504 v -1.848882 z m 3.322427,0 v 9.397324 h 1.056504 v -9.397324 z m 4.434537,6.839473 v 1.556953 h 3.294624 v 1.000898 h -4.406733 v -6.269516 h 4.37893 v 3.711665 z m 0,-1.028701 h 2.252021 v -1.654263 h -2.252021 z"
+       id="text1-1"
+       transform="scale(0.96757502,1.0335116)"
+       aria-label="tile" />
+  </g>
+</svg>

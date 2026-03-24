@@ -189,7 +189,7 @@ impl DrmState {
         }
 
         if result.is_empty {
-            // no damage, send cefer callbacks on estimated estimated vblank
+            // no damage, send deferred callbacks on estimated vblank
             surface.render = RenderState::WaitingForVBlank;
             let _ = self.loop_handle.insert_source(
                 Timer::from_duration(throttle.unwrap()),
