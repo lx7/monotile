@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Based on smithay's smallvil example (MIT licensed)
 
 use super::xdg_shell;
 use crate::{Monotile, state::ClientState};
@@ -47,9 +46,8 @@ impl CompositorHandler for Monotile {
         let window_mapped = xdg_shell::handle_commit(&mut self.state, surface);
         let layer_changed = self.handle_layer_commit(surface);
         if window_mapped || layer_changed {
-            self.recompute_layout();
+            self.recompute_layout(self.state.active_monitor);
         }
-
         self.backend.schedule_render(&self.state.mon().output);
     }
 }

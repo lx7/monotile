@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Based on smithay's smallvil example (MIT licensed)
 
 use crate::Monotile;
 use smithay::{
@@ -56,8 +55,7 @@ impl WlrLayerShellHandler for Monotile {
                 map.unmap_layer(&layer);
                 drop(map);
                 self.state.monitors[i].update_exclusive_layer();
-                self.recompute_layout();
-                self.backend.schedule_render(&self.state.monitors[i].output);
+                self.recompute_layout(i);
                 return;
             }
         }

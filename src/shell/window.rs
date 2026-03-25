@@ -355,14 +355,10 @@ impl Windows {
         id
     }
 
-    pub fn remove(&mut self, id: WindowId) -> Option<WindowElement> {
-        if let Some(we) = self.inner.get(id) {
-            if let Some(tl) = we.window.toplevel() {
-                self.by_surface.remove(&tl.wl_surface().id());
-            }
-            if self.focused == Some(id) {
-                self.focused = None;
-            }
+    pub fn remove(&mut self, surface: &ObjectId) -> Option<WindowElement> {
+        let id = self.by_surface.remove(surface)?;
+        if self.focused == Some(id) {
+            self.focused = None;
         }
         self.inner.remove(id)
     }
@@ -388,15 +384,6 @@ impl Windows {
             return self.get(id).into_iter().collect();
         }
         tag.window_ids().filter_map(|id| self.get(id)).collect()
-    }
-
-    pub fn configure_visible(&mut self, tag: &Tag) {
-        let ids: Vec<_> = self.visible(tag).iter().map(|we| we.id).collect();
-        for id in ids {
-            if let Some(we) = self.get_mut(id) {
-                we.configure();
-            }
-        }
     }
 
     pub fn window_id_under(&self, tag: &Tag, pos: Point<f64, Logical>) -> Option<WindowId> {

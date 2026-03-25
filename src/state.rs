@@ -105,14 +105,12 @@ impl Monotile {
         )
     }
 
-    // TODO: decide how to do recompute_layout for all monitors.
-    // Do we need recompute_layout for the active monitors, or always recompute all?
-    pub fn recompute_layout(&mut self) {
+    pub fn recompute_layout(&mut self, idx: usize) {
         let config = &self.state.config;
-        let mon = &mut self.state.monitors[self.state.active_monitor];
+        let mon = &mut self.state.monitors[idx];
         mon.recompute_layout(&mut self.state.windows, config);
-        self.state.windows.configure_visible(mon.tag());
         self.update_focus();
+        self.backend.schedule_render(&self.state.monitors[idx].output);
     }
 
     pub fn reload_config(&mut self) {
@@ -149,9 +147,6 @@ impl Monotile {
         self.backend.reconfigure_devices(&self.state.config);
         for i in 0..self.state.monitors.len() {
             self.state.monitors[i].recompute_layout(&mut self.state.windows, &self.state.config);
-            self.state
-                .windows
-                .configure_visible(self.state.monitors[i].tag());
         }
         self.update_focus();
         for mon in self.state.monitors.iter() {
@@ -403,8 +398,6 @@ impl State {
                 mon.tag_mut().add(id);
             }
             mon.recompute_layout(&mut self.windows, &self.config);
-            self.windows
-                .configure_visible(self.monitors[self.active_monitor].tag());
         }
     }
 
@@ -431,9 +424,11 @@ impl State {
         id
     }
 
-    pub fn unmap(&mut self, id: WindowId) {
-        let mon = &mut self.monitors[self.active_monitor];
-        mon.unmap(&mut self.windows, id)
+    pub fn destroy_window(&mut self, surface: &ObjectId) -> Option<usize> {
+        self.unmapped.remove(surface);
+        let we = self.windows.remove(surface)?;
+        self.monitors[we.monitor].unmap(we.id);
+        Some(we.monitor)
     }
 
     pub fn surface_under(

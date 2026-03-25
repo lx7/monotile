@@ -45,12 +45,8 @@ impl XdgShellHandler for Monotile {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
-        let wl = surface.wl_surface();
-        self.state.unmapped.remove(&wl.id());
-        if let Some(id) = self.state.windows.find_by_surface(wl) {
-            self.state.unmap(id);
-            self.recompute_layout();
-            self.backend.schedule_render(&self.state.mon().output);
+        if let Some(mon) = self.state.destroy_window(&surface.wl_surface().id()) {
+            self.recompute_layout(mon);
         }
     }
 
@@ -81,7 +77,7 @@ impl XdgShellHandler for Monotile {
             && surface.parent().is_some()
         {
             self.state.windows[id].set_floating(true);
-            self.recompute_layout();
+            self.recompute_layout(self.state.active_monitor);
         }
     }
 
@@ -108,7 +104,7 @@ impl XdgShellHandler for Monotile {
         if let Some(id) = self.state.windows.find_by_surface(surface.wl_surface()) {
             let geo = self.state.mon().output_geometry();
             self.state.windows[id].set_fullscreen(Some(geo));
-            self.recompute_layout();
+            self.recompute_layout(self.state.active_monitor);
         }
     }
 
@@ -116,9 +112,7 @@ impl XdgShellHandler for Monotile {
         if let Some(id) = self.state.windows.find_by_surface(surface.wl_surface()) {
             let monitor = self.state.windows[id].monitor;
             self.state.windows[id].set_fullscreen(None);
-            self.recompute_layout();
-            self.backend
-                .schedule_render(&self.state.monitors[monitor].output);
+            self.recompute_layout(monitor);
         }
     }
 

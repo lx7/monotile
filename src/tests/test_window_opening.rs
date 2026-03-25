@@ -1,6 +1,6 @@
 use super::Fixture;
 use crate::config::Rel;
-use smithay::utils::Rectangle;
+use smithay::{reexports::wayland_server::Resource, utils::Rectangle};
 use wayland_protocols::xdg::shell::client::xdg_toplevel::State as ToplevelState;
 
 fn open_window(f: &mut Fixture, c: usize) -> usize {
@@ -199,7 +199,8 @@ fn focus_after_remove() {
 
     // remove the active window and re-sync focus
     let active = f.mt.state.mon().tag().focused_id().unwrap();
-    f.mt.state.unmap(active);
+    let surface_id = f.mt.state.windows[active].window.toplevel().unwrap().wl_surface().id();
+    f.mt.state.destroy_window(&surface_id);
     f.mt.update_focus();
     f.roundtrip(c);
 

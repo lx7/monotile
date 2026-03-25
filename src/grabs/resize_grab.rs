@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Based on smithay's smallvil example (MIT licensed)
 
 use crate::{Monotile, shell::WindowId};
 use smithay::{

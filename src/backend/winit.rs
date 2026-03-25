@@ -132,7 +132,7 @@ pub fn init(
                         None,
                     );
                     layer_map_for_output(&monotile.backend.winit().output).arrange();
-                    monotile.recompute_layout();
+                    monotile.recompute_layout(monotile.state.active_monitor);
                 }
                 WinitEvent::Input(event) => monotile.process_input_event(event),
                 WinitEvent::Redraw => {

@@ -354,8 +354,7 @@ impl Monotile {
             // mouse-only actions - no-op for keyboard
             Move | Resize => {}
         }
-        self.recompute_layout();
-        self.backend.schedule_render(&self.state.mon().output);
+        self.recompute_layout(self.state.active_monitor);
     }
 
     fn handle_mouse_action(

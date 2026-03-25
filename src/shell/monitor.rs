@@ -114,11 +114,10 @@ impl Monitor {
         }
     }
 
-    pub fn unmap(&mut self, ws: &mut Windows, id: WindowId) {
+    pub fn unmap(&mut self, id: WindowId) {
         for tag in &mut self.tags {
             tag.remove(id);
         }
-        ws.remove(id);
     }
 
     pub fn move_to_tag(&mut self, ws: &mut Windows, tag: usize) {
@@ -203,6 +202,11 @@ impl Monitor {
         for (&id, rect) in tag.tiled.iter().zip(rects) {
             if let Some(we) = ws.get_mut(id) {
                 we.tiled_geo = rect;
+            }
+        }
+        for &id in &tag.focus_stack {
+            if let Some(we) = ws.get_mut(id) {
+                we.configure();
             }
         }
     }
