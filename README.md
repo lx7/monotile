@@ -1,6 +1,6 @@
 <p align="left"><img src="assets/monotile.svg" alt="monotile" width="200"></p>
 
-A small and light dynamic tiling compositor in Rust.
+A small and light tiling Wayland compositor in Rust.
 
 > [!NOTE]
 > monotile is under active development. Usable as a daily driver, but some features are still missing (multi-monitor, screen sharing etc).
@@ -42,6 +42,14 @@ Requires Rust 1.85 or later.
 
 ### NixOS
 
+Add the flake to your system config and rebuild, or install to your user profile:
+
+```bash
+nix profile add github:lx7/monotile
+```
+
+For development:
+
 ```bash
 nix develop
 cargo build --release
@@ -81,22 +89,11 @@ Configuration files are in `$XDG_CONFIG_HOME/monotile/`:
 - `config.ron`: Rule-based configuration
 - `autostart.sh`: Commands to run on startup
 
-On first run, monotile writes a default config if none exists yet. Edit it to customize keybindings, layout, appearance, and input devices.
+On first run, monotile creates a default config if none exists. Edit it to customize keybindings, layout, appearance, and input devices.
 
 Custom paths can be specified: `monotile [-c <config>] [-s <autostart>]`
 
 monotile is not a desktop environment. You need a terminal emulator and an application launcher. The defaults use [foot](https://codeberg.org/dnkl/foot) and [fuzzel](https://codeberg.org/dnkl/fuzzel) - adjust the config to match your setup.
-
-
-## Running monotile
-
-From a tty (DRM backend) or nested inside an existing Wayland session (winit backend):
-
-```bash
-./target/release/monotile
-```
-
-For development: `cargo run` (debug mode) or `cargo run --release` (release mode) starts monotile automatically.
 
 
 ## Essential keybindings
