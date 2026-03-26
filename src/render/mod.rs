@@ -23,7 +23,7 @@ use smithay::{
         },
         glow::GlowRenderer,
     },
-    desktop::{PopupManager, layer_map_for_output},
+    desktop::{PopupManager, layer_map_for_output, utils::send_frames_surface_tree},
     output::Output,
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::{Logical, Point, Scale},
@@ -34,7 +34,7 @@ pub use window::RenderStep;
 
 use crate::{
     config::Config,
-    shell::{Monitor, Tag, Windows},
+    shell::{Monitor, Windows},
 };
 use clipped_surface::ClippedSurface;
 
@@ -260,13 +260,18 @@ pub fn output_elements(
 
 pub fn send_frame_callbacks(
     windows: &mut Windows,
-    tag: &Tag,
+    mon: &Monitor,
     output: &Output,
     elapsed: Duration,
     throttle: Option<Duration>,
     popups: &mut PopupManager,
 ) {
-    for id in tag.window_ids() {
+    if let Some(ls) = &mon.lock_surface {
+        send_frames_surface_tree(ls.wl_surface(), output, elapsed, None, |_, _| {
+            Some(output.clone())
+        });
+    }
+    for id in mon.tag().window_ids() {
         if let Some(we) = windows.get_mut(id)
             && we.buffer_committed
         {

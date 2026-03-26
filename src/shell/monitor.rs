@@ -202,17 +202,17 @@ impl Monitor {
         for (&id, rect) in tag.tiled.iter().zip(rects) {
             if let Some(we) = ws.get_mut(id) {
                 we.tiled_geo = rect;
-            }
-        }
-        for &id in &tag.focus_stack {
-            if let Some(we) = ws.get_mut(id) {
                 we.configure();
             }
         }
     }
 
     pub fn window_ids(&self) -> Vec<WindowId> {
-        self.tags.iter().flat_map(|t| &t.focus_stack).copied().collect()
+        self.tags
+            .iter()
+            .flat_map(|t| &t.focus_stack)
+            .copied()
+            .collect()
     }
 
     pub fn update_exclusive_layer(&mut self) {

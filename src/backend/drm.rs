@@ -21,7 +21,7 @@ use smithay::{
         session::{Event as SessionEvent, Session, libseat::LibSeatSession},
         udev::{UdevBackend, UdevEvent, all_gpus, primary_gpu},
     },
-    desktop::{layer_map_for_output, utils::send_frames_surface_tree},
+    desktop::layer_map_for_output,
     output::{Output, OutputModeSource, PhysicalProperties, Subpixel},
     reexports::{
         calloop::{
@@ -183,6 +183,8 @@ impl DrmState {
             }
         };
 
+        let elapsed = state.start_time.elapsed();
+
         // capture pending screencopy frames for this output
         if !state.screencopy.pending.is_empty() {
             crate::handlers::screencopy::capture_output(
@@ -191,7 +193,7 @@ impl DrmState {
                 &surface.output,
                 &elems,
                 mon.settings.background,
-                state.start_time.elapsed(),
+                elapsed,
             );
         }
 
@@ -212,10 +214,10 @@ impl DrmState {
                         drm.schedule_render_crtc(crtc);
                     }
                     // TODO: multi-monitor
-                    let tag = mt.state.monitors[mt.state.active_monitor].tag();
+                    let mon = &mt.state.monitors[mt.state.active_monitor];
                     send_frame_callbacks(
                         &mut mt.state.windows,
-                        tag,
+                        mon,
                         &output,
                         mt.state.start_time.elapsed(),
                         None,
@@ -233,21 +235,11 @@ impl DrmState {
         }
         surface.render = RenderState::WaitingForVBlank;
 
-        if let Some(ls) = &mon.lock_surface {
-            send_frames_surface_tree(
-                ls.wl_surface(),
-                &surface.output,
-                state.start_time.elapsed(),
-                None,
-                |_, _| Some(surface.output.clone()),
-            );
-        }
-        let tag = mon.tag();
         send_frame_callbacks(
             &mut state.windows,
-            tag,
+            mon,
             &surface.output,
-            state.start_time.elapsed(),
+            elapsed,
             throttle,
             &mut state.popups,
         );

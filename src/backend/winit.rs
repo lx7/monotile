@@ -8,7 +8,7 @@ use smithay::{
         renderer::{damage::OutputDamageTracker, glow::GlowRenderer},
         winit::{self, WinitEvent, WinitGraphicsBackend},
     },
-    desktop::{layer_map_for_output, utils::send_frames_surface_tree},
+    desktop::layer_map_for_output,
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::calloop::EventLoop,
     utils::Transform,
@@ -46,23 +46,11 @@ impl WinitState {
         std::mem::drop(fb);
         self.backend.submit(rendered.damage.map(|x| x.as_slice()))?;
 
-        {
-            let mon = &state.monitors[state.active_monitor];
-            if let Some(ls) = &mon.lock_surface {
-                send_frames_surface_tree(
-                    ls.wl_surface(),
-                    &self.output,
-                    state.start_time.elapsed(),
-                    None,
-                    |_, _| Some(self.output.clone()),
-                );
-            }
-        }
-        let tag = state.monitors[state.active_monitor].tag();
+        let mon = &state.monitors[state.active_monitor];
         let throttle = Some(std::time::Duration::from_millis(16));
         crate::render::send_frame_callbacks(
             &mut state.windows,
-            tag,
+            mon,
             &self.output,
             state.start_time.elapsed(),
             throttle,
