@@ -119,9 +119,8 @@ impl Monotile {
                     }
 
                     // raise window and focus
-                    let tag = self.state.mon().tag();
-                    let pos = pointer.current_location();
-                    if let Some(id) = self.state.windows.window_id_under(tag, pos) {
+                    let (_, id) = self.state.surface_under(pointer.current_location());
+                    if let Some(id) = id {
                         self.state.mon_mut().tag_mut().raise(id);
                         self.set_focus(Some(id));
                     }

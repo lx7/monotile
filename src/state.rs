@@ -110,7 +110,8 @@ impl Monotile {
         let mon = &mut self.state.monitors[idx];
         mon.recompute_layout(&mut self.state.windows, config);
         self.update_focus();
-        self.backend.schedule_render(&self.state.monitors[idx].output);
+        self.backend
+            .schedule_render(&self.state.monitors[idx].output);
     }
 
     pub fn reload_config(&mut self) {

@@ -39,7 +39,14 @@ impl Tag {
     }
 
     pub fn window_ids(&self) -> impl DoubleEndedIterator<Item = WindowId> + '_ {
-        self.tiled.iter().chain(self.floating.iter()).copied()
+        let (fullscreen, tiled, floating) = if self.fullscreen.is_some() {
+            (self.fullscreen, [].as_slice(), [].as_slice())
+        } else {
+            (None, self.tiled.as_slice(), self.floating.as_slice())
+        };
+        fullscreen
+            .into_iter()
+            .chain(tiled.iter().chain(floating.iter()).copied())
     }
 
     pub fn promote(&mut self, id: WindowId) {

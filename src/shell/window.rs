@@ -6,7 +6,7 @@ use derive_more::{Deref, DerefMut};
 
 use slotmap::SlotMap;
 use smithay::{
-    desktop::{Window, WindowSurfaceType},
+    desktop::Window,
     reexports::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::{Resource, backend::ObjectId, protocol::wl_surface::WlSurface},
@@ -380,32 +380,10 @@ impl Windows {
     }
 
     pub fn visible(&self, tag: &Tag) -> Vec<&WindowElement> {
-        if let Some(id) = tag.fullscreen {
-            return self.get(id).into_iter().collect();
-        }
         tag.window_ids().filter_map(|id| self.get(id)).collect()
     }
 
-    pub fn window_id_under(&self, tag: &Tag, pos: Point<f64, Logical>) -> Option<WindowId> {
-        for id in tag.window_ids().rev() {
-            let Some(we) = self.get(id) else { continue };
-            let loc = we.surface_loc();
-            let rel = pos - loc.to_f64();
-            if we
-                .window
-                .surface_under(rel, WindowSurfaceType::ALL)
-                .is_some()
-            {
-                return Some(id);
-            }
-        }
-        None
-    }
-
     pub fn window_under(&self, tag: &Tag, pos: Point<f64, Logical>) -> Option<&WindowElement> {
-        if let Some(id) = tag.fullscreen {
-            return self.get(id);
-        }
         for id in tag.window_ids().rev() {
             if let Some(we) = self.get(id)
                 && we.render_geo.to_f64().contains(pos)
