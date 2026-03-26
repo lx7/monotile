@@ -11,9 +11,8 @@ use crate::{
 use smithay::{
     backend::input::{
         AbsolutePositionEvent, Axis, AxisSource, ButtonState, DeviceCapability, Event,
-        GestureBeginEvent, GestureEndEvent, GesturePinchUpdateEvent as _, InputBackend,
-        InputEvent, KeyState, KeyboardKeyEvent,
-        PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
+        GestureBeginEvent, GestureEndEvent, GesturePinchUpdateEvent as _, InputBackend, InputEvent,
+        KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
     },
     input::{
         keyboard::{FilterResult, Keysym},
@@ -270,14 +269,16 @@ impl Monotile {
         use Action::*;
 
         match action {
-            Noop => {}
+            Noop => return,
             Exit => {
                 self.state.loop_signal.stop();
+                return;
             }
             Spawn(ref args) => {
                 if let Some((cmd, args)) = args.split_first() {
                     spawn(cmd, args, false);
                 }
+                return;
             }
             Focus(pos) => {
                 let tag = self.state.mon().tag();
@@ -300,6 +301,7 @@ impl Monotile {
                 {
                     tl.send_close();
                 }
+                return;
             }
             ToggleFloat => {
                 if let Some(id) = self.state.mon().tag().focused_id() {
@@ -344,15 +346,16 @@ impl Monotile {
             }
             ReloadConfig => {
                 self.reload_config();
+                return;
             }
             ChangeVt(vt) => {
                 self.backend.change_vt(vt);
                 return; // no recompute needed
             }
             // TODO: implement multi-monitor
-            FocusOutput(_) | SendToOutput(_) => {}
+            FocusOutput(_) | SendToOutput(_) => return,
             // mouse-only actions - no-op for keyboard
-            Move | Resize => {}
+            Move | Resize => return,
         }
         self.recompute_layout(self.state.active_monitor);
     }
