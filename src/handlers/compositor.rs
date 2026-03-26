@@ -43,17 +43,20 @@ impl CompositorHandler for Monotile {
             }
         };
 
-        let window_mapped = xdg_shell::handle_commit(&mut self.state, surface);
-        let layer_changed = self.handle_layer_commit(surface);
-        if window_mapped || layer_changed {
-            self.recompute_layout(self.state.active_monitor);
+        let mapped_mon = xdg_shell::handle_commit(&mut self.state, surface);
+        let layer_mon = self.handle_layer_commit(surface);
+        if let Some(mon) = mapped_mon.or(layer_mon) {
+            self.recompute_layout(mon);
         }
+
+        // TODO: use the output the surface is mapped on when
+        // multi-monitor is implemented
         self.backend.schedule_render(&self.state.mon().output);
     }
 }
 
 impl Monotile {
-    fn handle_layer_commit(&mut self, surface: &WlSurface) -> bool {
+    fn handle_layer_commit(&mut self, surface: &WlSurface) -> Option<usize> {
         for (i, mon) in self.state.monitors.iter().enumerate() {
             let mut map = layer_map_for_output(&mon.output);
             let Some(layer) = map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL) else {
@@ -69,7 +72,7 @@ impl Monotile {
             });
             if initial {
                 let serial = layer.layer_surface().send_configure();
-                // INFO: This is a workawound for clients that batch the
+                // INFO: This is a workaround for clients that batch the
                 // initial (empty) commit and a buffer commit in the same
                 // socket write. The protocol says there must be an ack
                 // before attaching a buffer, so this is a violation of the
@@ -92,9 +95,9 @@ impl Monotile {
             let changed = map.arrange();
             drop(map);
             self.state.monitors[i].update_exclusive_layer();
-            return changed;
+            return if changed { Some(i) } else { None };
         }
-        false
+        None
     }
 }
 

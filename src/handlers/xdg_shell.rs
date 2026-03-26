@@ -102,9 +102,10 @@ impl XdgShellHandler for Monotile {
         _output: Option<wl_output::WlOutput>,
     ) {
         if let Some(id) = self.state.windows.find_by_surface(surface.wl_surface()) {
-            let geo = self.state.mon().output_geometry();
+            let mon = self.state.windows[id].monitor;
+            let geo = self.state.monitors[mon].output_geometry();
             self.state.windows[id].set_fullscreen(Some(geo));
-            self.recompute_layout(self.state.active_monitor);
+            self.recompute_layout(mon);
         }
     }
 
@@ -193,10 +194,8 @@ impl KdeDecorationHandler for Monotile {
 
 delegate_kde_decoration!(Monotile);
 
-/// Called on `WlSurface::commit`.
-/// Returns true if an unmapped window just mapped.
-pub fn handle_commit(state: &mut crate::state::State, surface: &WlSurface) -> bool {
-    let mut mapped = false;
+pub fn handle_commit(state: &mut crate::state::State, surface: &WlSurface) -> Option<usize> {
+    let mut mapped = None;
 
     if let Some(unmapped) = state.unmapped.get_mut(&surface.id()) {
         if unmapped.placement.is_none() {
@@ -239,7 +238,7 @@ pub fn handle_commit(state: &mut crate::state::State, surface: &WlSurface) -> bo
                 }
                 let id = state.map(unmapped);
                 state.windows[id].on_commit();
-                mapped = true;
+                mapped = Some(state.windows[id].monitor);
             }
         }
     }
