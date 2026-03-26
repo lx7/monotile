@@ -22,18 +22,6 @@ pub enum Backend {
 }
 
 impl Backend {
-    pub fn schedule_render(&mut self, output: &Output) {
-        match self {
-            Backend::Winit(_) => {
-                // no-op: winit renders continuously via input/redraw events
-            }
-            Backend::Drm(drm) => {
-                drm.schedule_render(output);
-            }
-            Backend::Unset => {} // no-op (tests)
-        }
-    }
-
     pub fn winit(&mut self) -> &mut WinitState {
         match self {
             Backend::Winit(winit) => winit,
@@ -53,6 +41,24 @@ impl Backend {
             Backend::Winit(winit) => winit.backend.renderer(),
             Backend::Drm(drm) => &mut drm.renderer,
             Backend::Unset => panic!("called renderer() on unset backend"),
+        }
+    }
+
+    pub fn schedule_render_all(&mut self) {
+        if let Backend::Drm(drm) = self {
+            drm.schedule_render_all();
+        }
+    }
+
+    pub fn schedule_render(&mut self, output: &Output) {
+        match self {
+            Backend::Winit(_) => {
+                // no-op: winit renders continuously via input/redraw events
+            }
+            Backend::Drm(drm) => {
+                drm.schedule_render(output);
+            }
+            Backend::Unset => {} // no-op (tests)
         }
     }
 

@@ -100,6 +100,13 @@ impl Drop for DrmState {
 }
 
 impl DrmState {
+    pub fn schedule_render_all(&mut self) {
+        let crtcs: Vec<_> = self.surfaces.keys().copied().collect();
+        for crtc in crtcs {
+            self.schedule_render_crtc(crtc);
+        }
+    }
+
     pub fn schedule_render(&mut self, output: &Output) {
         let crtc = self
             .surfaces

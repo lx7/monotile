@@ -27,15 +27,7 @@ impl SessionLockHandler for Monotile {
         locker.lock();
         info!("session locked");
 
-        let outputs: Vec<_> = self
-            .state
-            .monitors
-            .iter()
-            .map(|m| m.output.clone())
-            .collect();
-        for output in &outputs {
-            self.backend.schedule_render(output);
-        }
+        self.backend.schedule_render_all();
     }
 
     fn unlock(&mut self) {
@@ -45,16 +37,7 @@ impl SessionLockHandler for Monotile {
         }
         self.update_focus();
         info!("session unlocked");
-
-        let outputs: Vec<_> = self
-            .state
-            .monitors
-            .iter()
-            .map(|m| m.output.clone())
-            .collect();
-        for output in &outputs {
-            self.backend.schedule_render(output);
-        }
+        self.backend.schedule_render_all();
     }
 
     fn new_surface(&mut self, surface: LockSurface, wl_output: WlOutput) {

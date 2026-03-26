@@ -150,10 +150,7 @@ impl Monotile {
             self.state.monitors[i].recompute_layout(&mut self.state.windows, &self.state.config);
         }
         self.update_focus();
-        for mon in self.state.monitors.iter() {
-            self.backend.schedule_render(&mon.output);
-        }
-
+        self.backend.schedule_render_all();
         info!("config reloaded");
     }
 
