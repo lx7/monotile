@@ -397,6 +397,7 @@ impl State {
             }
             mon.recompute_layout(&mut self.windows, &self.config);
         }
+        self.ipc.mark_dirty();
     }
 
     pub fn monitor_idx(&self, name: &str) -> usize {
