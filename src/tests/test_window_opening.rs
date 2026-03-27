@@ -1,5 +1,5 @@
 use super::Fixture;
-use crate::config::Rel;
+use crate::config::{Action, Rel};
 use smithay::{reexports::wayland_server::Resource, utils::Rectangle};
 use wayland_protocols::xdg::shell::client::xdg_toplevel::State as ToplevelState;
 
@@ -199,7 +199,9 @@ fn focus_after_remove() {
 
     // remove the active window and re-sync focus
     let active = f.mt.state.mon().tag().focused_id().unwrap();
-    let surface_id = f.mt.state.windows[active].window.toplevel().unwrap().wl_surface().id();
+    let tl = f.mt.state.windows[active].window.toplevel().unwrap();
+    let surface_id = tl.wl_surface().id();
+
     f.mt.state.destroy_window(&surface_id);
     f.mt.update_focus();
     f.roundtrip(c);
@@ -271,5 +273,47 @@ fn initial_configure_has_tiled_size() {
         "initial configure should have the tiled size, got {}x{}",
         first.width,
         first.height,
+    );
+}
+
+#[test]
+fn floating_window_gets_configure() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+
+    let w = open_window(&mut f, c);
+    f.client_mut(c).take_configures(w);
+
+    f.mt.handle_action(Action::ToggleFloat);
+    f.roundtrip(c);
+
+    let cfgs = f.client_mut(c).take_configures(w);
+    assert!(
+        !cfgs.is_empty(),
+        "floating window should receive a configure after toggle",
+    );
+}
+
+#[test]
+fn fullscreen_configure_has_state_and_output_size() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+
+    let w = open_window(&mut f, c);
+    f.client_mut(c).take_configures(w);
+
+    f.mt.handle_action(Action::ToggleFullscreen);
+    f.roundtrip(c);
+
+    let cfgs = f.client_mut(c).take_configures(w);
+    let last = cfgs.last().expect("should get a configure for fullscreen");
+    assert!(
+        last.states.contains(&ToplevelState::Fullscreen),
+        "configure should include Fullscreen state",
+    );
+    assert_eq!(
+        (last.width, last.height),
+        (1000, 800),
+        "fullscreen size should match output",
     );
 }

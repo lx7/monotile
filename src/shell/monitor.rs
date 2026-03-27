@@ -202,6 +202,10 @@ impl Monitor {
         for (&id, rect) in tag.tiled.iter().zip(rects) {
             if let Some(we) = ws.get_mut(id) {
                 we.tiled_geo = rect;
+            }
+        }
+        for &id in &tag.focus_stack {
+            if let Some(we) = ws.get_mut(id) {
                 we.configure();
             }
         }

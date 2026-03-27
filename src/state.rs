@@ -13,6 +13,7 @@ use smithay::{
             EventLoop, Interest, LoopHandle, LoopSignal, Mode as CalloopMode, PostAction,
             generic::Generic,
         },
+        wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration_manager::Mode as KdeMode,
         wayland_server::{
             Display, DisplayHandle,
@@ -253,7 +254,10 @@ impl State {
         config: Config,
     ) -> Self {
         let compositor_state = CompositorState::new::<Monotile>(&dh);
-        let xdg_shell_state = XdgShellState::new::<Monotile>(&dh);
+        let xdg_shell_state = XdgShellState::new_with_capabilities::<Monotile>(
+            &dh,
+            [xdg_toplevel::WmCapabilities::Fullscreen],
+        );
         let xdg_decoration_state = XdgDecorationState::new::<Monotile>(&dh);
         let kde_decoration_state = KdeDecorationState::new::<Monotile>(&dh, KdeMode::Server);
         let layer_shell_state = WlrLayerShellState::new::<Monotile>(&dh);
