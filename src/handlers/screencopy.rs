@@ -231,19 +231,12 @@ pub fn capture_output(
                         let src_stride = data.width as usize * bpp;
                         let dst_stride = data.stride as usize;
 
-                        // copy line by line
                         for y in 0..data.height as usize {
-                            let src_offset = y * src_stride;
-                            let dst_offset = y * dst_stride;
-                            let row_len = src_stride.min(dst_stride);
-                            let src_end = src_offset + row_len;
-                            let dst_end = dst_offset + row_len;
-
-                            // bounds check, just in case either buffer is too small
-                            if src_end <= pixels.len() && src_end <= dst.len() {
-                                dst[dst_offset..dst_end]
-                                    .copy_from_slice(&pixels[src_offset..src_end]);
-                            }
+                            let src_off = y * src_stride;
+                            let dst_off = y * dst_stride;
+                            let row = src_stride.min(dst_stride);
+                            dst[dst_off..dst_off + row]
+                                .copy_from_slice(&pixels[src_off..src_off + row]);
                         }
                     })?;
                     Ok(damage)
