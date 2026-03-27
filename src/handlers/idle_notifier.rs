@@ -20,12 +20,16 @@ impl IdleNotifierHandler for Monotile {
 delegate_idle_notify!(Monotile);
 
 impl IdleInhibitHandler for Monotile {
-    fn inhibit(&mut self, _surface: WlSurface) {
+    fn inhibit(&mut self, surface: WlSurface) {
+        self.state.idle_inhibitors.push(surface);
         self.state.idle_notifier_state.set_is_inhibited(true);
     }
 
-    fn uninhibit(&mut self, _surface: WlSurface) {
-        self.state.idle_notifier_state.set_is_inhibited(false);
+    fn uninhibit(&mut self, surface: WlSurface) {
+        self.state.idle_inhibitors.retain(|s| s != &surface);
+        self.state
+            .idle_notifier_state
+            .set_is_inhibited(!self.state.idle_inhibitors.is_empty());
     }
 }
 

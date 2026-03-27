@@ -16,7 +16,7 @@ use smithay::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration_manager::Mode as KdeMode,
         wayland_server::{
-            Display, DisplayHandle,
+            Display, DisplayHandle, Resource,
             backend::{ClientData, ClientId, DisconnectReason, ObjectId},
             protocol::wl_surface::WlSurface,
         },
@@ -227,6 +227,7 @@ pub struct State {
     pub idle_notifier_state: IdleNotifierState<Monotile>,
     pub idle_notifier_activity: bool,
     pub idle_inhibit_state: IdleInhibitManagerState,
+    pub idle_inhibitors: Vec<WlSurface>,
     pub popups: PopupManager,
     pub seat: Seat<Monotile>,
     pub pointer_gestures_state: PointerGesturesState,
@@ -321,6 +322,7 @@ impl State {
             idle_notifier_state,
             idle_notifier_activity: false,
             idle_inhibit_state,
+            idle_inhibitors: Vec::new(),
             popups: PopupManager::default(),
             seat,
             pointer_gestures_state,
@@ -495,6 +497,14 @@ impl State {
 
     pub fn flush_clients(&mut self) {
         self.idle_notifier_activity = false;
+
+        let before = self.idle_inhibitors.len();
+        self.idle_inhibitors.retain(|s| s.is_alive());
+        if self.idle_inhibitors.len() != before {
+            self.idle_notifier_state
+                .set_is_inhibited(!self.idle_inhibitors.is_empty());
+        }
+
         self.screencopy.cleanup();
         self.ipc
             .flush(&self.monitors, &self.windows, self.active_monitor);
