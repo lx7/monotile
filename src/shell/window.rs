@@ -11,7 +11,7 @@ use smithay::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::{Resource, backend::ObjectId, protocol::wl_surface::WlSurface},
     },
-    utils::{Logical, Point, Rectangle, Serial, Size},
+    utils::{Logical, Point, Rectangle, Size},
     wayland::{
         compositor::with_states,
         shell::xdg::{SurfaceCachedState, XdgToplevelSurfaceData},
@@ -81,7 +81,6 @@ pub struct WindowElement {
 
     // last configure sent to client
     configured_geo: Rectangle<i32, Logical>,
-    configured_serial: Option<Serial>,
 
     // rendering
     pub render: Vec<RenderStep>,
@@ -131,7 +130,6 @@ impl WindowElement {
             radius: 0.0,
             rules: rules.to_vec(),
             configured_geo: Rectangle::from_size(placement.configured_size),
-            configured_serial: None,
             render_geo: Rectangle::default(),
             buffer_committed: false,
         }
@@ -276,19 +274,6 @@ impl WindowElement {
         }
     }
 
-    fn client_has_committed(&self) -> bool {
-        let Some(sent) = self.configured_serial else {
-            return true;
-        };
-        self.window.toplevel().is_some_and(|tl| {
-            tl.with_cached_state(|c| {
-                c.last_acked
-                    .as_ref()
-                    .is_some_and(|a| a.serial.is_no_older_than(&sent))
-            })
-        })
-    }
-
     fn clear_render_cache(&mut self) {
         for step in &mut self.render {
             step.clear();
@@ -311,26 +296,18 @@ impl WindowElement {
         let Some(tl) = self.window.toplevel() else {
             return;
         };
-        // don't send if client has not committed for the previous configure
-        if !self.client_has_committed() {
-            return;
-        }
-        // size changed - send configure (render_geo is updated on commit)
         self.configured_geo = target;
         tl.with_pending_state(|s| {
             s.size = Some(target.size);
         });
-        if let Some(serial) = tl.send_pending_configure() {
-            self.configured_serial = Some(serial);
-        }
+        tl.send_pending_configure();
     }
 
     pub fn on_commit(&mut self) {
         self.window.on_commit();
         self.buffer_committed = true;
 
-        // update render_geo when client has committed for the last configure
-        if self.render_geo != self.geo() && self.client_has_committed() {
+        if self.render_geo != self.geo() {
             self.render_geo = self.geo();
             self.clear_render_cache();
         }
