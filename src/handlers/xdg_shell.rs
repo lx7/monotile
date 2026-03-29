@@ -253,6 +253,11 @@ pub fn handle_commit(state: &mut crate::state::State, surface: &WlSurface) -> Op
             }
             PopupKind::InputMethod(_) => {}
         }
+        if let Ok(root) = find_popup_root_surface(&popup) {
+            if let Some(id) = state.windows.find_by_surface(&root) {
+                state.windows[id].buffer_committed = true;
+            }
+        }
     }
 
     mapped
