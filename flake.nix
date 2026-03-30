@@ -84,7 +84,7 @@
             ];
 
             meta = {
-              description = "A minimalist Wayland compositor inspired by dwm";
+              description = "A small and light tiling Wayland compositor in Rust";
               homepage = "https://github.com/lx7/monotile";
               license = pkgs.lib.licenses.gpl3Plus;
               mainProgram = "monotile";
