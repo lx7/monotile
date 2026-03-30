@@ -41,8 +41,8 @@ impl ClippedSurface {
         let elem_h = elem.size.h as f32;
         let phys_w = phys.size.w.max(1) as f32;
         let phys_h = phys.size.h.max(1) as f32;
-        let offset_x = (elem.loc.x - phys.loc.x) as f32 / elem_w.max(1.0);
-        let offset_y = (elem.loc.y - phys.loc.y) as f32 / elem_h.max(1.0);
+        let offset_x = (elem.loc.x - phys.loc.x) as f32 / phys_w;
+        let offset_y = (elem.loc.y - phys.loc.y) as f32 / phys_h;
 
         // Column-major 3x3: maps texture UV to [0,1] geo space
         #[rustfmt::skip]
