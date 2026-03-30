@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use crate::{
-    Monotile,
-    shell::{Placement, Unmapped},
-};
+use crate::{Monotile, shell::Unmapped};
 use smithay::{
-    backend::renderer::utils::with_renderer_surface_state,
     delegate_kde_decoration, delegate_xdg_decoration, delegate_xdg_shell,
     desktop::{
         PopupKeyboardGrab, PopupKind, PopupPointerGrab, WindowSurfaceType, find_popup_root_surface,
@@ -193,75 +189,6 @@ impl KdeDecorationHandler for Monotile {
 }
 
 delegate_kde_decoration!(Monotile);
-
-pub fn handle_commit(state: &mut crate::state::State, surface: &WlSurface) -> Option<usize> {
-    let mut mapped = None;
-
-    if let Some(unmapped) = state.unmapped.get_mut(&surface.id()) {
-        if unmapped.placement.is_none() {
-            // phase 1: first commit - send configure with tiled size
-            let floating = unmapped.should_float();
-            let mon = &state.monitors[state.active_monitor];
-            let configured_size = if floating {
-                (0, 0).into()
-            } else {
-                let tag = mon.tag();
-                let count = tag.tiled.len() + 1;
-                let area = layer_map_for_output(&mon.output).non_exclusive_zone();
-                tag.layout
-                    .compute_rects(count, area, &state.config.layout)
-                    .last()
-                    .map(|r| r.size)
-                    .unwrap_or(area.size)
-            };
-            let tl = unmapped.window.toplevel().unwrap();
-            if !floating {
-                tl.with_pending_state(|s| s.size = Some(configured_size));
-            }
-            tl.send_configure();
-            unmapped.placement = Some(Placement {
-                floating,
-                monitor: state.active_monitor,
-                configured_size,
-            });
-        } else {
-            // phase 2: configure sent, check for buffer
-            let has_buffer =
-                with_renderer_surface_state(surface, |s| s.buffer().is_some()).unwrap_or(false);
-            if has_buffer {
-                let mut unmapped = state.unmapped.remove(&surface.id()).unwrap();
-                unmapped.window.on_commit();
-                // re-check: hints may have arrived after phase 1
-                let floating = unmapped.should_float();
-                if let Some(p) = &mut unmapped.placement {
-                    p.floating |= floating;
-                }
-                let id = state.map(unmapped);
-                state.windows[id].on_commit();
-                mapped = Some(state.windows[id].monitor);
-            }
-        }
-    }
-
-    state.popups.commit(surface);
-    if let Some(popup) = state.popups.find_popup(surface) {
-        match popup {
-            PopupKind::Xdg(ref xdg) => {
-                if !xdg.is_initial_configure_sent() {
-                    xdg.send_configure().expect("initial configure");
-                }
-            }
-            PopupKind::InputMethod(_) => {}
-        }
-        if let Ok(root) = find_popup_root_surface(&popup) {
-            if let Some(id) = state.windows.find_by_surface(&root) {
-                state.windows[id].buffer_committed = true;
-            }
-        }
-    }
-
-    mapped
-}
 
 impl Monotile {
     fn set_server_side_decoration(toplevel: &ToplevelSurface, send_configure: bool) {

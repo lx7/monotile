@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use super::xdg_shell;
-use crate::{Monotile, state::ClientState};
+use crate::{Monotile, shell::Placement, state::ClientState};
 use smithay::{
-    backend::renderer::utils::on_commit_buffer_handler,
+    backend::renderer::utils::{on_commit_buffer_handler, with_renderer_surface_state},
     delegate_compositor, delegate_shm,
-    desktop::{WindowSurfaceType, layer_map_for_output},
+    desktop::{PopupKind, WindowSurfaceType, find_popup_root_surface, layer_map_for_output},
     reexports::wayland_server::{
-        Client,
+        Client, Resource,
         protocol::{wl_buffer, wl_surface::WlSurface},
     },
     wayland::{
@@ -33,19 +32,18 @@ impl CompositorHandler for Monotile {
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
 
-        if !is_sync_subsurface(surface) {
-            let mut root = surface.clone();
-            while let Some(parent) = get_parent(&root) {
-                root = parent;
-            }
-            if let Some(id) = self.state.windows.find_by_surface(&root) {
-                self.state.windows[id].on_commit();
-            }
-        };
+        if is_sync_subsurface(surface) {
+            return;
+        }
 
-        let mapped_mon = xdg_shell::handle_commit(&mut self.state, surface);
-        let layer_mon = self.handle_layer_commit(surface);
-        if let Some(mon) = mapped_mon.or(layer_mon) {
+        self.state.popups.commit(surface);
+
+        if let Some(mon) = self
+            .on_window_commit(surface)
+            .or_else(|| self.on_popup_commit(surface))
+            .or_else(|| self.on_unmapped_commit(surface))
+            .or_else(|| self.on_layer_commit(surface))
+        {
             self.recompute_layout(mon);
         }
 
@@ -56,7 +54,85 @@ impl CompositorHandler for Monotile {
 }
 
 impl Monotile {
-    fn handle_layer_commit(&mut self, surface: &WlSurface) -> Option<usize> {
+    fn on_window_commit(&mut self, surface: &WlSurface) -> Option<usize> {
+        let mut root = surface.clone();
+        while let Some(parent) = get_parent(&root) {
+            root = parent;
+        }
+        let id = self.state.windows.find_by_surface(&root)?;
+        self.state.windows[id].on_commit();
+        None
+    }
+
+    fn on_popup_commit(&mut self, surface: &WlSurface) -> Option<usize> {
+        let popup = self.state.popups.find_popup(surface)?;
+
+        if let PopupKind::Xdg(ref xdg) = popup {
+            if !xdg.is_initial_configure_sent() {
+                xdg.send_configure().expect("initial configure");
+            }
+        }
+
+        if let Ok(popup_root) = find_popup_root_surface(&popup)
+            && let Some(id) = self.state.windows.find_by_surface(&popup_root)
+        {
+            self.state.windows[id].buffer_committed = true;
+        }
+
+        None
+    }
+
+    /// Unmapped toplevel: two-phase configure/map state machine.
+    fn on_unmapped_commit(&mut self, surface: &WlSurface) -> Option<usize> {
+        let unmapped = self.state.unmapped.get_mut(&surface.id())?;
+
+        if unmapped.placement.is_none() {
+            // phase 1: first commit - send configure with tiled size
+            let floating = unmapped.should_float();
+            let mon = &self.state.monitors[self.state.active_monitor];
+            let configured_size = if floating {
+                (0, 0).into()
+            } else {
+                let tag = mon.tag();
+                let count = tag.tiled.len() + 1;
+                let area = layer_map_for_output(&mon.output).non_exclusive_zone();
+                tag.layout
+                    .compute_rects(count, area, &self.state.config.layout)
+                    .last()
+                    .map(|r| r.size)
+                    .unwrap_or(area.size)
+            };
+            let tl = unmapped.window.toplevel().unwrap();
+            if !floating {
+                tl.with_pending_state(|s| s.size = Some(configured_size));
+            }
+            tl.send_configure();
+            unmapped.placement = Some(Placement {
+                floating,
+                monitor: self.state.active_monitor,
+                configured_size,
+            });
+            return None;
+        }
+        // phase 2: configure acked, check for buffer
+        let has_buffer =
+            with_renderer_surface_state(surface, |s| s.buffer().is_some()).unwrap_or(false);
+        if !has_buffer {
+            return None;
+        }
+
+        let mut unmapped = self.state.unmapped.remove(&surface.id()).unwrap();
+        unmapped.window.on_commit();
+        let floating = unmapped.should_float();
+        if let Some(p) = &mut unmapped.placement {
+            p.floating |= floating;
+        }
+        let id = self.state.map(unmapped);
+        self.state.windows[id].on_commit();
+        Some(self.state.windows[id].monitor)
+    }
+
+    fn on_layer_commit(&mut self, surface: &WlSurface) -> Option<usize> {
         for (i, mon) in self.state.monitors.iter().enumerate() {
             let mut map = layer_map_for_output(&mon.output);
             let Some(layer) = map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL) else {
@@ -72,14 +148,9 @@ impl Monotile {
             });
             if initial {
                 let serial = layer.layer_surface().send_configure();
-                // INFO: This is a workaround for clients that batch the
-                // initial (empty) commit and a buffer commit in the same
-                // socket write. The protocol says there must be an ack
-                // before attaching a buffer, so this is a violation of the
-                // protocol.
-                // The server processes both commits before the configure
-                // round-trips. To fix this, pre-set last_acked so the
-                // pre_commit_hook accepts the buffer.
+                // Workaround for clients that batch the initial (empty) commit
+                // and a buffer commit in the same socket write. Pre-set
+                // last_acked so the pre_commit_hook accepts the buffer.
                 with_states(surface, |s| {
                     s.data_map
                         .get::<LayerSurfaceData>()
