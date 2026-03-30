@@ -52,7 +52,7 @@ use smithay::{
 use crate::{
     backend::Backend,
     config::Config,
-    handlers::screencopy::ScreencopyState,
+    handlers::{output_power, screencopy::ScreencopyState},
     ipc::IpcState,
     render::cursor::CursorManager,
     shell::{Monitor, MonitorSettings, Monitors, Tag, Unmapped, WindowElement, WindowId, Windows},
@@ -295,6 +295,7 @@ impl State {
         let cursor_shape_state = CursorShapeManagerState::new::<Monotile>(&dh);
         let cursor = CursorManager::new(1.0);
         let screencopy = ScreencopyState::new(&dh);
+        output_power::register_global(&dh);
         let ipc = IpcState::new(&dh);
 
         Self {

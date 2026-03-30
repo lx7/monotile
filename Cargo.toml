@@ -23,6 +23,7 @@ derive_more = { version = "2", features = ["deref", "deref_mut"] }
 wayland-scanner = "0.31"
 wayland-server = "0.31"
 wayland-backend = "0.3"
+wayland-protocols-wlr = { version = "0.3", features = ["server"] }
 
 
 [dependencies.smithay]

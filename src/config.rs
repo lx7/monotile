@@ -471,6 +471,9 @@ pub enum Action {
     Move,
     Resize,
 
+    PowerOff,
+    PowerOn,
+
     Spawn(Vec<String>),
     Exit,
     ReloadConfig,

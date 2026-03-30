@@ -62,6 +62,25 @@ impl Backend {
         }
     }
 
+    pub fn set_output_power(&mut self, output: &Output, on: bool) {
+        if let Backend::Drm(drm) = self {
+            drm.set_output_power(output, on);
+        }
+    }
+
+    pub fn set_all_outputs_power(&mut self, on: bool) {
+        if let Backend::Drm(drm) = self {
+            drm.set_all_outputs_power(on);
+        }
+    }
+
+    pub fn any_output_off(&self) -> bool {
+        match self {
+            Backend::Drm(drm) => drm.any_output_off(),
+            _ => false,
+        }
+    }
+
     pub fn change_vt(&mut self, vt: i32) {
         if let Backend::Drm(drm) = self {
             if let Err(err) = drm.session.change_vt(vt) {

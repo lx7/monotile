@@ -166,6 +166,7 @@
     ([Super],              Key("period"),                FocusOutput(Right)),
     ([Super, Shift],       Key("less"),                  SendToOutput(Left)),
     ([Super, Shift],       Key("greater"),               SendToOutput(Right)),
+    // ([Super],              Key("???"),                   PowerOff()),
     ([Super, Shift],       Key("q"),                     Close),
     ([Super, Shift],       Key("r"),                     ReloadConfig),
     ([Ctrl, Alt],          Key("BackSpace"),             Exit),

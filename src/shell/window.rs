@@ -297,9 +297,7 @@ impl WindowElement {
             return;
         };
         self.configured_geo = target;
-        tl.with_pending_state(|s| {
-            s.size = Some(target.size);
-        });
+        tl.with_pending_state(|s| s.size = Some(target.size));
         tl.send_pending_configure();
     }
 

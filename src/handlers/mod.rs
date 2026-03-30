@@ -4,6 +4,7 @@ mod compositor;
 mod dmabuf;
 mod idle_notifier;
 mod layer_shell;
+pub mod output_power;
 pub mod screencopy;
 mod session_lock;
 mod xdg_shell;

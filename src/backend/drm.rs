@@ -42,6 +42,10 @@ use smithay_drm_extras::{
 };
 
 use tracing::{error, info, warn};
+use wayland_protocols_wlr::output_power_management::v1::server::zwlr_output_power_v1::{
+    self, ZwlrOutputPowerV1,
+};
+use wayland_server::Weak;
 
 use crate::{
     Monotile,
@@ -68,6 +72,25 @@ pub struct OutputSurface {
     pub compositor: Surface,
     pub render: RenderState,
     pub connector: connector::Handle,
+    pub powered: bool,
+    pub power_clients: Vec<Weak<ZwlrOutputPowerV1>>,
+}
+
+impl OutputSurface {
+    pub fn notify_power(&mut self, on: bool) {
+        let mode = if on {
+            zwlr_output_power_v1::Mode::On
+        } else {
+            zwlr_output_power_v1::Mode::Off
+        };
+        self.power_clients.retain(|client| {
+            let Some(handle) = client.upgrade().ok() else {
+                return false;
+            };
+            handle.mode(mode);
+            true
+        });
+    }
 }
 
 pub struct DrmState {
@@ -122,6 +145,9 @@ impl DrmState {
         let Some(surface) = self.surfaces.get_mut(&crtc) else {
             return;
         };
+        if !surface.powered {
+            return;
+        }
         match surface.render {
             RenderState::Idle => {
                 surface.render = RenderState::Queued;
@@ -146,6 +172,10 @@ impl DrmState {
             return;
         };
         if surface.render != RenderState::Queued {
+            return;
+        }
+        if !surface.powered {
+            surface.render = RenderState::Idle;
             return;
         }
         if !self.session.is_active() {
@@ -257,6 +287,44 @@ impl DrmState {
         if redraw {
             self.schedule_render_crtc(crtc);
         }
+    }
+
+    pub fn set_output_power(&mut self, output: &Output, on: bool) {
+        let crtc = self
+            .surfaces
+            .iter()
+            .find(|(_, s)| s.output == *output)
+            .map(|(&c, _)| c);
+        if let Some(crtc) = crtc {
+            self.set_output_power_crtc(crtc, on);
+        }
+    }
+
+    fn set_output_power_crtc(&mut self, crtc: crtc::Handle, on: bool) {
+        let Some(surface) = self.surfaces.get_mut(&crtc) else {
+            return;
+        };
+        surface.powered = on;
+        surface.notify_power(on);
+        if on {
+            self.schedule_render_crtc(crtc);
+        } else {
+            if let Err(err) = surface.compositor.clear() {
+                warn!(?err, "failed to clear drm surface");
+            }
+            surface.render = RenderState::Idle;
+        }
+    }
+
+    pub fn set_all_outputs_power(&mut self, on: bool) {
+        let crtcs: Vec<_> = self.surfaces.keys().copied().collect();
+        for crtc in crtcs {
+            self.set_output_power_crtc(crtc, on);
+        }
+    }
+
+    pub fn any_output_off(&self) -> bool {
+        self.surfaces.values().any(|s| !s.powered)
     }
 
     pub fn apply_output_settings(&mut self, monitors: &Monitors) {
@@ -400,6 +468,7 @@ fn connector_connected(
         }
     };
 
+    let powered = !drm.any_output_off();
     state.add_monitor(output.clone(), s);
     drm.surfaces.insert(
         crtc,
@@ -408,9 +477,16 @@ fn connector_connected(
             compositor,
             render: RenderState::default(),
             connector: connector.handle(),
+            powered,
+            power_clients: Vec::new(),
         },
     );
-    drm.schedule_render_crtc(crtc);
+    if powered {
+        drm.schedule_render_crtc(crtc);
+    } else if let Some(s) = drm.surfaces.get_mut(&crtc) {
+        // some buggy monitors replug when powered off; clear to keep CRTC disabled.
+        let _ = s.compositor.clear();
+    }
 }
 
 fn connector_disconnected(drm: &mut DrmState, state: &mut State, crtc: crtc::Handle) {

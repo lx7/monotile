@@ -23,8 +23,26 @@ use smithay::{
 };
 
 impl Monotile {
+    fn wake_outputs<I: InputBackend>(&mut self, event: &InputEvent<I>) -> bool {
+        if !self.backend.any_output_off() {
+            return true;
+        }
+        let wake = match event {
+            InputEvent::Keyboard { event, .. } => event.state() == KeyState::Pressed,
+            InputEvent::PointerButton { event, .. } => event.state() == ButtonState::Pressed,
+            InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. } => false,
+            _ => true,
+        };
+        if wake {
+            self.backend.set_all_outputs_power(true);
+        }
+        wake
+    }
+
     pub fn process_input_event<I: InputBackend>(&mut self, event: InputEvent<I>) {
-        self.state.notify_activity();
+        if self.wake_outputs(&event) {
+            self.state.notify_activity();
+        }
 
         let pointer = self.state.seat.get_pointer().unwrap();
         let keyboard = self.state.seat.get_keyboard().unwrap();
@@ -350,6 +368,14 @@ impl Monotile {
             ChangeVt(vt) => {
                 self.backend.change_vt(vt);
                 return; // no recompute needed
+            }
+            PowerOff => {
+                self.backend.set_all_outputs_power(false);
+                return;
+            }
+            PowerOn => {
+                self.backend.set_all_outputs_power(true);
+                return;
             }
             // TODO: implement multi-monitor
             FocusOutput(_) | SendToOutput(_) => return,
