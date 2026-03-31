@@ -57,6 +57,7 @@ impl WinitState {
             &mut state.popups,
         );
 
+        state.confirm_lock(&self.output);
         self.backend.window().request_redraw();
         Ok(())
     }

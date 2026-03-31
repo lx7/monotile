@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use std::{collections::HashMap, ffi::OsString, os::unix::net::UnixStream, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    ffi::OsString,
+    os::unix::net::UnixStream,
+    sync::Arc,
+};
 
 use tracing::{info, warn};
 
@@ -36,7 +41,7 @@ use smithay::{
             primary_selection::PrimarySelectionState,
             wlr_data_control::DataControlState as WlrDataControlState,
         },
-        session_lock::SessionLockManagerState,
+        session_lock::{SessionLockManagerState, SessionLocker},
         shell::{
             kde::decoration::KdeDecorationState,
             wlr_layer::{Layer, WlrLayerShellState},
@@ -242,6 +247,7 @@ pub struct State {
     // Remove this index when multi-monitor is implemented.
     pub active_monitor: usize,
     pub locked: bool,
+    pub pending_lock: Option<(SessionLocker, HashSet<Output>)>,
     pub session_lock_state: SessionLockManagerState,
     pub screencopy: ScreencopyState,
     pub ipc: IpcState,
@@ -334,6 +340,7 @@ impl State {
             active_monitor: 0,
             unmapped: HashMap::new(),
             locked: false,
+            pending_lock: None,
             session_lock_state,
             screencopy,
             ipc,
@@ -382,6 +389,8 @@ impl State {
         let dead = self.monitors.remove(idx);
         let ids = dead.window_ids();
         self.display_handle.remove_global::<Monotile>(dead.global);
+
+        self.confirm_lock(output);
 
         // TODO: replace active_monitor with per-seat focused monitor
         if !self.monitors.is_empty() {

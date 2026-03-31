@@ -253,6 +253,7 @@ impl DrmState {
                         None,
                         &mut mt.state.popups,
                     );
+                    mt.state.confirm_lock(&output);
                     TimeoutAction::Drop
                 },
             );
@@ -273,6 +274,7 @@ impl DrmState {
             throttle,
             &mut state.popups,
         );
+        state.confirm_lock(&surface.output);
     }
 
     pub fn frame_finish(&mut self, crtc: crtc::Handle) {

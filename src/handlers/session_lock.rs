@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
+use crate::{Monotile, state::State};
 use smithay::{
     delegate_session_lock,
     output::Output,
@@ -8,9 +9,8 @@ use smithay::{
         LockSurface, SessionLockHandler, SessionLockManagerState, SessionLocker,
     },
 };
+use std::collections::HashSet;
 use tracing::info;
-
-use crate::Monotile;
 
 impl SessionLockHandler for Monotile {
     fn lock_state(&mut self) -> &mut SessionLockManagerState {
@@ -18,16 +18,22 @@ impl SessionLockHandler for Monotile {
     }
 
     fn lock(&mut self, locker: SessionLocker) {
-        if self.state.locked {
+        if self.state.locked || self.state.pending_lock.is_some() {
             return;
         }
 
         self.state.locked = true;
         self.set_focus(None);
-        locker.lock();
-        info!("session locked");
-
-        self.backend.schedule_render_all();
+        let mons = &self.state.monitors;
+        let outputs: HashSet<_> = mons.iter().map(|m| m.output.clone()).collect();
+        if outputs.is_empty() {
+            locker.lock();
+            info!("session locked (no outputs)");
+        } else {
+            info!("session locking ({} outputs pending)", outputs.len());
+            self.state.pending_lock = Some((locker, outputs));
+            self.backend.schedule_render_all();
+        }
     }
 
     fn unlock(&mut self) {
@@ -61,3 +67,16 @@ impl SessionLockHandler for Monotile {
 }
 
 delegate_session_lock!(Monotile);
+
+impl State {
+    pub fn confirm_lock(&mut self, output: &Output) {
+        if let Some((_, remaining)) = &mut self.pending_lock {
+            remaining.remove(output);
+            if remaining.is_empty() {
+                let (locker, _) = self.pending_lock.take().unwrap();
+                locker.lock();
+                info!("session locked");
+            }
+        }
+    }
+}
