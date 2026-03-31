@@ -303,6 +303,9 @@ impl DrmState {
     }
 
     fn set_output_power_crtc(&mut self, crtc: crtc::Handle, on: bool) {
+        if !self.session.is_active() {
+            return;
+        }
         let Some(surface) = self.surfaces.get_mut(&crtc) else {
             return;
         };
