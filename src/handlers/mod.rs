@@ -2,6 +2,7 @@
 
 mod compositor;
 mod dmabuf;
+pub mod foreign_toplevel;
 mod idle_notifier;
 mod layer_shell;
 pub mod output_power;

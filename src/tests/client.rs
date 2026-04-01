@@ -13,6 +13,10 @@ use wayland_client::{
         wl_shm_pool, wl_surface,
     },
 };
+use wayland_protocols::ext::foreign_toplevel_list::v1::client::{
+    ext_foreign_toplevel_handle_v1::{self, ExtForeignToplevelHandleV1},
+    ext_foreign_toplevel_list_v1::{self, ExtForeignToplevelListV1},
+};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 use wayland_protocols_wlr::layer_shell::v1::client::{
     zwlr_layer_shell_v1::{self, ZwlrLayerShellV1},
@@ -58,6 +62,22 @@ struct ClientData {
     ipc_dwl_manager: Option<ZdwlIpcManagerV2>,
     ipc_dwl_output: Option<ZdwlIpcOutputV2>,
     pub ipc_dwl_events: Vec<DwlEvent>,
+
+    foreign_toplevel_list: Option<ExtForeignToplevelListV1>,
+    pub foreign_toplevel_events: Vec<ForeignToplevelEvent>,
+}
+
+impl ClientData {
+    fn last_toplevel_identifier(&self) -> String {
+        self.foreign_toplevel_events
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                ForeignToplevelEvent::New { identifier } => Some(identifier.clone()),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
 }
 
 pub struct LayerState {
@@ -119,6 +139,15 @@ pub enum IpcEvent {
     },
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ForeignToplevelEvent {
+    New { identifier: String },
+    Title { identifier: String, title: String },
+    AppId { identifier: String, app_id: String },
+    Done { identifier: String },
+    Closed { identifier: String },
+}
+
 #[derive(Debug, Clone)]
 pub struct Configure {
     pub width: i32,
@@ -155,6 +184,9 @@ impl Client {
             ipc_dwl_manager: None,
             ipc_dwl_output: None,
             ipc_dwl_events: Vec::new(),
+
+            foreign_toplevel_list: None,
+            foreign_toplevel_events: Vec::new(),
         };
 
         let mut client = Client { conn, queue, data };
@@ -379,6 +411,10 @@ impl Client {
     pub fn take_dwl_events(&mut self) -> Vec<DwlEvent> {
         self.data.ipc_dwl_events.drain(..).collect()
     }
+
+    pub fn take_foreign_toplevel_events(&mut self) -> Vec<ForeignToplevelEvent> {
+        self.data.foreign_toplevel_events.drain(..).collect()
+    }
 }
 
 // ── Dispatch impls ──────────────────────────────────
@@ -425,6 +461,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientData {
                 }
                 "zdwl_ipc_manager_v2" => {
                     state.ipc_dwl_manager = Some(registry.bind(name, version, qh, ()));
+                }
+                "ext_foreign_toplevel_list_v1" => {
+                    state.foreign_toplevel_list = Some(registry.bind(name, version, qh, ()));
                 }
                 _ => {}
             }
@@ -797,6 +836,69 @@ impl Dispatch<ZdwlIpcOutputV2, ()> for ClientData {
             Event::Floating { is_floating } => {
                 state.ipc_dwl_events.push(DwlEvent::Floating(is_floating))
             }
+        }
+    }
+}
+
+// ── Foreign Toplevel Dispatch impls ─────────────────
+
+impl Dispatch<ExtForeignToplevelListV1, ()> for ClientData {
+    fn event(
+        _: &mut Self,
+        _: &ExtForeignToplevelListV1,
+        _: ext_foreign_toplevel_list_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+
+    wayland_client::event_created_child!(ClientData, ExtForeignToplevelListV1, [
+        ext_foreign_toplevel_list_v1::EVT_TOPLEVEL_OPCODE => (ExtForeignToplevelHandleV1, ()),
+    ]);
+}
+
+impl Dispatch<ExtForeignToplevelHandleV1, ()> for ClientData {
+    fn event(
+        state: &mut Self,
+        _: &ExtForeignToplevelHandleV1,
+        event: ext_foreign_toplevel_handle_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use ext_foreign_toplevel_handle_v1::Event;
+        match event {
+            Event::Identifier { identifier } => {
+                state
+                    .foreign_toplevel_events
+                    .push(ForeignToplevelEvent::New { identifier });
+            }
+            Event::Title { title } => {
+                let identifier = state.last_toplevel_identifier();
+                state
+                    .foreign_toplevel_events
+                    .push(ForeignToplevelEvent::Title { identifier, title });
+            }
+            Event::AppId { app_id } => {
+                let identifier = state.last_toplevel_identifier();
+                state
+                    .foreign_toplevel_events
+                    .push(ForeignToplevelEvent::AppId { identifier, app_id });
+            }
+            Event::Done => {
+                let identifier = state.last_toplevel_identifier();
+                state
+                    .foreign_toplevel_events
+                    .push(ForeignToplevelEvent::Done { identifier });
+            }
+            Event::Closed => {
+                let identifier = state.last_toplevel_identifier();
+                state
+                    .foreign_toplevel_events
+                    .push(ForeignToplevelEvent::Closed { identifier });
+            }
+            _ => {}
         }
     }
 }

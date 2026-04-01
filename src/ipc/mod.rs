@@ -4,11 +4,9 @@ mod dwl_ipc;
 mod dwl_ipc_protocol;
 mod monotile_ipc;
 mod monotile_ipc_protocol;
-
 use wayland_server::DisplayHandle;
 
 use crate::shell::{Monitor, Monitors, Windows};
-
 pub use dwl_ipc::DwlIpcState;
 pub use monotile_ipc::MonotileIpcState;
 

@@ -57,7 +57,7 @@ use smithay::{
 use crate::{
     backend::Backend,
     config::Config,
-    handlers::{output_power, screencopy::ScreencopyState},
+    handlers::{foreign_toplevel::ForeignToplevelState, output_power, screencopy::ScreencopyState},
     ipc::IpcState,
     render::cursor::CursorManager,
     shell::{Monitor, MonitorSettings, Monitors, Tag, Unmapped, WindowElement, WindowId, Windows},
@@ -250,6 +250,7 @@ pub struct State {
     pub pending_lock: Option<(SessionLocker, HashSet<Output>)>,
     pub session_lock_state: SessionLockManagerState,
     pub screencopy: ScreencopyState,
+    pub foreign_toplevel: ForeignToplevelState,
     pub ipc: IpcState,
 }
 
@@ -301,6 +302,7 @@ impl State {
         let cursor_shape_state = CursorShapeManagerState::new::<Monotile>(&dh);
         let cursor = CursorManager::new(1.0);
         let screencopy = ScreencopyState::new(&dh);
+        let foreign_toplevel = ForeignToplevelState::new(&dh);
         output_power::register_global(&dh);
         let ipc = IpcState::new(&dh);
 
@@ -343,6 +345,7 @@ impl State {
             pending_lock: None,
             session_lock_state,
             screencopy,
+            foreign_toplevel,
             ipc,
         }
     }
@@ -434,6 +437,9 @@ impl State {
         if let Some(name) = output {
             self.windows[id].monitor = self.monitor_idx(&name);
         }
+        self.foreign_toplevel
+            .add(id, &self.windows[id].title, &self.windows[id].app_id);
+
         let idx = self.windows[id].monitor;
         self.monitors[idx].map(&mut self.windows, id, tags);
         id
@@ -442,6 +448,7 @@ impl State {
     pub fn destroy_window(&mut self, surface: &ObjectId) -> Option<usize> {
         self.unmapped.remove(surface);
         let we = self.windows.remove(surface)?;
+        self.foreign_toplevel.remove(we.id);
         self.monitors[we.monitor].unmap(we.id);
         Some(we.monitor)
     }
@@ -516,6 +523,7 @@ impl State {
         }
 
         self.screencopy.cleanup();
+        self.foreign_toplevel.flush(&self.windows);
         self.ipc
             .flush(&self.monitors, &self.windows, self.active_monitor);
         let _ = self.display_handle.flush_clients();
