@@ -128,8 +128,11 @@ impl Monotile {
             p.floating |= floating;
         }
         let id = self.state.map(unmapped);
+        let mon = self.state.windows[id].monitor;
+        // recompute_layout must set tiled_geo before on_commit
+        self.recompute_layout(mon);
         self.state.windows[id].on_commit();
-        Some(self.state.windows[id].monitor)
+        Some(mon)
     }
 
     fn on_layer_commit(&mut self, surface: &WlSurface) -> Option<usize> {
