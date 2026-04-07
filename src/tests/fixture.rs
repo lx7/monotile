@@ -89,4 +89,11 @@ impl Fixture {
             .dispatch(Some(Duration::ZERO), &mut self.mt)
             .unwrap();
     }
+
+    pub fn fail_pending_captures(&mut self) {
+        use smithay::wayland::image_copy_capture::CaptureFailureReason;
+        for p in self.mt.state.screencopy.pending.drain(..) {
+            p.frame.fail(CaptureFailureReason::Unknown);
+        }
+    }
 }

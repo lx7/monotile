@@ -49,6 +49,7 @@ use wayland_server::Weak;
 
 use crate::{
     Monotile,
+    handlers::screencopy,
     input::configure_device,
     render::{Shaders, send_frame_callbacks},
     shell::{MonitorSettings, Monitors},
@@ -174,16 +175,14 @@ impl DrmState {
         if surface.render != RenderState::Queued {
             return;
         }
-        if !surface.powered {
-            surface.render = RenderState::Idle;
-            return;
-        }
-        if !self.session.is_active() {
-            surface.render = RenderState::Idle;
-            return;
-        }
+
         surface.render = RenderState::Idle;
+        if !surface.powered || !self.session.is_active() {
+            state.screencopy.fail_pending_for_output(&surface.output);
+            return;
+        }
         let Some((_, mon)) = state.monitors.by_output(&surface.output) else {
+            state.screencopy.fail_pending_for_output(&surface.output);
             return;
         };
 
@@ -209,23 +208,22 @@ impl DrmState {
             Ok(result) => result,
             Err(err) => {
                 warn!(?err, "failed to render frame");
+                state.screencopy.fail_pending_for_output(&surface.output);
                 return;
             }
         };
 
         let elapsed = state.start_time.elapsed();
 
-        // capture pending screencopy frames for this output
-        if !state.screencopy.pending.is_empty() {
-            crate::handlers::screencopy::capture_output(
-                &mut self.renderer,
-                &mut state.screencopy,
-                &surface.output,
-                &elems,
-                mon.settings.background,
-                elapsed,
-            );
-        }
+        let bg = mon.settings.background;
+        screencopy::capture_frame(
+            &mut self.renderer,
+            state,
+            &surface.output,
+            &elems,
+            bg,
+            elapsed,
+        );
 
         if result.is_empty {
             // no damage, send deferred callbacks on estimated vblank
@@ -266,6 +264,7 @@ impl DrmState {
         }
         surface.render = RenderState::WaitingForVBlank;
 
+        let (_, mon) = state.monitors.by_output(&surface.output).unwrap();
         send_frame_callbacks(
             &mut state.windows,
             mon,

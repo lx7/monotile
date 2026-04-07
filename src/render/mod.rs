@@ -10,24 +10,32 @@ use std::borrow::BorrowMut;
 use std::time::Duration;
 
 use smithay::{
-    backend::renderer::{
-        element::{
-            Kind,
-            memory::MemoryRenderBufferRenderElement,
-            render_elements,
-            surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
+    backend::{
+        allocator::Fourcc,
+        renderer::{
+            Bind, BufferType, Color32F, ExportMem, Offscreen, buffer_type,
+            damage::OutputDamageTracker,
+            element::{
+                Kind, RenderElement,
+                memory::MemoryRenderBufferRenderElement,
+                render_elements,
+                surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
+            },
+            gles::{
+                GlesPixelProgram, GlesRenderer, GlesTexProgram, GlesTexture, UniformName,
+                UniformType, element::PixelShaderElement,
+            },
+            glow::GlowRenderer,
         },
-        gles::{
-            GlesPixelProgram, GlesRenderer, GlesTexProgram, UniformName, UniformType,
-            element::PixelShaderElement,
-        },
-        glow::GlowRenderer,
     },
     desktop::{PopupManager, layer_map_for_output, utils::send_frames_surface_tree},
     output::Output,
-    reexports::wayland_server::protocol::wl_surface::WlSurface,
-    utils::{Logical, Point, Scale},
-    wayland::{seat::WaylandFocus, shell::wlr_layer::Layer},
+    reexports::wayland_server::protocol::{wl_buffer, wl_surface::WlSurface},
+    utils::{Buffer as BufferCoords, Logical, Physical, Point, Rectangle, Scale, Size, Transform},
+    wayland::{
+        dmabuf::get_dmabuf, seat::WaylandFocus, shell::wlr_layer::Layer,
+        shm::with_buffer_contents_mut,
+    },
 };
 
 pub use window::RenderStep;
@@ -286,4 +294,72 @@ pub fn send_frame_callbacks(
     }
     popups.cleanup();
     map.cleanup();
+}
+
+pub fn render_to_buffer<E: RenderElement<GlowRenderer>>(
+    renderer: &mut GlowRenderer,
+    tracker: &mut OutputDamageTracker,
+    buf: &wl_buffer::WlBuffer,
+    elems: &[E],
+    background: impl Into<Color32F> + Copy,
+    transform: Transform,
+    buffer_size: Size<i32, BufferCoords>,
+) -> anyhow::Result<Option<Vec<Rectangle<i32, BufferCoords>>>> {
+    match buffer_type(buf) {
+        Some(BufferType::Shm) => {
+            let mut tex: GlesTexture = renderer.create_buffer(Fourcc::Argb8888, buffer_size)?;
+            let mut fb = renderer.bind(&mut tex)?;
+            let result = tracker.render_output(renderer, &mut fb, 0, elems, background)?;
+            let damage = damage_to_buffer(result.damage, transform, buffer_size);
+            let mapping = renderer.copy_framebuffer(
+                &fb,
+                Rectangle::from_size(buffer_size),
+                Fourcc::Argb8888,
+            )?;
+            let pixels = renderer.map_texture(&mapping)?;
+            let (src_w, src_h) = (buffer_size.w as usize, buffer_size.h as usize);
+            let src_stride = src_w * 4;
+            with_buffer_contents_mut(buf, |ptr, len, data| {
+                let offset = data.offset as usize;
+                let dst_stride = data.stride as usize;
+                let row = src_stride.min(dst_stride);
+                let end = offset + src_h.saturating_sub(1) * dst_stride + row;
+                if end > len {
+                    return;
+                }
+                for line in 0..src_h {
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(
+                            pixels[line * src_stride..].as_ptr(),
+                            ptr.add(offset + line * dst_stride),
+                            row,
+                        );
+                    }
+                }
+            })?;
+            Ok(damage)
+        }
+        Some(BufferType::Dma) => {
+            let mut dmabuf = get_dmabuf(buf)?.clone();
+            let mut fb = renderer.bind(&mut dmabuf)?;
+            let result = tracker.render_output(renderer, &mut fb, 0, elems, background)?;
+            Ok(damage_to_buffer(result.damage, transform, buffer_size))
+        }
+        _ => anyhow::bail!("unsupported buffer type"),
+    }
+}
+
+fn damage_to_buffer(
+    damage: Option<&Vec<Rectangle<i32, Physical>>>,
+    transform: Transform,
+    size: Size<i32, BufferCoords>,
+) -> Option<Vec<Rectangle<i32, BufferCoords>>> {
+    let logical_size = size.to_logical(1, transform);
+    let inv = transform.invert();
+    damage.map(|rects| {
+        rects
+            .iter()
+            .map(|r| r.to_logical(1).to_buffer(1, inv, &logical_size))
+            .collect()
+    })
 }

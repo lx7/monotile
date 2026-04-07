@@ -375,7 +375,7 @@ impl State {
     }
 
     pub fn remove_monitor(&mut self, output: &Output) {
-        self.screencopy.remove_output(&output.downgrade());
+        self.screencopy.remove_output(&output);
 
         let Some(idx) = self.monitors.iter().position(|m| m.output == *output) else {
             return;
@@ -448,6 +448,7 @@ impl State {
     pub fn destroy_window(&mut self, surface: &ObjectId) -> Option<usize> {
         self.unmapped.remove(surface);
         let we = self.windows.remove(surface)?;
+        self.screencopy.remove_toplevel(we.id);
         self.foreign_toplevel.remove(we.id);
         self.monitors[we.monitor].unmap(we.id);
         Some(we.monitor)

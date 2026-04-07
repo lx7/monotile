@@ -6,6 +6,7 @@ pub mod winit;
 use smithay::{
     backend::{renderer::glow::GlowRenderer, session::Session},
     output::Output,
+    wayland::image_copy_capture::DmabufConstraints,
 };
 use tracing::warn;
 use winit::WinitState;
@@ -60,6 +61,10 @@ impl Backend {
             }
             Backend::Unset => {} // no-op (tests)
         }
+    }
+
+    pub fn dma_constraints(&self) -> Option<DmabufConstraints> {
+        if let Backend::Drm(drm) = self { drm.dma_constraints.clone() } else { None }
     }
 
     pub fn set_output_power(&mut self, output: &Output, on: bool) {

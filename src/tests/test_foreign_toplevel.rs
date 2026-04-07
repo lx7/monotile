@@ -174,3 +174,32 @@ fn client_disconnect() {
     f.mt.state.flush_clients();
     // no panic = pass
 }
+
+// ── Toplevel image capture source tests ─────────────
+
+#[test]
+fn capture_source_manager_advertised() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    f.roundtrip(c);
+    assert!(
+        f.client(c).has_toplevel_capture_manager(),
+        "ext_foreign_toplevel_image_capture_source_manager_v1 should be advertised",
+    );
+}
+
+#[test]
+fn create_capture_source_from_toplevel() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+
+    open_window_with(&mut f, c, "test", "test.app");
+
+    let handles = f.client_mut(c).take_foreign_toplevel_handles();
+    assert!(!handles.is_empty(), "should have toplevel handles");
+
+    let source = f.client(c).create_toplevel_capture_source(&handles[0]);
+    assert!(source.is_some(), "should create capture source");
+
+    f.roundtrip(c);
+}

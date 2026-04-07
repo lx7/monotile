@@ -30,6 +30,7 @@ impl ForeignToplevelState {
 
     pub fn add(&mut self, id: WindowId, title: &str, app_id: &str) {
         let handle = self.list.new_toplevel::<Monotile>(title, app_id);
+        handle.user_data().insert_if_missing(|| id);
         self.handles.insert(id, handle);
     }
 

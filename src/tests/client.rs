@@ -17,6 +17,16 @@ use wayland_protocols::ext::foreign_toplevel_list::v1::client::{
     ext_foreign_toplevel_handle_v1::{self, ExtForeignToplevelHandleV1},
     ext_foreign_toplevel_list_v1::{self, ExtForeignToplevelListV1},
 };
+use wayland_protocols::ext::image_capture_source::v1::client::{
+    ext_foreign_toplevel_image_capture_source_manager_v1::ExtForeignToplevelImageCaptureSourceManagerV1,
+    ext_image_capture_source_v1::ExtImageCaptureSourceV1,
+    ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1,
+};
+use wayland_protocols::ext::image_copy_capture::v1::client::{
+    ext_image_copy_capture_frame_v1::{self, ExtImageCopyCaptureFrameV1},
+    ext_image_copy_capture_manager_v1::{self, ExtImageCopyCaptureManagerV1},
+    ext_image_copy_capture_session_v1::{self, ExtImageCopyCaptureSessionV1},
+};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 use wayland_protocols_wlr::layer_shell::v1::client::{
     zwlr_layer_shell_v1::{self, ZwlrLayerShellV1},
@@ -65,6 +75,14 @@ struct ClientData {
 
     foreign_toplevel_list: Option<ExtForeignToplevelListV1>,
     pub foreign_toplevel_events: Vec<ForeignToplevelEvent>,
+
+    toplevel_capture_manager: Option<ExtForeignToplevelImageCaptureSourceManagerV1>,
+    pub toplevel_handles: Vec<ExtForeignToplevelHandleV1>,
+
+    output_capture_source_manager: Option<ExtOutputImageCaptureSourceManagerV1>,
+    capture_manager: Option<ExtImageCopyCaptureManagerV1>,
+    pub capture_session_events: Vec<CaptureSessionEvent>,
+    pub capture_frame_events: Vec<CaptureFrameEvent>,
 }
 
 impl ClientData {
@@ -148,6 +166,30 @@ pub enum ForeignToplevelEvent {
     Closed { identifier: String },
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum CaptureSessionEvent {
+    BufferSize { width: u32, height: u32 },
+    ShmFormat(wl_shm::Format),
+    DmabufDevice,
+    DmabufFormat { format: u32 },
+    Done,
+    Stopped,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CaptureFrameEvent {
+    Transform(u32),
+    Damage {
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    },
+    PresentationTime,
+    Ready,
+    Failed(u32),
+}
+
 #[derive(Debug, Clone)]
 pub struct Configure {
     pub width: i32,
@@ -187,6 +229,14 @@ impl Client {
 
             foreign_toplevel_list: None,
             foreign_toplevel_events: Vec::new(),
+
+            toplevel_capture_manager: None,
+            toplevel_handles: Vec::new(),
+
+            output_capture_source_manager: None,
+            capture_manager: None,
+            capture_session_events: Vec::new(),
+            capture_frame_events: Vec::new(),
         };
 
         let mut client = Client { conn, queue, data };
@@ -415,6 +465,87 @@ impl Client {
     pub fn take_foreign_toplevel_events(&mut self) -> Vec<ForeignToplevelEvent> {
         self.data.foreign_toplevel_events.drain(..).collect()
     }
+
+    pub fn take_foreign_toplevel_handles(&mut self) -> Vec<ExtForeignToplevelHandleV1> {
+        self.data.toplevel_handles.drain(..).collect()
+    }
+
+    pub fn has_toplevel_capture_manager(&self) -> bool {
+        self.data.toplevel_capture_manager.is_some()
+    }
+
+    pub fn create_toplevel_capture_source(
+        &self,
+        handle: &ExtForeignToplevelHandleV1,
+    ) -> Option<ExtImageCaptureSourceV1> {
+        let mgr = self.data.toplevel_capture_manager.as_ref()?;
+        Some(mgr.create_source(handle, &self.queue.handle(), ()))
+    }
+
+    // screencopy
+
+    pub fn has_output_capture_source_manager(&self) -> bool {
+        self.data.output_capture_source_manager.is_some()
+    }
+
+    pub fn has_capture_manager(&self) -> bool {
+        self.data.capture_manager.is_some()
+    }
+
+    pub fn create_output_capture_source(&self) -> Option<ExtImageCaptureSourceV1> {
+        let mgr = self.data.output_capture_source_manager.as_ref()?;
+        let output = self.data.ipc_output.as_ref()?;
+        let source = mgr.create_source(output, &self.queue.handle(), ());
+        let _ = self.queue.flush();
+        Some(source)
+    }
+
+    pub fn create_capture_session(
+        &self,
+        source: &ExtImageCaptureSourceV1,
+        paint_cursors: bool,
+    ) -> Option<ExtImageCopyCaptureSessionV1> {
+        let mgr = self.data.capture_manager.as_ref()?;
+        let options = if paint_cursors {
+            ext_image_copy_capture_manager_v1::Options::PaintCursors
+        } else {
+            ext_image_copy_capture_manager_v1::Options::empty()
+        };
+        let session = mgr.create_session(source, options, &self.queue.handle(), ());
+        let _ = self.queue.flush();
+        Some(session)
+    }
+
+    pub fn create_capture_frame(
+        &self,
+        session: &ExtImageCopyCaptureSessionV1,
+    ) -> ExtImageCopyCaptureFrameV1 {
+        let frame = session.create_frame(&self.queue.handle(), ());
+        let _ = self.queue.flush();
+        frame
+    }
+
+    pub fn create_shm_buffer(&self, width: i32, height: i32) -> wl_buffer::WlBuffer {
+        let qh = self.queue.handle();
+        let shm = self.data.shm.as_ref().expect("wl_shm not bound");
+        let stride = width * 4;
+        let size = stride * height;
+        let mut tmp = tempfile::tempfile().unwrap();
+        tmp.write_all(&vec![0u8; size as usize]).unwrap();
+        let pool = shm.create_pool(tmp.as_fd(), size, &qh, ());
+        let buffer =
+            pool.create_buffer(0, width, height, stride, wl_shm::Format::Argb8888, &qh, ());
+        let _ = self.queue.flush();
+        buffer
+    }
+
+    pub fn take_capture_session_events(&mut self) -> Vec<CaptureSessionEvent> {
+        self.data.capture_session_events.drain(..).collect()
+    }
+
+    pub fn take_capture_frame_events(&mut self) -> Vec<CaptureFrameEvent> {
+        self.data.capture_frame_events.drain(..).collect()
+    }
 }
 
 // ── Dispatch impls ──────────────────────────────────
@@ -464,6 +595,16 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientData {
                 }
                 "ext_foreign_toplevel_list_v1" => {
                     state.foreign_toplevel_list = Some(registry.bind(name, version, qh, ()));
+                }
+                "ext_foreign_toplevel_image_capture_source_manager_v1" => {
+                    state.toplevel_capture_manager = Some(registry.bind(name, version, qh, ()));
+                }
+                "ext_output_image_capture_source_manager_v1" => {
+                    state.output_capture_source_manager =
+                        Some(registry.bind(name, version, qh, ()));
+                }
+                "ext_image_copy_capture_manager_v1" => {
+                    state.capture_manager = Some(registry.bind(name, version, qh, ()));
                 }
                 _ => {}
             }
@@ -861,7 +1002,7 @@ impl Dispatch<ExtForeignToplevelListV1, ()> for ClientData {
 impl Dispatch<ExtForeignToplevelHandleV1, ()> for ClientData {
     fn event(
         state: &mut Self,
-        _: &ExtForeignToplevelHandleV1,
+        handle: &ExtForeignToplevelHandleV1,
         event: ext_foreign_toplevel_handle_v1::Event,
         _: &(),
         _: &Connection,
@@ -870,6 +1011,7 @@ impl Dispatch<ExtForeignToplevelHandleV1, ()> for ClientData {
         use ext_foreign_toplevel_handle_v1::Event;
         match event {
             Event::Identifier { identifier } => {
+                state.toplevel_handles.push(handle.clone());
                 state
                     .foreign_toplevel_events
                     .push(ForeignToplevelEvent::New { identifier });
@@ -897,6 +1039,162 @@ impl Dispatch<ExtForeignToplevelHandleV1, ()> for ClientData {
                 state
                     .foreign_toplevel_events
                     .push(ForeignToplevelEvent::Closed { identifier });
+            }
+            _ => {}
+        }
+    }
+}
+
+// ── Image Capture Source Dispatch impls ──────────────
+
+impl Dispatch<ExtForeignToplevelImageCaptureSourceManagerV1, ()> for ClientData {
+    fn event(
+        _: &mut Self,
+        _: &ExtForeignToplevelImageCaptureSourceManagerV1,
+        _: wayland_protocols::ext::image_capture_source::v1::client
+            ::ext_foreign_toplevel_image_capture_source_manager_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ExtImageCaptureSourceV1, ()> for ClientData {
+    fn event(
+        _: &mut Self,
+        _: &ExtImageCaptureSourceV1,
+        _: wayland_protocols::ext::image_capture_source::v1::client
+            ::ext_image_capture_source_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ExtOutputImageCaptureSourceManagerV1, ()> for ClientData {
+    fn event(
+        _: &mut Self,
+        _: &ExtOutputImageCaptureSourceManagerV1,
+        _: wayland_protocols::ext::image_capture_source::v1::client
+            ::ext_output_image_capture_source_manager_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+// ── Image Copy Capture Dispatch impls ──────────────
+
+impl Dispatch<ExtImageCopyCaptureManagerV1, ()> for ClientData {
+    fn event(
+        _: &mut Self,
+        _: &ExtImageCopyCaptureManagerV1,
+        _: ext_image_copy_capture_manager_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ExtImageCopyCaptureSessionV1, ()> for ClientData {
+    fn event(
+        state: &mut Self,
+        _: &ExtImageCopyCaptureSessionV1,
+        event: ext_image_copy_capture_session_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use ext_image_copy_capture_session_v1::Event;
+        match event {
+            Event::BufferSize { width, height } => {
+                state
+                    .capture_session_events
+                    .push(CaptureSessionEvent::BufferSize { width, height });
+            }
+            Event::ShmFormat { format } => {
+                if let wayland_client::WEnum::Value(f) = format {
+                    state
+                        .capture_session_events
+                        .push(CaptureSessionEvent::ShmFormat(f));
+                }
+            }
+            Event::DmabufDevice { .. } => {
+                state
+                    .capture_session_events
+                    .push(CaptureSessionEvent::DmabufDevice);
+            }
+            Event::DmabufFormat { format, .. } => {
+                state
+                    .capture_session_events
+                    .push(CaptureSessionEvent::DmabufFormat { format });
+            }
+            Event::Done => {
+                state.capture_session_events.push(CaptureSessionEvent::Done);
+            }
+            Event::Stopped => {
+                state
+                    .capture_session_events
+                    .push(CaptureSessionEvent::Stopped);
+            }
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<ExtImageCopyCaptureFrameV1, ()> for ClientData {
+    fn event(
+        state: &mut Self,
+        _: &ExtImageCopyCaptureFrameV1,
+        event: ext_image_copy_capture_frame_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use ext_image_copy_capture_frame_v1::Event;
+        match event {
+            Event::Transform { transform } => {
+                let val = match transform {
+                    wayland_client::WEnum::Value(t) => t as u32,
+                    wayland_client::WEnum::Unknown(v) => v,
+                };
+                state
+                    .capture_frame_events
+                    .push(CaptureFrameEvent::Transform(val));
+            }
+            Event::Damage {
+                x,
+                y,
+                width,
+                height,
+            } => {
+                state.capture_frame_events.push(CaptureFrameEvent::Damage {
+                    x,
+                    y,
+                    width,
+                    height,
+                });
+            }
+            Event::PresentationTime { .. } => {
+                state
+                    .capture_frame_events
+                    .push(CaptureFrameEvent::PresentationTime);
+            }
+            Event::Ready => {
+                state.capture_frame_events.push(CaptureFrameEvent::Ready);
+            }
+            Event::Failed { reason } => {
+                let val = match reason {
+                    wayland_client::WEnum::Value(r) => r as u32,
+                    wayland_client::WEnum::Unknown(v) => v,
+                };
+                state
+                    .capture_frame_events
+                    .push(CaptureFrameEvent::Failed(val));
             }
             _ => {}
         }
