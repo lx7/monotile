@@ -29,7 +29,7 @@ use smithay::{
             timer::{TimeoutAction, Timer},
         },
         drm::control::{self, Device as ControlDevice, ModeTypeFlags, connector, crtc},
-        input::{Device, Libinput},
+        input::Libinput,
         rustix::fs::OFlags,
     },
     utils::DeviceFd,
@@ -50,7 +50,6 @@ use wayland_server::Weak;
 use crate::{
     Monotile,
     handlers::screencopy,
-    input::configure_device,
     render::{Shaders, send_frame_callbacks},
     shell::{MonitorSettings, Monitors},
     state::State,
@@ -106,7 +105,6 @@ pub struct DrmState {
     pub dma_constraints: Option<DmabufConstraints>,
     pub surfaces: HashMap<crtc::Handle, OutputSurface>,
     pub loop_handle: LoopHandle<'static, Monotile>,
-    pub input_devices: Vec<Device>,
     libinput: Libinput,
     scanner: DrmScanner,
 }
@@ -575,7 +573,6 @@ pub fn init(
         dma_constraints,
         surfaces: HashMap::new(),
         loop_handle: loop_handle.clone(),
-        input_devices: Vec::new(),
         libinput: libinput_ctx,
         scanner: DrmScanner::new(),
     });
@@ -633,18 +630,10 @@ pub fn init(
     })?;
 
     loop_handle.insert_source(LibinputInputBackend::new(libinput), |mut event, _, mt| {
-        {
-            let drm = mt.backend.drm();
-            match &mut event {
-                InputEvent::DeviceAdded { device } => {
-                    configure_device(device, &mt.state.config);
-                    drm.input_devices.push(device.clone());
-                }
-                InputEvent::DeviceRemoved { device } => {
-                    drm.input_devices.retain(|d| d != device);
-                }
-                _ => {}
-            }
+        match &mut event {
+            InputEvent::DeviceAdded { device } => mt.device_added(device),
+            InputEvent::DeviceRemoved { device } => mt.device_removed(device),
+            _ => {}
         }
         mt.process_input_event(event);
     })?;

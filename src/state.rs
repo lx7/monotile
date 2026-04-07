@@ -57,7 +57,9 @@ use smithay::{
 use crate::{
     backend::Backend,
     config::Config,
-    handlers::{foreign_toplevel::ForeignToplevelState, output_power, screencopy::ScreencopyState},
+    handlers::{
+        Devices, foreign_toplevel::ForeignToplevelState, output_power, screencopy::ScreencopyState,
+    },
     ipc::IpcState,
     render::cursor::CursorManager,
     shell::{Monitor, MonitorSettings, Monitors, Tag, Unmapped, WindowElement, WindowId, Windows},
@@ -151,7 +153,7 @@ impl Monotile {
         self.state.windows.update_rules(&self.state.config.windows);
         self.state.monitors.update_rules(&self.state.config.outputs);
         self.backend.apply_output_settings(&self.state.monitors);
-        self.backend.reconfigure_devices(&self.state.config);
+        self.reconfigure_devices();
         for i in 0..self.state.monitors.len() {
             self.state.monitors[i].recompute_layout(&mut self.state.windows, &self.state.config);
         }
@@ -285,6 +287,7 @@ impl State {
 
         let mut seat_state = SeatState::new();
         let mut seat = seat_state.new_wl_seat(&dh, "seat0");
+        seat.user_data().insert_if_missing(Devices::default);
         let kb_conf = &config.seats["seat0"].keyboard;
         seat.add_keyboard(
             kb_conf.xkb_config(),

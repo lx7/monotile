@@ -10,16 +10,21 @@ pub mod screencopy;
 mod session_lock;
 mod xdg_shell;
 
+use std::cell::RefCell;
+
 use crate::Monotile;
 use smithay::{
+    backend::input::DeviceCapability,
     delegate_cursor_shape, delegate_data_control, delegate_data_device, delegate_ext_data_control,
     delegate_output, delegate_primary_selection, delegate_seat, delegate_single_pixel_buffer,
     delegate_viewporter,
     input::{
         Seat, SeatHandler, SeatState,
         dnd::{DnDGrab, DndGrabHandler, GrabType, Source},
+        keyboard::LedState,
         pointer::{CursorImageStatus, Focus},
     },
+    reexports::input::Device,
     reexports::wayland_server::{Resource, protocol::wl_surface::WlSurface},
     utils::Serial,
     wayland::{
@@ -45,6 +50,9 @@ use smithay::{
     },
 };
 
+#[derive(Default)]
+pub struct Devices(pub RefCell<Vec<Device>>);
+
 impl SeatHandler for Monotile {
     type KeyboardFocus = WlSurface;
     type PointerFocus = WlSurface;
@@ -62,6 +70,15 @@ impl SeatHandler for Monotile {
         }
         self.state.cursor.status = image;
         self.backend.schedule_render(&self.state.mon().output);
+    }
+
+    fn led_state_changed(&mut self, seat: &Seat<Self>, led_state: LedState) {
+        let devices = seat.user_data().get::<Devices>().unwrap();
+        for dev in devices.0.borrow_mut().iter_mut() {
+            if dev.has_capability(DeviceCapability::Keyboard.into()) {
+                dev.led_update(led_state.into());
+            }
+        }
     }
 
     fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&WlSurface>) {

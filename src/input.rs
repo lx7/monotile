@@ -6,6 +6,7 @@ use crate::{
     Monotile,
     config::{Action, Config, Mods, Trigger},
     grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
+    handlers::Devices,
     spawn::spawn,
 };
 use smithay::{
@@ -434,9 +435,37 @@ impl Monotile {
             _ => unreachable!(),
         }
     }
+
+    pub fn device_added(&mut self, dev: &mut Device) {
+        configure_device(dev, &self.state.config);
+        if dev.has_capability(DeviceCapability::Keyboard.into()) {
+            if let Some(kb) = self.state.seat.get_keyboard() {
+                dev.led_update(kb.led_state().into());
+            }
+        }
+        let devices = self.state.seat.user_data().get::<Devices>().unwrap();
+        devices.0.borrow_mut().push(dev.clone());
+    }
+
+    pub fn device_removed(&mut self, dev: &Device) {
+        let devices = self.state.seat.user_data().get::<Devices>().unwrap();
+        devices.0.borrow_mut().retain(|d| d != dev);
+    }
+
+    pub fn reconfigure_devices(&mut self) {
+        let devices = self.state.seat.user_data().get::<Devices>().unwrap();
+        for dev in devices.0.borrow_mut().iter_mut() {
+            configure_device(dev, &self.state.config);
+            if dev.has_capability(DeviceCapability::Keyboard.into()) {
+                if let Some(kb) = self.state.seat.get_keyboard() {
+                    dev.led_update(kb.led_state().into());
+                }
+            }
+        }
+    }
 }
 
-pub fn configure_device(dev: &mut Device, config: &Config) {
+fn configure_device(dev: &mut Device, config: &Config) {
     let is_touchpad = dev.config_tap_finger_count() > 0;
     let is_mouse = !is_touchpad && dev.has_capability(DeviceCapability::Pointer.into());
     let is_keyboard = dev.has_capability(DeviceCapability::Keyboard.into());

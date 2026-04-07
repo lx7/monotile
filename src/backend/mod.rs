@@ -12,9 +12,8 @@ use tracing::warn;
 use winit::WinitState;
 
 use self::drm::DrmState;
-use crate::{config::Config, input::configure_device, shell::Monitors};
+use crate::shell::Monitors;
 
-/// Enum over all supported backends
 #[derive(Debug)]
 pub enum Backend {
     Winit(WinitState),
@@ -97,14 +96,6 @@ impl Backend {
     pub fn apply_output_settings(&mut self, monitors: &Monitors) {
         if let Backend::Drm(drm) = self {
             drm.apply_output_settings(monitors);
-        }
-    }
-
-    pub fn reconfigure_devices(&mut self, config: &Config) {
-        if let Backend::Drm(drm) = self {
-            for dev in &mut drm.input_devices {
-                configure_device(dev, config);
-            }
         }
     }
 }
