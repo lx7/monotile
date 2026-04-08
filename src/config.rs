@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use derive_more::Deref;
@@ -180,14 +180,7 @@ pub struct WindowMatch {
     pub app_id: Option<Pattern>,
     pub title: Option<Pattern>,
     pub floating: Option<bool>,
-}
-
-impl WindowMatch {
-    pub fn matches(&self, app_id: &str, title: &str, floating: bool) -> bool {
-        self.app_id.as_ref().is_none_or(|p| p.is_match(app_id))
-            && self.title.as_ref().is_none_or(|p| p.is_match(title))
-            && self.floating.is_none_or(|v| v == floating)
-    }
+    pub focused: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -202,6 +195,7 @@ pub struct WindowInit {
 
 #[derive(Debug, Clone, Deserialize)]
 pub enum RenderStep {
+    Noop,
     Shadow {
         softness: i32,
         spread: i32,
@@ -217,10 +211,6 @@ pub enum RenderStep {
         width: i32,
         color: Color,
     },
-    FocusRing {
-        width: i32,
-        color: Color,
-    },
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -228,7 +218,7 @@ pub enum RenderStep {
 pub struct WindowRule {
     pub r#match: WindowMatch,
     pub init: Option<WindowInit>,
-    pub render: Option<Vec<RenderStep>>,
+    pub render: Option<BTreeMap<u32, RenderStep>>,
 }
 
 // --- Layout ---
@@ -696,7 +686,7 @@ mod tests {
 
     #[test]
     fn empty_match_deserializes() {
-        let ron = "#![enable(implicit_some)]\n(windows: [(match: (), render: [WindowSurface(fill: \"#000000\")])])";
+        let ron = "#![enable(implicit_some)]\n(windows: [(match: (), render: {0: WindowSurface(fill: \"#000000\")})])";
         let config: Config = ron::from_str(ron).unwrap();
         assert_eq!(config.windows.len(), 1);
         assert!(config.windows[0].r#match.app_id.is_none());
@@ -731,46 +721,6 @@ mod tests {
     fn pattern_invalid_regex() {
         let r = ron::from_str::<Pattern>("\"[invalid\"");
         assert!(r.is_err());
-    }
-
-    #[test]
-    fn window_match_empty_matches_all() {
-        let m = WindowMatch::default();
-        assert!(m.matches("firefox", "YouTube", true));
-        assert!(m.matches("", "", false));
-    }
-
-    #[test]
-    fn window_match_app_id() {
-        let ron = "#![enable(implicit_some)]\n(app_id: \"firefox\")";
-        let m: WindowMatch = ron::from_str(ron).unwrap();
-        assert!(m.matches("firefox", "any title", false));
-        assert!(!m.matches("chromium", "any title", false));
-    }
-
-    #[test]
-    fn window_match_floating() {
-        let ron = "(floating: Some(true))";
-        let m: WindowMatch = ron::from_str(ron).unwrap();
-        assert!(m.matches("any", "any", true));
-        assert!(!m.matches("any", "any", false));
-    }
-
-    #[test]
-    fn window_match_combined() {
-        let ron = "#![enable(implicit_some)]\n(app_id: \"firefox\", floating: true)";
-        let m: WindowMatch = ron::from_str(ron).unwrap();
-        assert!(m.matches("firefox", "any", true));
-        assert!(!m.matches("firefox", "any", false));
-        assert!(!m.matches("chromium", "any", true));
-    }
-
-    #[test]
-    fn window_match_title_regex() {
-        let ron = "#![enable(implicit_some)]\n(title: \".*YouTube.*\")";
-        let m: WindowMatch = ron::from_str(ron).unwrap();
-        assert!(m.matches("firefox", "Watching YouTube Now", false));
-        assert!(!m.matches("firefox", "GitHub", false));
     }
 
     #[test]

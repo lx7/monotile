@@ -21,11 +21,6 @@ pub enum RenderStep {
         color: [f32; 4],
         elements: Vec<PixelShaderElement>,
     },
-    FocusRing {
-        width: i32,
-        color: [f32; 4],
-        elements: Vec<PixelShaderElement>,
-    },
     WindowSurface {
         fill: [f32; 4],
         radius: f32,
@@ -43,12 +38,8 @@ pub enum RenderStep {
 impl RenderStep {
     pub fn from_config(step: &config::RenderStep) -> Self {
         match step {
+            config::RenderStep::Noop => unreachable!("Noop filtered before from_config"),
             config::RenderStep::Border { width, color } => Self::Border {
-                width: *width,
-                color: color.0,
-                elements: Vec::new(),
-            },
-            config::RenderStep::FocusRing { width, color } => Self::FocusRing {
                 width: *width,
                 color: color.0,
                 elements: Vec::new(),
@@ -76,7 +67,6 @@ impl RenderStep {
     pub fn clear(&mut self) {
         match self {
             Self::Border { elements, .. } => elements.clear(),
-            Self::FocusRing { elements, .. } => elements.clear(),
             Self::WindowSurface { background, .. } => *background = None,
             Self::Shadow { element, .. } => *element = None,
         }
@@ -96,12 +86,7 @@ impl RenderStep {
     ) {
         let scale_f32 = scale.x as f32;
         match self {
-            RenderStep::FocusRing {
-                width,
-                color,
-                elements,
-            }
-            | RenderStep::Border {
+            RenderStep::Border {
                 width,
                 color,
                 elements,
@@ -247,9 +232,6 @@ impl WindowElement {
 
         for step in self.render.iter_mut().rev() {
             let skip = match step {
-                RenderStep::FocusRing { width, .. } => {
-                    !self.focused || disable_border || *width <= 0
-                }
                 RenderStep::Border { width, .. } => disable_border || *width <= 0,
                 RenderStep::Shadow { .. } => disable_gaps,
                 RenderStep::WindowSurface { .. } => false,

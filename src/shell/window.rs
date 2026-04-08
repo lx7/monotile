@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use derive_more::{Deref, DerefMut};
 
@@ -135,14 +135,19 @@ impl WindowElement {
         }
     }
 
+    fn matches(&self, rule: &config::WindowRule) -> bool {
+        let m = &rule.r#match;
+        m.app_id.as_ref().is_none_or(|p| p.is_match(&self.app_id))
+            && m.title.as_ref().is_none_or(|p| p.is_match(&self.title))
+            && m.floating.is_none_or(|v| v == self.floating)
+            && m.focused.is_none_or(|v| v == self.focused)
+    }
+
     pub fn resolve_init(&mut self) -> (Option<String>, Option<Vec<usize>>) {
         let mut output = None;
         let mut tags = None;
         for rule in &self.rules {
-            if rule
-                .r#match
-                .matches(&self.app_id, &self.title, self.floating)
-            {
+            if self.matches(rule) {
                 let Some(init) = &rule.init else { continue };
                 self.floating = init.floating.unwrap_or(self.floating);
                 if let Some((w, h)) = init.size {
@@ -158,21 +163,21 @@ impl WindowElement {
         (output, tags)
     }
 
+    // TODO: create render steps only on config reload, pipeline on state change
     pub fn resolve_render(&mut self) {
-        let mut matched = None;
+        let mut merged = BTreeMap::new();
         for rule in &self.rules {
-            if rule
-                .r#match
-                .matches(&self.app_id, &self.title, self.floating)
-            {
-                if rule.render.is_some() {
-                    matched = rule.render.as_ref();
+            if self.matches(rule) {
+                if let Some(render) = &rule.render {
+                    merged.extend(render.iter().map(|(&k, v)| (k, v.clone())));
                 }
             }
         }
-        self.render = matched
-            .map(|steps| steps.iter().map(RenderStep::from_config).collect())
-            .unwrap_or_default();
+        self.render = merged
+            .into_values()
+            .filter(|s| !matches!(s, config::RenderStep::Noop))
+            .map(|s| RenderStep::from_config(&s))
+            .collect();
         self.radius = self
             .render
             .iter()
@@ -240,11 +245,15 @@ impl WindowElement {
     }
 
     pub fn set_focused(&mut self, focused: bool) {
+        if self.focused == focused {
+            return;
+        }
         self.focused = focused;
         self.window.set_activated(focused);
         if let Some(tl) = self.window.toplevel() {
             tl.send_pending_configure();
         }
+        self.resolve_render();
     }
 
     pub fn set_fullscreen(&mut self, geo: Option<Rectangle<i32, Logical>>) {

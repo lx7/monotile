@@ -51,40 +51,54 @@
 
     // Window rules: top-to-bottom, later rules override earlier ones.
     windows: [
-        (  
-            // Match: () = catch-all, matches any window.
+       
+        // Default.
+        // Match: () = catch-all, matches any window.
+        ( 
             match: (
-                // app_id: "regex"        
-                // title: "regex"         
-                // floating: true/false   
+                // app_id: "regex",
+                // title: "regex",
+                // floating: true/false,
+                // focused: true/false,
             ),
-            
+
             // Init: evaluated once when a window maps.
             init: (
-                // floating: true, 
-                // size: (600, 400), 
-                // position: (30, 30), 
-                // output: "DP-1", 
+                // floating: true,
+                // size: (600, 400),
+                // position: (30, 30),
+                // output: "DP-1",
                 // tags: [0, 1],
             ),
 
-            // Render: per-window render pipeline, re-evaluated on state change.
-            render: [
-                WindowSurface(fill: "black"),
-                Border(width: 2, color: "gray"),
-                FocusRing(width: 2, color: "blue"),
-            ],
+            // Render: per-window render pipeline.
+            render: {
+                0: Noop,
+                1: WindowSurface(fill: "black"),
+                2: Border(width: 2, color: "gray"),
+                3: Noop,
+            },
         ),
-        (
-            // Match: override for floating windows.
+
+        // Floating windows. 
+        // Add shadow in slot 1, round corners in slot 2. Keep the border in slot 3.
+        ( 
             match: (floating: true),
-            render: [
-                Shadow(softness: 25, spread: 5, offset: (0, 5), color: "shadow"),
-                WindowSurface(radius: 6.0, fill: "black"),
-                Border(width: 2, color: "gray"),
-                FocusRing(width: 2, color: "blue"),
-            ],
+            render: {
+                0: Shadow(softness: 25, spread: 5, offset: (0, 5), color: "shadow"),
+                1: WindowSurface(radius: 6.0, fill: "black"),
+            },
         ),
+        
+        // Focus indicator. 
+        // Draw a different color rectangle above the border in slot 2.
+        ( 
+            match: (focused: true),
+            render: {
+                3: Border(width: 2, color: "blue"),
+            },
+        ),
+        
         // Examples:
         // (
         //     match: (app_id: "firefox|chromium", title: "Picture.in.[Pp]icture"),
@@ -108,11 +122,11 @@
             keyboard: (
                 // Match: () = catch-all, matches any device of this type.
                 match: (
-                    // name: "regex"          // libinput device name
-                    // vendor_id: 0x046d      // USB vendor ID
-                    // product_id: 0xc52b     // USB product ID
-                    // serial: "regex"        // device serial (if available)
-                    // path: "regex"          // udev ID_PATH (physical port)
+                    // name: "regex",         // libinput device name
+                    // vendor_id: 0x046d,     // USB vendor ID
+                    // product_id: 0xc52b,    // USB product ID
+                    // serial: "regex",       // device serial (if available)
+                    // path: "regex",         // udev ID_PATH (physical port)
                 ),
                 layout: "de",
                 variant: "nodeadkeys",
