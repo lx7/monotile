@@ -82,8 +82,9 @@ pub struct WindowElement {
     // last configure sent to client
     configured_geo: Rectangle<i32, Logical>,
 
-    // rendering
-    pub render: Vec<RenderStep>,
+    // rendering: steps keyed by (rule_index, slot)
+    pub render_steps: BTreeMap<(usize, u32), RenderStep>,
+    pub render_pipeline: Vec<(usize, u32)>,
     pub radius: f32,
     rules: Vec<config::WindowRule>,
 
@@ -126,7 +127,8 @@ impl WindowElement {
             tiled_geo: Rectangle::default(),
             float_geo: Rectangle::from_size(float_size),
             fullscreen_geo: Rectangle::default(),
-            render: Vec::new(),
+            render_steps: BTreeMap::new(),
+            render_pipeline: Vec::new(),
             radius: 0.0,
             rules: rules.to_vec(),
             configured_geo: Rectangle::from_size(placement.configured_size),
@@ -163,29 +165,39 @@ impl WindowElement {
         (output, tags)
     }
 
-    // TODO: create render steps only on config reload, pipeline on state change
-    pub fn resolve_render(&mut self) {
-        let mut merged = BTreeMap::new();
-        for rule in &self.rules {
-            if self.matches(rule) {
-                if let Some(render) = &rule.render {
-                    merged.extend(render.iter().map(|(&k, v)| (k, v.clone())));
+    pub fn build_render_steps(&mut self) {
+        self.render_steps.clear();
+        for (ri, rule) in self.rules.iter().enumerate() {
+            for (&slot, step) in rule.render.iter().flatten() {
+                if let Some(rs) = RenderStep::from_config(step) {
+                    self.render_steps.insert((ri, slot), rs);
                 }
             }
         }
-        self.render = merged
-            .into_values()
-            .filter(|s| !matches!(s, config::RenderStep::Noop))
-            .map(|s| RenderStep::from_config(&s))
-            .collect();
-        self.radius = self
-            .render
-            .iter()
-            .find_map(|s| match s {
-                RenderStep::WindowSurface { radius, .. } => Some(*radius),
-                _ => None,
-            })
-            .unwrap_or(0.0);
+        self.resolve_render();
+    }
+
+    pub fn resolve_render(&mut self) {
+        let mut active: BTreeMap<u32, (usize, u32)> = BTreeMap::new();
+        self.radius = 0.0;
+        for (ri, rule) in self.rules.iter().enumerate() {
+            if self.matches(rule) {
+                for &slot in rule.render.iter().flat_map(|r| r.keys()) {
+                    let key = (ri, slot);
+                    if self.render_steps.contains_key(&key) {
+                        active.insert(slot, key);
+                    } else {
+                        active.remove(&slot);
+                    }
+                }
+            }
+        }
+        self.render_pipeline = active.into_values().collect();
+        for key in &self.render_pipeline {
+            if let Some(RenderStep::WindowSurface { radius, .. }) = self.render_steps.get(key) {
+                self.radius = *radius;
+            }
+        }
     }
 
     pub fn geo(&self) -> Rectangle<i32, Logical> {
@@ -284,7 +296,7 @@ impl WindowElement {
     }
 
     fn clear_render_cache(&mut self) {
-        for step in &mut self.render {
+        for step in self.render_steps.values_mut() {
             step.clear();
         }
     }
@@ -350,7 +362,7 @@ impl Windows {
     pub fn update_rules(&mut self, rules: &[config::WindowRule]) {
         for we in self.inner.values_mut() {
             we.rules = rules.to_vec();
-            we.resolve_render();
+            we.build_render_steps();
         }
     }
 

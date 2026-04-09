@@ -435,7 +435,7 @@ impl State {
             .windows
             .insert_with_key(|id| WindowElement::new(id, unmapped, rules));
         let (output, tags) = self.windows[id].resolve_init();
-        self.windows[id].resolve_render();
+        self.windows[id].build_render_steps();
 
         if let Some(name) = output {
             self.windows[id].monitor = self.monitor_idx(&name);

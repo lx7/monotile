@@ -36,9 +36,9 @@ pub enum RenderStep {
 }
 
 impl RenderStep {
-    pub fn from_config(step: &config::RenderStep) -> Self {
-        match step {
-            config::RenderStep::Noop => unreachable!("Noop filtered before from_config"),
+    pub fn from_config(step: &config::RenderStep) -> Option<Self> {
+        Some(match step {
+            config::RenderStep::Noop => return None,
             config::RenderStep::Border { width, color } => Self::Border {
                 width: *width,
                 color: color.0,
@@ -61,7 +61,7 @@ impl RenderStep {
                 color: color.0,
                 element: None,
             },
-        }
+        })
     }
 
     pub fn clear(&mut self) {
@@ -230,7 +230,8 @@ impl WindowElement {
 
         out.extend(popup_elements(renderer, &wl, win_geo.loc, scale));
 
-        for step in self.render.iter_mut().rev() {
+        for &key in self.render_pipeline.iter().rev() {
+            let step = self.render_steps.get_mut(&key).expect("render_step exists");
             let skip = match step {
                 RenderStep::Border { width, .. } => disable_border || *width <= 0,
                 RenderStep::Shadow { .. } => disable_gaps,
