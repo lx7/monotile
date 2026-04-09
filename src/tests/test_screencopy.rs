@@ -445,3 +445,69 @@ fn toplevel_capture_stopped_on_close() {
         "session must receive stopped when toplevel is closed, got {events:?}",
     );
 }
+
+#[test]
+fn toplevel_capture_sets_screencast_flag() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    f.roundtrip(c);
+
+    open_window_and_get_handle(&mut f, c);
+    let id = f.mt.state.mon().tag().focused_id().expect("focused window");
+    assert!(
+        !(f.mt.state.windows[id].screencasts > 0),
+        "screencast off initially"
+    );
+
+    f.client_mut(c).take_foreign_toplevel_events();
+    let handles = f.client_mut(c).take_foreign_toplevel_handles();
+
+    let source = f
+        .client(c)
+        .create_toplevel_capture_source(&handles[0])
+        .expect("create_source");
+    let session = f
+        .client(c)
+        .create_capture_session(&source, false)
+        .expect("create_session");
+    f.roundtrip(c);
+
+    assert!(
+        (f.mt.state.windows[id].screencasts > 0),
+        "screencast must be set after session starts",
+    );
+
+    session.destroy();
+    f.client(c).flush();
+    f.roundtrip(c);
+
+    assert!(
+        !(f.mt.state.windows[id].screencasts > 0),
+        "screencast must be cleared after session destroyed",
+    );
+}
+
+#[test]
+fn output_capture_does_not_set_screencast_flag() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    f.roundtrip(c);
+
+    open_window_and_get_handle(&mut f, c);
+    let id = f.mt.state.mon().tag().focused_id().expect("focused window");
+
+    let source = f
+        .client(c)
+        .create_output_capture_source()
+        .expect("create_source");
+    let _session = f
+        .client(c)
+        .create_capture_session(&source, false)
+        .expect("create_session");
+    f.roundtrip(c);
+
+    assert!(
+        !(f.mt.state.windows[id].screencasts > 0),
+        "output capture must not set screencast on windows",
+    );
+}

@@ -21,10 +21,10 @@
         (
             // Match: () = catch-all, matches any output.
             match: (
-                // name: "regex"      // connector name (eDP-1, DP-1, HDMI-A-1, ...)
-                // make: "regex"      // manufacturer (EDID)
-                // model: "regex"     // model (EDID)
-                // serial: "regex"    // serial number (EDID)
+                // name: "regex",     // connector name (eDP-1, DP-1, HDMI-A-1, ...)
+                // make: "regex",     // manufacturer (EDID)
+                // model: "regex",    // model (EDID)
+                // serial: "regex",   // serial number (EDID)
             ),
             scale: 1.0,
             tags: ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
@@ -90,15 +90,24 @@
             },
         ),
         
-        // Focus indicator. 
+        // Focus indicator.
         // Draw a different color rectangle above the border in slot 2.
-        ( 
+        (
             match: (focused: true),
             render: {
                 3: Border(width: 2, color: "blue"),
             },
         ),
-        
+
+        // Screencast indicator.
+        // Highlight windows being screen-captured.
+        (
+            match: (screencast: true),
+            render: {
+                3: Border(width: 4, color: "red"),
+            },
+        ),
+
         // Examples:
         // (
         //     match: (app_id: "firefox|chromium", title: "Picture.in.[Pp]icture"),

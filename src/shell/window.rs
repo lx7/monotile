@@ -70,6 +70,7 @@ pub struct WindowElement {
     pub floating: bool,
     pub fullscreen: bool,
     pub focused: bool,
+    pub screencasts: u32,
 
     // target geometry
     pub tiled_geo: Rectangle<i32, Logical>,
@@ -124,6 +125,7 @@ impl WindowElement {
             floating: placement.floating,
             fullscreen: false,
             focused: false,
+            screencasts: 0,
             tiled_geo: Rectangle::default(),
             float_geo: Rectangle::from_size(float_size),
             fullscreen_geo: Rectangle::default(),
@@ -143,6 +145,7 @@ impl WindowElement {
             && m.title.as_ref().is_none_or(|p| p.is_match(&self.title))
             && m.floating.is_none_or(|v| v == self.floating)
             && m.focused.is_none_or(|v| v == self.focused)
+            && m.screencast.is_none_or(|v| v == (self.screencasts > 0))
     }
 
     pub fn resolve_init(&mut self) -> (Option<String>, Option<Vec<usize>>) {
@@ -266,6 +269,20 @@ impl WindowElement {
             tl.send_pending_configure();
         }
         self.resolve_render();
+    }
+
+    pub fn mark_screencast(&mut self) {
+        self.screencasts += 1;
+        if self.screencasts == 1 {
+            self.resolve_render();
+        }
+    }
+
+    pub fn unmark_screencast(&mut self) {
+        self.screencasts -= 1;
+        if self.screencasts == 0 {
+            self.resolve_render();
+        }
     }
 
     pub fn set_fullscreen(&mut self, geo: Option<Rectangle<i32, Logical>>) {

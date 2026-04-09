@@ -245,9 +245,10 @@ impl ImageCopyCaptureHandler for Monotile {
 
     fn new_session(&mut self, session: Session) {
         let source = session.source();
+        let target = source_toplevel(&source);
         let tracker = if let Some(output) = source_output(&source) {
             OutputDamageTracker::from_output(&output)
-        } else if let Some(id) = source_toplevel(&source) {
+        } else if let Some(id) = target {
             let Some((_, buf_size, scale)) =
                 toplevel_capture_info(&self.state.windows, &self.state.monitors, id)
             else {
@@ -262,6 +263,12 @@ impl ImageCopyCaptureHandler for Monotile {
             session,
             damage_tracker: tracker,
         });
+        if let Some(id) = target
+            && let Some(we) = self.state.windows.get_mut(id)
+        {
+            we.mark_screencast();
+        }
+        self.backend.schedule_render_all();
     }
 
     fn frame(&mut self, session: &SessionRef, frame: Frame) {
@@ -303,7 +310,14 @@ impl ImageCopyCaptureHandler for Monotile {
     }
 
     fn session_destroyed(&mut self, session: SessionRef) {
+        let target = source_toplevel(&session.source());
         self.state.screencopy.remove_session(&session);
+        if let Some(id) = target
+            && let Some(we) = self.state.windows.get_mut(id)
+        {
+            we.unmark_screencast();
+        }
+        self.backend.schedule_render_all();
     }
 }
 delegate_image_copy_capture!(Monotile);
