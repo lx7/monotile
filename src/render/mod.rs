@@ -153,7 +153,7 @@ fn layer_popup_elements(
     elems
 }
 
-fn popup_elements(
+pub fn popup_elements(
     renderer: &mut GlowRenderer,
     surface: &WlSurface,
     origin: Point<i32, Logical>,

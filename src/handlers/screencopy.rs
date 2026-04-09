@@ -366,9 +366,10 @@ pub fn capture_frame(
                     p.frame.fail(CaptureFailureReason::Unknown);
                     continue;
                 };
+                let window_loc = we.render_geo.loc;
                 let loc = Point::from((0, 0)) - we.window.geometry().loc;
                 let surf_loc = loc.to_physical_precise_round(scale);
-                let elems: Vec<WaylandSurfaceRenderElement<GlowRenderer>> =
+                let surfs: Vec<WaylandSurfaceRenderElement<GlowRenderer>> =
                     render_elements_from_surface_tree(
                         renderer,
                         &wl,
@@ -377,6 +378,14 @@ pub fn capture_frame(
                         1.0,
                         Kind::Unspecified,
                     );
+                let mut elems: Vec<MonotileElement> =
+                    crate::render::popup_elements(renderer, &wl, loc, scale);
+                elems.extend(surfs.into_iter().map(MonotileElement::Surface));
+                if p.session.draw_cursor() {
+                    let ptr_pos = state.seat.get_pointer().unwrap().current_location();
+                    let local_pos = ptr_pos - window_loc.to_f64();
+                    elems.splice(0..0, state.cursor.elements(renderer, local_pos));
+                }
                 match crate::render::render_to_buffer(
                     renderer,
                     tracker,
