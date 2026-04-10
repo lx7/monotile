@@ -188,6 +188,7 @@ impl DrmState {
         let ptr = state.seat.get_pointer().unwrap();
         let pos = ptr.current_location();
         let mut elems = state.cursor.elements(&mut self.renderer, pos);
+        let cursor_count = elems.len();
         elems.extend(crate::render::output_elements(
             &mut self.renderer,
             mon,
@@ -219,6 +220,7 @@ impl DrmState {
             state,
             &surface.output,
             &elems,
+            cursor_count,
             bg,
             elapsed,
         );

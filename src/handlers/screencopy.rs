@@ -339,6 +339,7 @@ pub fn capture_frame(
     state: &mut State,
     output: &Output,
     output_elems: &[MonotileElement],
+    cursor_count: usize,
     background: impl Into<Color32F> + Copy,
     elapsed: std::time::Duration,
 ) {
@@ -353,14 +354,13 @@ pub fn capture_frame(
 
         match p.kind {
             CaptureKind::Output { transform, size } => {
+                let elems = if p.session.draw_cursor() {
+                    output_elems
+                } else {
+                    &output_elems[cursor_count..]
+                };
                 match crate::render::render_to_buffer(
-                    renderer,
-                    tracker,
-                    &buf,
-                    output_elems,
-                    background,
-                    transform,
-                    size,
+                    renderer, tracker, &buf, elems, background, transform, size,
                 ) {
                     Ok(damage) => p.frame.success(transform, damage, elapsed),
                     Err(err) => {
