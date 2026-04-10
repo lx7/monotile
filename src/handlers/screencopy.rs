@@ -41,6 +41,7 @@ use crate::{
 pub struct ScreencopySession {
     pub session: Session,
     pub damage_tracker: OutputDamageTracker,
+    pub output: WeakOutput,
 }
 
 pub struct PendingCapture {
@@ -183,6 +184,11 @@ impl ScreencopyState {
             p.frame.fail(CaptureFailureReason::Stopped);
         }
     }
+
+    pub fn output_captured(&self, output: &Output) -> bool {
+        let weak = output.downgrade();
+        self.sessions.iter().any(|s| s.output == weak)
+    }
 }
 
 impl ImageCaptureSourceHandler for Monotile {}
@@ -246,28 +252,33 @@ impl ImageCopyCaptureHandler for Monotile {
     fn new_session(&mut self, session: Session) {
         let source = session.source();
         let target = source_toplevel(&source);
-        let tracker = if let Some(output) = source_output(&source) {
-            OutputDamageTracker::from_output(&output)
+        let (output, tracker) = if let Some(output) = source_output(&source) {
+            (output.clone(), OutputDamageTracker::from_output(&output))
         } else if let Some(id) = target {
-            let Some((_, buf_size, scale)) =
+            let Some((output, buf_size, scale)) =
                 toplevel_capture_info(&self.state.windows, &self.state.monitors, id)
             else {
                 return;
             };
             let size: Size<i32, Physical> = (buf_size.w, buf_size.h).into();
-            OutputDamageTracker::new(size, scale, Transform::Normal)
+            (
+                output,
+                OutputDamageTracker::new(size, scale, Transform::Normal),
+            )
         } else {
             return;
         };
         self.state.screencopy.sessions.push(ScreencopySession {
             session,
             damage_tracker: tracker,
+            output: output.downgrade(),
         });
         if let Some(id) = target
             && let Some(we) = self.state.windows.get_mut(id)
         {
             we.mark_screencast();
         }
+        self.state.ipc.dirty = true;
         self.backend.schedule_render_all();
     }
 
@@ -317,6 +328,7 @@ impl ImageCopyCaptureHandler for Monotile {
         {
             we.unmark_screencast();
         }
+        self.state.ipc.dirty = true;
         self.backend.schedule_render_all();
     }
 }

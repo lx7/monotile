@@ -74,6 +74,7 @@ fn send_output_status(h: &ZmonotileOutputStatusV1, snap: &TagSnapshot) {
     h.occupied_tags(snap.occupied_tags);
     h.urgent_tags(snap.urgent_tags);
     h.layout(snap.layout_name.clone(), snap.layout_symbol.clone());
+    h.screencast(snap.screencast as u32);
 }
 
 fn send_seat_status(h: &ZmonotileSeatStatusV1, snap: &TagSnapshot, output: &Output) {
@@ -132,7 +133,7 @@ impl Dispatch<ZmonotileStatusManagerV1, ()> for Monotile {
                         handle.tag_info(i as u32, name.clone());
                     }
                     // send initial state
-                    let snap = mon.snapshot(&monotile.state.windows);
+                    let snap = mon.snapshot(&monotile.state.windows, &monotile.state.screencopy);
                     send_output_status(&handle, &snap);
                 }
             }
@@ -143,7 +144,7 @@ impl Dispatch<ZmonotileStatusManagerV1, ()> for Monotile {
                 // TODO: get monitor from seat when multiseat is implemented
                 // send initial state
                 let mon = monotile.state.mon();
-                let snap = mon.snapshot(&monotile.state.windows);
+                let snap = mon.snapshot(&monotile.state.windows, &monotile.state.screencopy);
                 send_seat_status(&handle, &snap, &mon.output);
             }
             Request::Destroy => {}

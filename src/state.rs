@@ -205,7 +205,7 @@ impl Monotile {
         if let Some(kb) = self.state.seat.get_keyboard() {
             kb.set_focus(self, target, SERIAL_COUNTER.next_serial());
         }
-        self.state.ipc.mark_dirty();
+        self.state.ipc.dirty = true;
     }
 }
 
@@ -419,7 +419,7 @@ impl State {
             }
             mon.recompute_layout(&mut self.windows, &self.config);
         }
-        self.ipc.mark_dirty();
+        self.ipc.dirty = true;
     }
 
     pub fn monitor_idx(&self, name: &str) -> usize {
@@ -528,8 +528,7 @@ impl State {
 
         self.screencopy.cleanup();
         self.foreign_toplevel.flush(&self.windows);
-        self.ipc
-            .flush(&self.monitors, &self.windows, self.active_monitor);
+        self.flush_ipc();
         let _ = self.display_handle.flush_clients();
     }
 }

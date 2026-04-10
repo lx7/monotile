@@ -6,14 +6,16 @@ mod monotile_ipc;
 mod monotile_ipc_protocol;
 use wayland_server::DisplayHandle;
 
-use crate::shell::{Monitor, Monitors, Windows};
+use crate::handlers::screencopy::ScreencopyState;
+use crate::shell::{Monitor, Windows};
+use crate::state::State;
 pub use dwl_ipc::DwlIpcState;
 pub use monotile_ipc::MonotileIpcState;
 
 pub struct IpcState {
     pub dwl: DwlIpcState,
     pub monotile: MonotileIpcState,
-    dirty: bool,
+    pub dirty: bool,
 }
 
 impl IpcState {
@@ -23,10 +25,6 @@ impl IpcState {
             monotile: MonotileIpcState::new(dh),
             dirty: false,
         }
-    }
-
-    pub fn mark_dirty(&mut self) {
-        self.dirty = true;
     }
 }
 
@@ -43,10 +41,12 @@ pub struct TagSnapshot {
     pub app_id: String,
     pub fullscreen: bool,
     pub floating: bool,
+
+    pub screencast: bool,
 }
 
 impl Monitor {
-    pub fn snapshot(&self, windows: &Windows) -> TagSnapshot {
+    pub fn snapshot(&self, windows: &Windows, screencopy: &ScreencopyState) -> TagSnapshot {
         let tag = self.tag();
         let focused = tag.focused_id();
         let (title, app_id, fullscreen, floating) = focused
@@ -83,26 +83,25 @@ impl Monitor {
             app_id,
             fullscreen,
             floating,
+
+            screencast: screencopy.output_captured(&self.output),
         }
     }
 }
 
-impl IpcState {
-    pub fn flush(&mut self, monitors: &Monitors, windows: &Windows, active_monitor: usize) {
-        if !self.dirty {
+impl State {
+    pub(crate) fn flush_ipc(&mut self) {
+        if !self.ipc.dirty {
             return;
         }
-        self.dirty = false;
-        for (i, mon) in monitors.iter().enumerate() {
-            let snap = mon.snapshot(windows);
-            self.monotile.notify_output(&mon.output, &snap);
-
-            let active = i == active_monitor;
-            if active {
-                self.monotile.notify_seat(&snap, &mon.output);
+        self.ipc.dirty = false;
+        for (i, mon) in self.monitors.iter().enumerate() {
+            let snap = mon.snapshot(&self.windows, &self.screencopy);
+            self.ipc.monotile.notify_output(&mon.output, &snap);
+            if i == self.active_monitor {
+                self.ipc.monotile.notify_seat(&snap, &mon.output);
             }
-
-            self.dwl.notify(mon, &snap, active);
+            self.ipc.dwl.notify(mon, &snap, i == self.active_monitor);
         }
     }
 }

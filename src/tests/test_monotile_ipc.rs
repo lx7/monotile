@@ -65,6 +65,87 @@ fn output_status_initial_burst() {
 }
 
 #[test]
+fn output_status_screencast_on_capture() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    f.client_mut(c).bind_output_status();
+    open_window(&mut f, c);
+    f.roundtrip(c);
+
+    let events = f.client_mut(c).take_ipc_events();
+    assert!(
+        events.contains(&IpcEvent::Screencast(false)),
+        "initial state is not screencasting, got {events:?}",
+    );
+
+    let handles = f.client_mut(c).take_foreign_toplevel_handles();
+    let source = f
+        .client(c)
+        .create_toplevel_capture_source(&handles[0])
+        .expect("create_source");
+    let session = f
+        .client(c)
+        .create_capture_session(&source, false)
+        .expect("create_session");
+    f.mt.state.flush_clients();
+    f.roundtrip(c);
+
+    let events = f.client_mut(c).take_ipc_events();
+    assert!(
+        events.contains(&IpcEvent::Screencast(true)),
+        "screencast should be active, got {events:?}",
+    );
+
+    session.destroy();
+    f.client(c).flush();
+    f.mt.state.flush_clients();
+    f.roundtrip(c);
+
+    let events = f.client_mut(c).take_ipc_events();
+    assert!(
+        events.contains(&IpcEvent::Screencast(false)),
+        "screencast should be cleared, got {events:?}",
+    );
+}
+
+#[test]
+fn output_status_screencast_on_output_capture() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    f.client_mut(c).bind_output_status();
+    f.roundtrip(c);
+    f.client_mut(c).take_ipc_events();
+
+    let source = f
+        .client(c)
+        .create_output_capture_source()
+        .expect("create_source");
+    let session = f
+        .client(c)
+        .create_capture_session(&source, false)
+        .expect("create_session");
+    f.mt.state.flush_clients();
+    f.roundtrip(c);
+
+    let events = f.client_mut(c).take_ipc_events();
+    assert!(
+        events.contains(&IpcEvent::Screencast(true)),
+        "output capture should set screencast, got {events:?}",
+    );
+
+    session.destroy();
+    f.client(c).flush();
+    f.mt.state.flush_clients();
+    f.roundtrip(c);
+
+    let events = f.client_mut(c).take_ipc_events();
+    assert!(
+        events.contains(&IpcEvent::Screencast(false)),
+        "output capture stop should clear screencast, got {events:?}",
+    );
+}
+
+#[test]
 fn output_status_focused_tags_on_switch() {
     let mut f = Fixture::new();
     let c = f.add_client();
@@ -73,7 +154,7 @@ fn output_status_focused_tags_on_switch() {
     f.client_mut(c).take_ipc_events();
 
     f.mt.state.mon_mut().set_active_tag(2);
-    f.mt.state.ipc.mark_dirty();
+    f.mt.state.ipc.dirty = true;
     f.mt.state.flush_clients();
     f.roundtrip(c);
 
@@ -93,7 +174,7 @@ fn output_status_occupied_tags_on_map() {
     f.client_mut(c).take_ipc_events();
 
     open_window(&mut f, c);
-    f.mt.state.ipc.mark_dirty();
+    f.mt.state.ipc.dirty = true;
     f.mt.state.flush_clients();
     f.roundtrip(c);
 
@@ -526,7 +607,7 @@ fn client_disconnect_no_crash() {
 
     // drop the client; no panic expected
     f.drop_client(c);
-    f.mt.state.ipc.mark_dirty();
+    f.mt.state.ipc.dirty = true;
     f.mt.state.flush_clients();
 }
 
@@ -544,7 +625,7 @@ fn two_clients_both_get_events() {
     f.client_mut(c2).take_ipc_events();
 
     f.mt.state.mon_mut().set_active_tag(4);
-    f.mt.state.ipc.mark_dirty();
+    f.mt.state.ipc.dirty = true;
     f.mt.state.flush_clients();
     f.roundtrip(c1);
     f.roundtrip(c2);
@@ -573,7 +654,7 @@ fn output_status_destroy_stops_events() {
     f.roundtrip(c);
 
     f.mt.state.mon_mut().set_active_tag(5);
-    f.mt.state.ipc.mark_dirty();
+    f.mt.state.ipc.dirty = true;
     f.mt.state.flush_clients();
     f.roundtrip(c);
 
@@ -592,7 +673,7 @@ fn seat_status_destroy_stops_events() {
     f.client_mut(c).destroy_seat_status();
     f.roundtrip(c);
 
-    f.mt.state.ipc.mark_dirty();
+    f.mt.state.ipc.dirty = true;
     f.mt.state.flush_clients();
     f.roundtrip(c);
 

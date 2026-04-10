@@ -147,7 +147,7 @@ fn tag_switch_updates_state() {
     f.client_mut(c).take_dwl_events();
 
     f.mt.state.mon_mut().set_active_tag(3);
-    f.mt.state.ipc.mark_dirty();
+    f.mt.state.ipc.dirty = true;
     f.mt.state.flush_clients();
     f.roundtrip(c);
 
@@ -180,7 +180,7 @@ fn window_map_updates_clients_count() {
     f.client_mut(c).take_dwl_events();
 
     open_window(&mut f, c);
-    f.mt.state.ipc.mark_dirty();
+    f.mt.state.ipc.dirty = true;
     f.mt.state.flush_clients();
     f.roundtrip(c);
 
@@ -326,7 +326,7 @@ fn set_tags_same_tag_is_noop() {
 
     // switch to tag 2
     f.mt.state.mon_mut().set_active_tag(2);
-    f.mt.state.ipc.mark_dirty();
+    f.mt.state.ipc.dirty = true;
     f.mt.state.flush_clients();
     f.roundtrip(c);
     f.client_mut(c).take_dwl_events();
@@ -427,7 +427,7 @@ fn release_stops_events() {
     f.roundtrip(c);
 
     f.mt.state.mon_mut().set_active_tag(5);
-    f.mt.state.ipc.mark_dirty();
+    f.mt.state.ipc.dirty = true;
     f.mt.state.flush_clients();
     f.roundtrip(c);
 
@@ -443,7 +443,7 @@ fn client_disconnect_no_crash() {
     f.roundtrip(c);
 
     f.drop_client(c);
-    f.mt.state.ipc.mark_dirty();
+    f.mt.state.ipc.dirty = true;
     f.mt.state.flush_clients();
 }
 
@@ -461,7 +461,7 @@ fn two_clients_both_receive() {
     f.client_mut(c2).take_dwl_events();
 
     f.mt.state.mon_mut().set_active_tag(4);
-    f.mt.state.ipc.mark_dirty();
+    f.mt.state.ipc.dirty = true;
     f.mt.state.flush_clients();
     f.roundtrip(c1);
     f.roundtrip(c2);
@@ -498,7 +498,7 @@ fn frame_terminates_every_batch() {
 
     // state update should also end with frame
     f.mt.state.mon_mut().set_active_tag(1);
-    f.mt.state.ipc.mark_dirty();
+    f.mt.state.ipc.dirty = true;
     f.mt.state.flush_clients();
     f.roundtrip(c);
 

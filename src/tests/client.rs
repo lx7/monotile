@@ -148,6 +148,7 @@ pub enum IpcEvent {
         name: String,
         symbol: String,
     },
+    Screencast(bool),
     FocusedOutput,
     FocusedToplevel {
         title: Option<String>,
@@ -861,6 +862,9 @@ impl Dispatch<ZmonotileOutputStatusV1, ()> for ClientData {
             Event::UrgentTags { tags } => state.ipc_events.push(IpcEvent::UrgentTags(tags)),
             Event::Layout { name, symbol } => {
                 state.ipc_events.push(IpcEvent::Layout { name, symbol });
+            }
+            Event::Screencast { active } => {
+                state.ipc_events.push(IpcEvent::Screencast(active != 0));
             }
         }
     }

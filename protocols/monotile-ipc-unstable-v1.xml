@@ -83,6 +83,11 @@
       <arg name="name" type="string" summary="identifier (e.g. tile, monocle)"/>
       <arg name="symbol" type="string" summary="display symbol (e.g. []=, [M])"/>
     </event>
+
+    <event name="screencast">
+      <description summary="screen capture is active on this output"/>
+      <arg name="active" type="uint"/>
+    </event>
   </interface>
 
   <interface name="zmonotile_seat_status_v1" version="1">

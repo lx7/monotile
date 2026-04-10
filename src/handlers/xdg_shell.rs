@@ -123,7 +123,7 @@ impl XdgShellHandler for Monotile {
         });
         if let Some(id) = self.state.windows.find_by_surface(wl) {
             self.state.windows[id].set_title(title);
-            self.state.ipc.mark_dirty();
+            self.state.ipc.dirty = true;
         }
     }
 
@@ -137,7 +137,7 @@ impl XdgShellHandler for Monotile {
         });
         if let Some(id) = self.state.windows.find_by_surface(wl) {
             self.state.windows[id].set_app_id(app_id);
-            self.state.ipc.mark_dirty();
+            self.state.ipc.dirty = true;
         }
     }
 
