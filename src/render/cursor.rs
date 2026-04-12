@@ -36,8 +36,9 @@ pub struct CursorManager {
     pub status: CursorImageStatus,
     pub override_icon: Option<CursorIcon>,
     pub scale: f32,
+    pub hotspot: Point<i32, Logical>,
+    pub size: u32,
     theme: CursorTheme,
-    size: u32,
     cache: HashMap<String, Cursor>,
 }
 
@@ -52,6 +53,7 @@ impl CursorManager {
             status: CursorImageStatus::default_named(),
             override_icon: None,
             scale,
+            hotspot: Point::default(),
             theme,
             size,
             cache: HashMap::new(),
@@ -111,8 +113,9 @@ impl CursorManager {
 
         if let Some(icon) = self.override_icon {
             let cached = self.get_icon(icon);
-            let loc = (pos - cached.hotspot.to_f64()).to_physical_precise_round(scale);
-            return match MemoryRenderBufferRenderElement::from_buffer(
+            let hotspot = cached.hotspot;
+            let loc = (pos - hotspot.to_f64()).to_physical_precise_round(scale);
+            let result = match MemoryRenderBufferRenderElement::from_buffer(
                 renderer,
                 loc,
                 &cached.buffer,
@@ -124,14 +127,17 @@ impl CursorManager {
                 Ok(elem) => vec![MonotileElement::Memory(elem)],
                 Err(_) => vec![],
             };
+            self.hotspot = hotspot;
+            return result;
         }
 
-        match &self.status {
-            CursorImageStatus::Hidden => vec![],
+        let (hotspot, elems) = match &self.status {
+            CursorImageStatus::Hidden => (Point::default(), vec![]),
             CursorImageStatus::Named(icon) => {
                 let cached = self.get_icon(*icon);
-                let loc = (pos - cached.hotspot.to_f64()).to_physical_precise_round(scale);
-                match MemoryRenderBufferRenderElement::from_buffer(
+                let hotspot = cached.hotspot;
+                let loc = (pos - hotspot.to_f64()).to_physical_precise_round(scale);
+                let elems = match MemoryRenderBufferRenderElement::from_buffer(
                     renderer,
                     loc,
                     &cached.buffer,
@@ -142,7 +148,8 @@ impl CursorManager {
                 ) {
                     Ok(elem) => vec![MonotileElement::Memory(elem)],
                     Err(_) => vec![],
-                }
+                };
+                (hotspot, elems)
             }
             CursorImageStatus::Surface(surface) => {
                 let hotspot = compositor::with_states(surface, |states| {
@@ -153,9 +160,19 @@ impl CursorManager {
                         .unwrap_or_default()
                 });
                 let loc = (pos - hotspot.to_f64()).to_physical_precise_round(scale);
-                render_elements_from_surface_tree(renderer, surface, loc, scale, 1.0, Kind::Cursor)
+                let elems = render_elements_from_surface_tree(
+                    renderer,
+                    surface,
+                    loc,
+                    scale,
+                    1.0,
+                    Kind::Cursor,
+                );
+                (hotspot, elems)
             }
-        }
+        };
+        self.hotspot = hotspot;
+        elems
     }
 }
 

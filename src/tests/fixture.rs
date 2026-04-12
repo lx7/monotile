@@ -92,8 +92,10 @@ impl Fixture {
 
     pub fn fail_pending_captures(&mut self) {
         use smithay::wayland::image_copy_capture::CaptureFailureReason;
-        for p in self.mt.state.screencopy.pending.drain(..) {
-            p.frame.fail(CaptureFailureReason::Unknown);
+        for s in &mut self.mt.state.screencopy.sessions {
+            if let Some((frame, _)) = s.pending_frame.take() {
+                frame.fail(CaptureFailureReason::Unknown);
+            }
         }
     }
 }

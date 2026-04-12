@@ -23,6 +23,7 @@ use wayland_protocols::ext::image_capture_source::v1::client::{
     ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1,
 };
 use wayland_protocols::ext::image_copy_capture::v1::client::{
+    ext_image_copy_capture_cursor_session_v1::{self, ExtImageCopyCaptureCursorSessionV1},
     ext_image_copy_capture_frame_v1::{self, ExtImageCopyCaptureFrameV1},
     ext_image_copy_capture_manager_v1::{self, ExtImageCopyCaptureManagerV1},
     ext_image_copy_capture_session_v1::{self, ExtImageCopyCaptureSessionV1},
@@ -83,6 +84,7 @@ struct ClientData {
     capture_manager: Option<ExtImageCopyCaptureManagerV1>,
     pub capture_session_events: Vec<CaptureSessionEvent>,
     pub capture_frame_events: Vec<CaptureFrameEvent>,
+    pub cursor_session_events: Vec<CursorSessionEvent>,
 }
 
 impl ClientData {
@@ -178,6 +180,14 @@ pub enum CaptureSessionEvent {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum CursorSessionEvent {
+    Enter,
+    Leave,
+    Position { x: i32, y: i32 },
+    Hotspot { x: i32, y: i32 },
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum CaptureFrameEvent {
     Transform(u32),
     Damage {
@@ -238,6 +248,7 @@ impl Client {
             capture_manager: None,
             capture_session_events: Vec::new(),
             capture_frame_events: Vec::new(),
+            cursor_session_events: Vec::new(),
         };
 
         let mut client = Client { conn, queue, data };
@@ -546,6 +557,34 @@ impl Client {
 
     pub fn take_capture_frame_events(&mut self) -> Vec<CaptureFrameEvent> {
         self.data.capture_frame_events.drain(..).collect()
+    }
+
+    pub fn create_cursor_session(
+        &self,
+        source: &ExtImageCaptureSourceV1,
+    ) -> Option<ExtImageCopyCaptureCursorSessionV1> {
+        let mgr = self.data.capture_manager.as_ref()?;
+        let pointer = self
+            .data
+            .ipc_seat
+            .as_ref()?
+            .get_pointer(&self.queue.handle(), ());
+        let session = mgr.create_pointer_cursor_session(source, &pointer, &self.queue.handle(), ());
+        let _ = self.queue.flush();
+        Some(session)
+    }
+
+    pub fn cursor_session_get_capture_session(
+        &self,
+        cursor_session: &ExtImageCopyCaptureCursorSessionV1,
+    ) -> ExtImageCopyCaptureSessionV1 {
+        let session = cursor_session.get_capture_session(&self.queue.handle(), ());
+        let _ = self.queue.flush();
+        session
+    }
+
+    pub fn take_cursor_session_events(&mut self) -> Vec<CursorSessionEvent> {
+        self.data.cursor_session_events.drain(..).collect()
     }
 }
 
@@ -1199,6 +1238,46 @@ impl Dispatch<ExtImageCopyCaptureFrameV1, ()> for ClientData {
                 state
                     .capture_frame_events
                     .push(CaptureFrameEvent::Failed(val));
+            }
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<wayland_client::protocol::wl_pointer::WlPointer, ()> for ClientData {
+    fn event(
+        _: &mut Self,
+        _: &wayland_client::protocol::wl_pointer::WlPointer,
+        _: wayland_client::protocol::wl_pointer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ExtImageCopyCaptureCursorSessionV1, ()> for ClientData {
+    fn event(
+        state: &mut Self,
+        _: &ExtImageCopyCaptureCursorSessionV1,
+        event: ext_image_copy_capture_cursor_session_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use ext_image_copy_capture_cursor_session_v1::Event;
+        match event {
+            Event::Enter => state.cursor_session_events.push(CursorSessionEvent::Enter),
+            Event::Leave => state.cursor_session_events.push(CursorSessionEvent::Leave),
+            Event::Position { x, y } => {
+                state
+                    .cursor_session_events
+                    .push(CursorSessionEvent::Position { x, y });
+            }
+            Event::Hotspot { x, y } => {
+                state
+                    .cursor_session_events
+                    .push(CursorSessionEvent::Hotspot { x, y });
             }
             _ => {}
         }

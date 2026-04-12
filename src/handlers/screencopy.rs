@@ -14,7 +14,7 @@ use smithay::{
     delegate_toplevel_capture_source,
     output::{Output, WeakOutput},
     reexports::wayland_server::{DisplayHandle, protocol::wl_shm},
-    utils::{Buffer as BufferCoords, Physical, Point, Scale, Size, Transform},
+    utils::{Buffer as BufferCoords, Logical, Physical, Point, Scale, Size, Transform},
     wayland::{
         foreign_toplevel_list::ForeignToplevelHandle,
         image_capture_source::{
@@ -22,8 +22,8 @@ use smithay::{
             OutputCaptureSourceState, ToplevelCaptureSourceHandler, ToplevelCaptureSourceState,
         },
         image_copy_capture::{
-            BufferConstraints, CaptureFailureReason, Frame, ImageCopyCaptureHandler,
-            ImageCopyCaptureState, Session, SessionRef,
+            BufferConstraints, CaptureFailureReason, CursorSession, CursorSessionRef, Frame,
+            ImageCopyCaptureHandler, ImageCopyCaptureState, Session, SessionRef,
         },
         seat::WaylandFocus,
     },
@@ -42,13 +42,7 @@ pub struct ScreencopySession {
     pub session: Session,
     pub damage_tracker: OutputDamageTracker,
     pub output: WeakOutput,
-}
-
-pub struct PendingCapture {
-    pub session: SessionRef,
-    pub frame: Frame,
-    pub output: WeakOutput,
-    pub kind: CaptureKind,
+    pub pending_frame: Option<(Frame, CaptureKind)>,
 }
 
 pub enum CaptureKind {
@@ -63,12 +57,19 @@ pub enum CaptureKind {
     },
 }
 
+pub struct CursorScreencopySession {
+    pub session: CursorSession,
+    pub damage_tracker: OutputDamageTracker,
+    pub output: WeakOutput,
+    pub pending_frame: Option<Frame>,
+}
+
 pub struct ScreencopyState {
     pub output_capture_source: OutputCaptureSourceState,
     pub toplevel_capture_source: ToplevelCaptureSourceState,
     pub image_copy_capture: ImageCopyCaptureState,
     pub sessions: Vec<ScreencopySession>,
-    pub pending: Vec<PendingCapture>,
+    pub cursor_sessions: Vec<CursorScreencopySession>,
 }
 
 fn source_output(source: &ImageCaptureSource) -> Option<Output> {
@@ -77,13 +78,6 @@ fn source_output(source: &ImageCaptureSource) -> Option<Output> {
 
 fn source_toplevel(source: &ImageCaptureSource) -> Option<WindowId> {
     source.user_data().get::<WindowId>().copied()
-}
-
-fn matches_output(sref: &SessionRef, output: &WeakOutput) -> bool {
-    sref.source()
-        .user_data()
-        .get::<WeakOutput>()
-        .is_some_and(|w| w == output)
 }
 
 fn matches_toplevel(sref: &SessionRef, id: WindowId) -> bool {
@@ -119,7 +113,7 @@ impl ScreencopyState {
             toplevel_capture_source: ToplevelCaptureSourceState::new::<Monotile>(dh),
             image_copy_capture: ImageCopyCaptureState::new::<Monotile>(dh),
             sessions: Vec::new(),
-            pending: Vec::new(),
+            cursor_sessions: Vec::new(),
         }
     }
 
@@ -127,67 +121,60 @@ impl ScreencopyState {
         self.image_copy_capture.cleanup();
     }
 
-    fn take_pending_where(
-        &mut self,
-        pred: impl Fn(&PendingCapture) -> bool,
-    ) -> Vec<PendingCapture> {
-        let mut taken = Vec::new();
-        let mut i = 0;
-        while i < self.pending.len() {
-            if pred(&self.pending[i]) {
-                taken.push(self.pending.swap_remove(i));
-            } else {
-                i += 1;
+    pub fn fail_pending_for_output(&mut self, output: &Output) {
+        let weak = output.downgrade();
+        for s in &mut self.sessions {
+            if s.output == weak {
+                if let Some((frame, _)) = s.pending_frame.take() {
+                    frame.fail(CaptureFailureReason::Unknown);
+                }
             }
         }
-        taken
-    }
-
-    pub fn take_pending_for_output(&mut self, output: &Output) -> Vec<PendingCapture> {
-        let weak = output.downgrade();
-        self.take_pending_where(|p| p.output == weak)
-    }
-
-    pub fn fail_pending_for_output(&mut self, output: &Output) {
-        for p in self.take_pending_for_output(output) {
-            p.frame.fail(CaptureFailureReason::Unknown);
-        }
-    }
-
-    pub fn damage_tracker_mut(&mut self, sref: &SessionRef) -> &mut OutputDamageTracker {
-        &mut self
-            .sessions
-            .iter_mut()
-            .find(|s| s.session == *sref)
-            .expect("session must exist for pending capture")
-            .damage_tracker
     }
 
     pub fn remove_output(&mut self, output: &Output) {
         let weak = output.downgrade();
-        for p in self.take_pending_where(|p| matches_output(&p.session, &weak)) {
-            p.frame.fail(CaptureFailureReason::Unknown);
-        }
-        self.sessions.retain(|s| !matches_output(&s.session, &weak));
+        self.sessions.retain(|s| s.output != weak);
+        self.cursor_sessions.retain(|cs| cs.output != weak);
     }
 
     pub fn remove_toplevel(&mut self, id: WindowId) {
-        for p in self.take_pending_where(|p| matches_toplevel(&p.session, id)) {
-            p.frame.fail(CaptureFailureReason::Stopped);
-        }
         self.sessions.retain(|s| !matches_toplevel(&s.session, id));
     }
 
     pub fn remove_session(&mut self, session: &SessionRef) {
         self.sessions.retain(|s| s.session != *session);
-        for p in self.take_pending_where(|p| p.session == *session) {
-            p.frame.fail(CaptureFailureReason::Stopped);
-        }
     }
 
     pub fn output_captured(&self, output: &Output) -> bool {
         let weak = output.downgrade();
         self.sessions.iter().any(|s| s.output == weak)
+    }
+
+    pub fn update_cursor(
+        &self,
+        pos: Option<Point<f64, Logical>>,
+        hotspot: Point<i32, Logical>,
+        output: &Output,
+    ) {
+        if self.cursor_sessions.is_empty() {
+            return;
+        }
+        let weak = output.downgrade();
+        let scale = output.current_scale().fractional_scale();
+        let transform = output.current_transform();
+        let output_size = output
+            .current_mode()
+            .map(|m| m.size.to_f64().to_logical(scale))
+            .unwrap_or_default();
+        let buf_pos = pos.map(|p| p.to_buffer(scale, transform, &output_size).to_i32_round());
+        let buf_hotspot: Point<i32, BufferCoords> = (hotspot.x, hotspot.y).into();
+        for cs in &self.cursor_sessions {
+            if cs.output == weak {
+                cs.session.set_cursor_pos(buf_pos);
+                cs.session.set_cursor_hotspot(buf_hotspot);
+            }
+        }
     }
 }
 
@@ -272,6 +259,7 @@ impl ImageCopyCaptureHandler for Monotile {
             session,
             damage_tracker: tracker,
             output: output.downgrade(),
+            pending_frame: None,
         });
         if let Some(id) = target
             && let Some(we) = self.state.windows.get_mut(id)
@@ -289,35 +277,42 @@ impl ImageCopyCaptureHandler for Monotile {
         }
         let source = session.source();
 
-        let (output, kind) = if let Some(output) = source_output(&source) {
+        let kind = if let Some(output) = source_output(&source) {
             let Some(mode) = output.current_mode() else {
                 frame.fail(CaptureFailureReason::Unknown);
                 return;
             };
-            let size = (mode.size.w, mode.size.h).into();
-            let transform = output.current_transform();
-            (output, CaptureKind::Output { transform, size })
+            CaptureKind::Output {
+                transform: output.current_transform(),
+                size: (mode.size.w, mode.size.h).into(),
+            }
         } else if let Some(id) = source_toplevel(&source) {
-            let Some((output, size, scale)) =
-                // TODO: get output from WindowElement when multi-monitor is implemented
+            let Some((_, size, scale)) =
                 toplevel_capture_info(&self.state.windows, &self.state.monitors, id)
             else {
                 frame.fail(CaptureFailureReason::Unknown);
                 return;
             };
-            (output, CaptureKind::Toplevel { id, size, scale })
+            CaptureKind::Toplevel { id, size, scale }
         } else {
             frame.fail(CaptureFailureReason::Unknown);
             return;
         };
 
-        self.state.screencopy.pending.push(PendingCapture {
-            session: session.clone(),
-            frame,
-            output: output.downgrade(),
-            kind,
-        });
-        self.backend.schedule_render(&output);
+        let Some(s) = self
+            .state
+            .screencopy
+            .sessions
+            .iter_mut()
+            .find(|s| s.session == *session)
+        else {
+            frame.fail(CaptureFailureReason::Unknown);
+            return;
+        };
+        s.pending_frame = Some((frame, kind));
+        if let Some(output) = s.output.upgrade() {
+            self.backend.schedule_render(&output);
+        }
     }
 
     fn session_destroyed(&mut self, session: SessionRef) {
@@ -331,6 +326,65 @@ impl ImageCopyCaptureHandler for Monotile {
         self.state.ipc.dirty = true;
         self.backend.schedule_render_all();
     }
+
+    fn cursor_capture_constraints(
+        &mut self,
+        source: &ImageCaptureSource,
+    ) -> Option<BufferConstraints> {
+        if self.state.locked {
+            return None;
+        }
+        source_output(source)?;
+        let size = self.state.cursor.size as i32;
+        Some(BufferConstraints {
+            size: (size, size).into(),
+            shm: SHM_FORMATS.to_vec(),
+            dma: self.backend.dma_constraints(),
+        })
+    }
+
+    fn new_cursor_session(&mut self, session: CursorSession) {
+        let Some(output) = source_output(&session.source()) else {
+            return;
+        };
+        let size = self.state.cursor.size as i32;
+        let phys_size: Size<i32, Physical> = (size, size).into();
+        self.state
+            .screencopy
+            .cursor_sessions
+            .push(CursorScreencopySession {
+                session,
+                damage_tracker: OutputDamageTracker::new(phys_size, 1.0, Transform::Normal),
+                pending_frame: None,
+                output: output.downgrade(),
+            });
+    }
+
+    fn cursor_frame(&mut self, session: &CursorSessionRef, frame: Frame) {
+        if self.state.locked {
+            frame.fail(CaptureFailureReason::Unknown);
+            return;
+        }
+        if let Some(cs) = self
+            .state
+            .screencopy
+            .cursor_sessions
+            .iter_mut()
+            .find(|cs| *cs.session == *session)
+        {
+            cs.pending_frame = Some(frame);
+            if let Some(output) = cs.output.upgrade() {
+                self.backend.schedule_render(&output);
+            }
+        }
+    }
+
+    fn cursor_session_destroyed(&mut self, session: CursorSessionRef) {
+        self.state
+            .screencopy
+            .cursor_sessions
+            .retain(|cs| *cs.session != session);
+    }
 }
 delegate_image_copy_capture!(Monotile);
 
@@ -343,39 +397,49 @@ pub fn capture_frame(
     background: impl Into<Color32F> + Copy,
     elapsed: std::time::Duration,
 ) {
-    for p in state.screencopy.take_pending_for_output(output) {
-        if state.locked {
-            p.frame.fail(CaptureFailureReason::Unknown);
+    let weak = output.downgrade();
+    for s in &mut state.screencopy.sessions {
+        if s.output != weak {
             continue;
         }
-
-        let tracker = state.screencopy.damage_tracker_mut(&p.session);
-        let buf = p.frame.buffer();
-
-        match p.kind {
+        let Some((frame, kind)) = s.pending_frame.take() else {
+            continue;
+        };
+        if state.locked {
+            frame.fail(CaptureFailureReason::Unknown);
+            continue;
+        }
+        let buf = frame.buffer();
+        match kind {
             CaptureKind::Output { transform, size } => {
-                let elems = if p.session.draw_cursor() {
+                let elems = if s.session.draw_cursor() {
                     output_elems
                 } else {
                     &output_elems[cursor_count..]
                 };
                 match crate::render::render_to_buffer(
-                    renderer, tracker, &buf, elems, background, transform, size,
+                    renderer,
+                    &mut s.damage_tracker,
+                    &buf,
+                    elems,
+                    background,
+                    transform,
+                    size,
                 ) {
-                    Ok(damage) => p.frame.success(transform, damage, elapsed),
+                    Ok(damage) => frame.success(transform, damage, elapsed),
                     Err(err) => {
                         warn!(?err, "screencopy: output capture failed");
-                        p.frame.fail(CaptureFailureReason::Unknown);
+                        frame.fail(CaptureFailureReason::Unknown);
                     }
                 }
             }
             CaptureKind::Toplevel { id, size, scale } => {
                 let Some(we) = state.windows.get(id) else {
-                    p.frame.fail(CaptureFailureReason::Unknown);
+                    frame.fail(CaptureFailureReason::Unknown);
                     continue;
                 };
                 let Some(wl) = we.window.wl_surface() else {
-                    p.frame.fail(CaptureFailureReason::Unknown);
+                    frame.fail(CaptureFailureReason::Unknown);
                     continue;
                 };
                 let window_loc = we.render_geo.loc;
@@ -393,26 +457,65 @@ pub fn capture_frame(
                 let mut elems: Vec<MonotileElement> =
                     crate::render::popup_elements(renderer, &wl, loc, scale);
                 elems.extend(surfs.into_iter().map(MonotileElement::Surface));
-                if p.session.draw_cursor() {
+                if s.session.draw_cursor() {
                     let ptr_pos = state.seat.get_pointer().unwrap().current_location();
                     let local_pos = ptr_pos - window_loc.to_f64();
                     elems.splice(0..0, state.cursor.elements(renderer, local_pos));
                 }
                 match crate::render::render_to_buffer(
                     renderer,
-                    tracker,
+                    &mut s.damage_tracker,
                     &buf,
                     &elems,
                     Color32F::TRANSPARENT,
                     Transform::Normal,
                     size,
                 ) {
-                    Ok(damage) => p.frame.success(Transform::Normal, damage, elapsed),
+                    Ok(damage) => frame.success(Transform::Normal, damage, elapsed),
                     Err(err) => {
                         warn!(?err, "screencopy: toplevel capture failed");
-                        p.frame.fail(CaptureFailureReason::Unknown);
+                        frame.fail(CaptureFailureReason::Unknown);
                     }
                 }
+            }
+        }
+    }
+}
+
+pub fn capture_cursor(
+    renderer: &mut GlowRenderer,
+    state: &mut State,
+    output: &Output,
+    elapsed: std::time::Duration,
+) {
+    let weak = output.downgrade();
+    for cs in &mut state.screencopy.cursor_sessions {
+        if cs.output != weak {
+            continue;
+        }
+        let Some(frame) = cs.pending_frame.take() else {
+            continue;
+        };
+        if state.locked {
+            frame.fail(CaptureFailureReason::Unknown);
+            continue;
+        }
+        let hotspot = state.cursor.hotspot.to_f64();
+        let elems = state.cursor.elements(renderer, hotspot);
+        let size = state.cursor.size as i32;
+        match crate::render::render_to_buffer(
+            renderer,
+            &mut cs.damage_tracker,
+            &frame.buffer(),
+            &elems,
+            Color32F::TRANSPARENT,
+            Transform::Normal,
+            (size, size).into(),
+        ) {
+            Ok(damage) => frame.success(Transform::Normal, damage, elapsed),
+            Err(err) => {
+                warn!(?err, "screencopy: cursor capture failed");
+                frame.fail(CaptureFailureReason::Unknown);
             }
         }
     }

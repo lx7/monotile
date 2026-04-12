@@ -280,7 +280,16 @@ impl Monotile {
             },
         );
         pointer.frame(self);
-        self.backend.schedule_render(&self.state.mon().output);
+
+        // TODO: get cursor and output from seat when multi-seat is implemented
+        let output = &self.state.mon().output;
+        if !self.state.locked {
+            let hotspot = self.state.cursor.hotspot;
+            self.state
+                .screencopy
+                .update_cursor(Some(pos), hotspot, output);
+        }
+        self.backend.schedule_render(output);
     }
 
     pub fn handle_action(&mut self, action: Action) {

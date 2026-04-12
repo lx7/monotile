@@ -224,6 +224,7 @@ impl DrmState {
             bg,
             elapsed,
         );
+        screencopy::capture_cursor(&mut self.renderer, state, &surface.output, elapsed);
 
         if result.is_empty {
             // no damage, send deferred callbacks on estimated vblank

@@ -1,7 +1,9 @@
 use wayland_client::protocol::wl_shm;
 
 use super::Fixture;
-use super::client::{CaptureFrameEvent, CaptureSessionEvent, ForeignToplevelEvent};
+use super::client::{
+    CaptureFrameEvent, CaptureSessionEvent, CursorSessionEvent, ForeignToplevelEvent,
+};
 
 // ── Helpers ────────────────────────────────────────
 
@@ -509,5 +511,139 @@ fn output_capture_does_not_set_screencast_flag() {
     assert!(
         !(f.mt.state.windows[id].screencasts > 0),
         "output capture must not set screencast on windows",
+    );
+}
+
+// ── Cursor session ─────────────────────────────────
+
+#[test]
+fn cursor_session_receives_constraints() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    f.roundtrip(c);
+
+    let source = f.client(c).create_output_capture_source().expect("source");
+    let cursor_session = f
+        .client(c)
+        .create_cursor_session(&source)
+        .expect("cursor session");
+    let _capture_session = f
+        .client(c)
+        .cursor_session_get_capture_session(&cursor_session);
+    f.roundtrip(c);
+
+    let events = f.client_mut(c).take_capture_session_events();
+    let (width, height) = assert_valid_constraint_batch(&events);
+    assert_eq!(width, height, "cursor buffer should be square");
+}
+
+#[test]
+fn cursor_session_enter_and_position() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    f.roundtrip(c);
+
+    let source = f.client(c).create_output_capture_source().expect("source");
+    let cursor_session = f
+        .client(c)
+        .create_cursor_session(&source)
+        .expect("cursor session");
+    let _capture_session = f
+        .client(c)
+        .cursor_session_get_capture_session(&cursor_session);
+    f.roundtrip(c);
+    f.client_mut(c).take_capture_session_events();
+
+    // Simulate pointer motion to trigger cursor enter + position
+    let ptr = f.mt.state.seat.get_pointer().unwrap();
+    let pos = ptr.current_location();
+    let output = &f.mt.state.mon().output;
+    let hotspot = f.mt.state.cursor.hotspot;
+    f.mt.state
+        .screencopy
+        .update_cursor(Some(pos), hotspot, output);
+    f.mt.state.flush_clients();
+    f.roundtrip(c);
+
+    let events = f.client_mut(c).take_cursor_session_events();
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, CursorSessionEvent::Enter)),
+        "should receive enter event, got {events:?}",
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, CursorSessionEvent::Position { .. })),
+        "should receive position event, got {events:?}",
+    );
+}
+
+#[test]
+fn cursor_session_hotspot() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    f.roundtrip(c);
+
+    let source = f.client(c).create_output_capture_source().expect("source");
+    let cursor_session = f
+        .client(c)
+        .create_cursor_session(&source)
+        .expect("cursor session");
+    let _capture_session = f
+        .client(c)
+        .cursor_session_get_capture_session(&cursor_session);
+    f.roundtrip(c);
+    f.client_mut(c).take_capture_session_events();
+
+    let ptr = f.mt.state.seat.get_pointer().unwrap();
+    let pos = ptr.current_location();
+    let output = &f.mt.state.mon().output;
+    let hotspot = f.mt.state.cursor.hotspot;
+    f.mt.state
+        .screencopy
+        .update_cursor(Some(pos), hotspot, output);
+    f.mt.state.flush_clients();
+    f.roundtrip(c);
+
+    let events = f.client_mut(c).take_cursor_session_events();
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, CursorSessionEvent::Hotspot { .. })),
+        "should receive hotspot event with enter, got {events:?}",
+    );
+}
+
+#[test]
+fn cursor_session_stopped_on_destroy() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    f.roundtrip(c);
+
+    let source = f.client(c).create_output_capture_source().expect("source");
+    let cursor_session = f
+        .client(c)
+        .create_cursor_session(&source)
+        .expect("cursor session");
+    let _capture_session = f
+        .client(c)
+        .cursor_session_get_capture_session(&cursor_session);
+    f.roundtrip(c);
+    f.client_mut(c).take_capture_session_events();
+
+    cursor_session.destroy();
+    f.client(c).flush();
+    f.dispatch();
+    f.mt.state.flush_clients();
+    f.roundtrip(c);
+
+    let events = f.client_mut(c).take_capture_session_events();
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, CaptureSessionEvent::Stopped)),
+        "inner capture session should receive stopped, got {events:?}",
     );
 }
