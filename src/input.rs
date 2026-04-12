@@ -264,10 +264,12 @@ impl Monotile {
 
         let (target, window_id) = self.state.surface_under(pos);
 
-        if self.state.config.seats["seat0"].focus_follows_cursor {
-            if window_id.is_some() && window_id != self.state.mon().tag().focused_id() {
-                self.set_focus(window_id);
-            }
+        if !pointer.is_grabbed()
+            && self.state.config.seats["seat0"].focus_follows_cursor
+            && window_id.is_some()
+            && window_id != self.state.mon().tag().focused_id()
+        {
+            self.set_focus(window_id);
         }
 
         pointer.motion(
@@ -431,7 +433,7 @@ impl Monotile {
             }
             Action::Resize => {
                 self.state.cursor.override_icon = Some(CursorIcon::SeResize);
-                let corner = (geo.loc + geo.size).to_f64();
+                let corner = (geo.loc + geo.size - Point::new(2, 2)).to_f64();
                 ptr.set_location(corner);
                 let start = GrabStartData {
                     focus: self.state.surface_under(corner).0,
