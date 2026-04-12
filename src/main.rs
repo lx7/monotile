@@ -8,11 +8,11 @@ use monotile::{
 use tracing::info;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    init_logging();
+    let args = Args::parse();
 
+    init_logging();
     info!("monotile {}", env!("MONOTILE_VERSION"));
 
-    let args = Args::parse();
     let config = Config::load(args.config).unwrap_or_else(|e| {
         eprintln!("{e}");
         std::process::exit(1);
