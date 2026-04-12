@@ -26,10 +26,10 @@ A small and light tiling Wayland compositor in Rust.
 - [x] Layer shell (panels, bars, overlays)
 - [x] Clipboard protocols (wl-copy/wl-paste)
 - [x] IPC for status bars (monotile-ipc-v1, dwl-ipc-v2)
+- [x] Screen sharing
 
 **Not yet implemented:**
 - [ ] Multi-monitor support
-- [ ] Screen sharing
 - [ ] Output management
 - [ ] Gamma control
 - [ ] HiDPI / multi-DPI support
