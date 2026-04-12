@@ -496,6 +496,9 @@ impl State {
             if let Some((s, point)) = we.window.surface_under(rel, WindowSurfaceType::ALL) {
                 return (Some((s, (point + loc).to_f64())), Some(id));
             }
+            if we.render_geo.to_f64().contains(pos) {
+                return (None, Some(id));
+            }
         }
 
         // bottom / background layers
