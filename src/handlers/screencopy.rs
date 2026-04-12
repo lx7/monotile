@@ -57,6 +57,14 @@ pub enum CaptureKind {
     },
 }
 
+impl CaptureKind {
+    fn buffer_size(&self) -> Size<i32, BufferCoords> {
+        match self {
+            Self::Output { size, .. } | Self::Toplevel { size, .. } => *size,
+        }
+    }
+}
+
 pub struct CursorScreencopySession {
     pub session: CursorSession,
     pub damage_tracker: OutputDamageTracker,
@@ -410,6 +418,23 @@ pub fn capture_frame(
             continue;
         }
         let buf = frame.buffer();
+        let buf_size = smithay::backend::renderer::buffer_dimensions(&buf);
+        if buf_size.is_some() && buf_size != Some(kind.buffer_size()) {
+            s.damage_tracker = match &kind {
+                CaptureKind::Output { .. } => OutputDamageTracker::from_output(output),
+                CaptureKind::Toplevel { size, scale, .. } => {
+                    let phys: Size<i32, Physical> = (size.w, size.h).into();
+                    OutputDamageTracker::new(phys, *scale, Transform::Normal)
+                }
+            };
+            s.session.update_constraints(BufferConstraints {
+                size: kind.buffer_size(),
+                shm: SHM_FORMATS.to_vec(),
+                dma: None,
+            });
+            frame.fail(CaptureFailureReason::BufferConstraints);
+            continue;
+        }
         match kind {
             CaptureKind::Output { transform, size } => {
                 let elems = if s.session.draw_cursor() {
