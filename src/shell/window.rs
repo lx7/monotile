@@ -14,7 +14,7 @@ use smithay::{
     utils::{Logical, Point, Rectangle, Size},
     wayland::{
         compositor::with_states,
-        shell::xdg::{SurfaceCachedState, XdgToplevelSurfaceData},
+        shell::xdg::{SurfaceCachedState, ToplevelSurface, XdgToplevelSurfaceData},
     },
 };
 
@@ -22,9 +22,31 @@ use crate::{config, render::RenderStep};
 
 use super::{Tag, WindowId};
 
+pub trait ToplevelSurfaceExt {
+    fn info(&self) -> (String, String);
+}
+
+impl ToplevelSurfaceExt for ToplevelSurface {
+    fn info(&self) -> (String, String) {
+        with_states(self.wl_surface(), |s| {
+            s.data_map
+                .get::<XdgToplevelSurfaceData>()
+                .and_then(|d| d.lock().ok())
+                .map(|d| {
+                    (
+                        d.app_id.clone().unwrap_or_default(),
+                        d.title.clone().unwrap_or_default(),
+                    )
+                })
+                .unwrap_or_default()
+        })
+    }
+}
+
 pub struct Unmapped {
     pub window: Window,
     pub placement: Option<Placement>,
+    pub rules: Vec<config::WindowRule>,
 }
 
 pub struct Placement {
@@ -34,10 +56,11 @@ pub struct Placement {
 }
 
 impl Unmapped {
-    pub fn new(window: Window) -> Self {
+    pub fn new(window: Window, rules: Vec<config::WindowRule>) -> Self {
         Self {
             window,
             placement: None,
+            rules,
         }
     }
 
@@ -53,7 +76,16 @@ impl Unmapped {
             let cur = data.current();
             (cur.min_size, cur.max_size)
         });
-        min.h > 0 && min.h == max.h
+        if min.h > 0 && min.h == max.h {
+            return true;
+        }
+        let (app_id, title) = tl.info();
+        self.rules.iter().any(|rule| {
+            let m = &rule.r#match;
+            rule.init.as_ref().is_some_and(|i| i.floating == Some(true))
+                && m.app_id.as_ref().is_none_or(|p| p.is_match(&app_id))
+                && m.title.as_ref().is_none_or(|p| p.is_match(&title))
+        })
     }
 }
 
@@ -94,28 +126,15 @@ pub struct WindowElement {
 }
 
 impl WindowElement {
-    pub fn new(id: WindowId, unmapped: Unmapped, rules: &[config::WindowRule]) -> Self {
+    pub fn new(id: WindowId, unmapped: Unmapped) -> Self {
         let placement = unmapped.placement.unwrap();
+        let rules = unmapped.rules;
         let window = unmapped.window;
-        let (app_id, title) = window
-            .toplevel()
-            .map(|tl| {
-                with_states(tl.wl_surface(), |s| {
-                    s.data_map
-                        .get::<XdgToplevelSurfaceData>()
-                        .and_then(|d| d.lock().ok())
-                        .map(|d| {
-                            (
-                                d.app_id.clone().unwrap_or_default(),
-                                d.title.clone().unwrap_or_default(),
-                            )
-                        })
-                        .unwrap_or_default()
-                })
-            })
-            .unwrap_or_default();
+        let (app_id, title) = window.toplevel().unwrap().info();
 
-        let float_size = if placement.floating { window.geometry().size } else { Size::default() };
+        let float_size = window.geometry().size;
+        let configured_size =
+            if placement.floating { float_size } else { placement.configured_size };
         Self {
             id,
             window,
@@ -132,8 +151,8 @@ impl WindowElement {
             render_steps: BTreeMap::new(),
             render_pipeline: Vec::new(),
             radius: 0.0,
-            rules: rules.to_vec(),
-            configured_geo: Rectangle::from_size(placement.configured_size),
+            rules,
+            configured_geo: Rectangle::from_size(configured_size),
             render_geo: Rectangle::default(),
             buffer_committed: false,
         }

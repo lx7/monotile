@@ -430,10 +430,9 @@ impl State {
     }
 
     pub fn map(&mut self, unmapped: Unmapped) -> WindowId {
-        let rules = &self.config.windows;
         let id = self
             .windows
-            .insert_with_key(|id| WindowElement::new(id, unmapped, rules));
+            .insert_with_key(|id| WindowElement::new(id, unmapped));
         let (output, tags) = self.windows[id].resolve_init();
         self.windows[id].build_render_steps();
 
