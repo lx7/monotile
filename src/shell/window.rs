@@ -362,6 +362,15 @@ impl WindowElement {
         self.window.on_commit();
         self.buffer_committed = true;
 
+        // accept client-initiated size for floating windows
+        if self.floating && !self.fullscreen {
+            let committed = self.window.geometry().size;
+            if committed != self.float_geo.size {
+                self.float_geo.size = committed;
+                self.configured_geo.size = committed;
+            }
+        }
+
         if self.render_geo != self.geo() {
             self.render_geo = self.geo();
             self.clear_render_cache();

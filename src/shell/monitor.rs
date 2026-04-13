@@ -5,7 +5,7 @@ use smithay::{
     desktop::layer_map_for_output,
     output::{Output, Scale},
     reexports::wayland_server::{backend::GlobalId, protocol::wl_surface::WlSurface},
-    utils::{Logical, Point, Rectangle, Transform},
+    utils::{Logical, Point, Rectangle, Size, Transform},
     wayland::{
         session_lock::LockSurface,
         shell::wlr_layer::{KeyboardInteractivity, Layer},
@@ -95,13 +95,11 @@ impl Monitor {
         let area = layer_map_for_output(&self.output).non_exclusive_zone();
         let we = &mut ws[id];
 
-        let fw = if we.float_geo.size.w > 0 { we.float_geo.size.w } else { area.size.w * 3 / 4 };
-        let fh = if we.float_geo.size.h > 0 { we.float_geo.size.h } else { area.size.h * 3 / 4 };
-
         let has_pos = we.float_geo.loc != Point::default();
-        let x = if has_pos { we.float_geo.loc.x } else { area.loc.x + (area.size.w - fw) / 2 };
-        let y = if has_pos { we.float_geo.loc.y } else { area.loc.y + (area.size.h - fh) / 2 };
-        we.float_geo = Rectangle::new((x, y).into(), (fw, fh).into());
+        let Size { w, h, .. } = we.float_geo.size;
+        let x = if has_pos { we.float_geo.loc.x } else { area.loc.x + (area.size.w - w) / 2 };
+        let y = if has_pos { we.float_geo.loc.y } else { area.loc.y + (area.size.h - h) / 2 };
+        we.float_geo.loc = (x, y).into();
 
         if let Some(tags) = tags {
             for t in tags {
