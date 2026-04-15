@@ -28,7 +28,13 @@ use wayland_protocols::ext::image_copy_capture::v1::client::{
     ext_image_copy_capture_manager_v1::{self, ExtImageCopyCaptureManagerV1},
     ext_image_copy_capture_session_v1::{self, ExtImageCopyCaptureSessionV1},
 };
-use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
+use wayland_protocols::xdg::{
+    activation::v1::client::{
+        xdg_activation_token_v1::{self, XdgActivationTokenV1},
+        xdg_activation_v1::{self, XdgActivationV1},
+    },
+    shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base},
+};
 use wayland_protocols_wlr::layer_shell::v1::client::{
     zwlr_layer_shell_v1::{self, ZwlrLayerShellV1},
     zwlr_layer_surface_v1::{self, ZwlrLayerSurfaceV1},
@@ -85,6 +91,9 @@ struct ClientData {
     pub capture_session_events: Vec<CaptureSessionEvent>,
     pub capture_frame_events: Vec<CaptureFrameEvent>,
     pub cursor_session_events: Vec<CursorSessionEvent>,
+
+    activation: Option<XdgActivationV1>,
+    pub activation_tokens: Vec<String>,
 }
 
 impl ClientData {
@@ -249,6 +258,9 @@ impl Client {
             capture_session_events: Vec::new(),
             capture_frame_events: Vec::new(),
             cursor_session_events: Vec::new(),
+
+            activation: None,
+            activation_tokens: Vec::new(),
         };
 
         let mut client = Client { conn, queue, data };
@@ -449,6 +461,26 @@ impl Client {
         let _ = self.queue.flush();
     }
 
+    // xdg-activation
+
+    pub fn get_activation_token(&mut self) -> XdgActivationTokenV1 {
+        let qh = self.queue.handle();
+        let act = self.data.activation.as_ref().expect("xdg_activation_v1 not bound");
+        let token = act.get_activation_token(&qh, ());
+        let _ = self.queue.flush();
+        token
+    }
+
+    pub fn activate(&self, token: &str, win: usize) {
+        let act = self.data.activation.as_ref().expect("xdg_activation_v1 not bound");
+        act.activate(token.to_string(), &self.data.windows[win].surface);
+        let _ = self.queue.flush();
+    }
+
+    pub fn take_activation_tokens(&mut self) -> Vec<String> {
+        self.data.activation_tokens.drain(..).collect()
+    }
+
     // dwl-ipc
 
     pub fn bind_dwl_output(&mut self) {
@@ -645,6 +677,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientData {
                 }
                 "ext_image_copy_capture_manager_v1" => {
                     state.capture_manager = Some(registry.bind(name, version, qh, ()));
+                }
+                "xdg_activation_v1" => {
+                    state.activation = Some(registry.bind(name, version, qh, ()));
                 }
                 _ => {}
             }
@@ -1280,6 +1315,35 @@ impl Dispatch<ExtImageCopyCaptureCursorSessionV1, ()> for ClientData {
                     .push(CursorSessionEvent::Hotspot { x, y });
             }
             _ => {}
+        }
+    }
+}
+
+// ── XDG Activation Dispatch impls ─────────────────
+
+impl Dispatch<XdgActivationV1, ()> for ClientData {
+    fn event(
+        _: &mut Self,
+        _: &XdgActivationV1,
+        _: xdg_activation_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<XdgActivationTokenV1, ()> for ClientData {
+    fn event(
+        state: &mut Self,
+        _: &XdgActivationTokenV1,
+        event: xdg_activation_token_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let xdg_activation_token_v1::Event::Done { token } = event {
+            state.activation_tokens.push(token);
         }
     }
 }

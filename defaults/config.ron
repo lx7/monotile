@@ -12,6 +12,7 @@
         "black":  "#000000",
         "gray":   "#444444",
         "red":    "#cc241d",
+        "orange": "#d65d0e",
         "blue":   "#458588",
         "shadow": "#00000073",
     },
@@ -99,8 +100,15 @@
             },
         ),
 
+        // Urgency indicator.
+        (
+            match: (urgent: true),
+            render: {
+                3: Border(width: 2, color: "orange"),
+            },
+        ),
+
         // Screencast indicator.
-        // Highlight windows being screen-captured.
         (
             match: (screencast: true),
             render: {

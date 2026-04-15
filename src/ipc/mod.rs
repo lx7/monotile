@@ -63,10 +63,16 @@ impl Monitor {
 
         let focused_tags = 1u32 << self.active_tag;
         let mut occupied_tags = 0u32;
-        let urgent_tags = 0u32; // TODO: urgent hints
+        let mut urgent_tags = 0u32;
         for (i, t) in self.tags.iter().enumerate() {
             if !t.focus_stack.is_empty() {
                 occupied_tags |= 1 << i;
+            }
+            if t.focus_stack
+                .iter()
+                .any(|&id| windows.get(id).is_some_and(|w| w.urgent))
+            {
+                urgent_tags |= 1 << i;
             }
         }
 

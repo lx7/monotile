@@ -17,7 +17,7 @@ use smithay::{
     backend::input::DeviceCapability,
     delegate_cursor_shape, delegate_data_control, delegate_data_device, delegate_ext_data_control,
     delegate_output, delegate_primary_selection, delegate_seat, delegate_single_pixel_buffer,
-    delegate_viewporter,
+    delegate_viewporter, delegate_xdg_activation,
     input::{
         Seat, SeatHandler, SeatState,
         dnd::{DnDGrab, DndGrabHandler, GrabType, Source},
@@ -47,6 +47,9 @@ use smithay::{
             },
         },
         tablet_manager::TabletSeatHandler,
+        xdg_activation::{
+            XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData,
+        },
     },
 };
 
@@ -154,6 +157,32 @@ delegate_output!(Monotile);
 
 delegate_viewporter!(Monotile);
 delegate_single_pixel_buffer!(Monotile);
+
+impl XdgActivationHandler for Monotile {
+    fn activation_state(&mut self) -> &mut XdgActivationState {
+        &mut self.state.xdg_activation_state
+    }
+
+    fn request_activation(
+        &mut self,
+        _token: XdgActivationToken,
+        _token_data: XdgActivationTokenData,
+        surface: WlSurface,
+    ) {
+        let Some(id) = self.state.windows.find_by_surface(&surface) else {
+            return;
+        };
+        if self.state.windows[id].focused {
+            return;
+        }
+        self.state.windows[id].urgent = true;
+        self.state.windows[id].resolve_render();
+        self.state.ipc.dirty = true;
+        self.backend
+            .schedule_render(&self.state.monitors[self.state.windows[id].monitor].output);
+    }
+}
+delegate_xdg_activation!(Monotile);
 
 impl TabletSeatHandler for Monotile {}
 delegate_cursor_shape!(Monotile);

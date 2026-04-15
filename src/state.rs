@@ -51,6 +51,7 @@ use smithay::{
         single_pixel_buffer::SinglePixelBufferState,
         socket::ListeningSocketSource,
         viewporter::ViewporterState,
+        xdg_activation::XdgActivationState,
     },
 };
 
@@ -253,6 +254,7 @@ pub struct State {
     pub session_lock_state: SessionLockManagerState,
     pub screencopy: ScreencopyState,
     pub foreign_toplevel: ForeignToplevelState,
+    pub xdg_activation_state: XdgActivationState,
     pub ipc: IpcState,
 }
 
@@ -306,6 +308,7 @@ impl State {
         let cursor = CursorManager::new(1.0);
         let screencopy = ScreencopyState::new(&dh);
         let foreign_toplevel = ForeignToplevelState::new(&dh);
+        let xdg_activation_state = XdgActivationState::new::<Monotile>(&dh);
         output_power::register_global(&dh);
         let ipc = IpcState::new(&dh);
 
@@ -349,6 +352,7 @@ impl State {
             session_lock_state,
             screencopy,
             foreign_toplevel,
+            xdg_activation_state,
             ipc,
         }
     }

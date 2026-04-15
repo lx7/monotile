@@ -102,6 +102,7 @@ pub struct WindowElement {
     pub floating: bool,
     pub fullscreen: bool,
     pub focused: bool,
+    pub urgent: bool,
     pub screencasts: u32,
 
     // target geometry
@@ -145,6 +146,7 @@ impl WindowElement {
             fullscreen: false,
             focused: false,
             screencasts: 0,
+            urgent: false,
             tiled_geo: Rectangle::default(),
             float_geo: Rectangle::from_size(float_size),
             fullscreen_geo: Rectangle::default(),
@@ -165,6 +167,7 @@ impl WindowElement {
             && m.floating.is_none_or(|v| v == self.floating)
             && m.focused.is_none_or(|v| v == self.focused)
             && m.screencast.is_none_or(|v| v == (self.screencasts > 0))
+            && m.urgent.is_none_or(|v| v == self.urgent)
     }
 
     pub fn resolve_init(&mut self) -> (Option<String>, Option<Vec<usize>>) {
@@ -283,6 +286,7 @@ impl WindowElement {
             return;
         }
         self.focused = focused;
+        self.urgent = self.urgent && !focused;
         self.window.set_activated(focused);
         if let Some(tl) = self.window.toplevel() {
             tl.send_pending_configure();

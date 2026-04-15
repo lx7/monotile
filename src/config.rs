@@ -182,6 +182,7 @@ pub struct WindowMatch {
     pub floating: Option<bool>,
     pub focused: Option<bool>,
     pub screencast: Option<bool>,
+    pub urgent: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
