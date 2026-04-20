@@ -13,7 +13,10 @@ use smithay::{
     delegate_image_capture_source, delegate_image_copy_capture, delegate_output_capture_source,
     delegate_toplevel_capture_source,
     output::{Output, WeakOutput},
-    reexports::wayland_server::{DisplayHandle, protocol::wl_shm},
+    reexports::wayland_server::{
+        DisplayHandle,
+        protocol::{wl_pointer::WlPointer, wl_shm},
+    },
     utils::{Buffer as BufferCoords, Logical, Physical, Point, Scale, Size, Transform},
     wayland::{
         foreign_toplevel_list::ForeignToplevelHandle,
@@ -132,10 +135,10 @@ impl ScreencopyState {
     pub fn fail_pending_for_output(&mut self, output: &Output) {
         let weak = output.downgrade();
         for s in &mut self.sessions {
-            if s.output == weak {
-                if let Some((frame, _)) = s.pending_frame.take() {
-                    frame.fail(CaptureFailureReason::Unknown);
-                }
+            if s.output == weak
+                && let Some((frame, _)) = s.pending_frame.take()
+            {
+                frame.fail(CaptureFailureReason::Unknown);
             }
         }
     }
@@ -208,7 +211,7 @@ impl ToplevelCaptureSourceHandler for Monotile {
     fn toplevel_source_created(
         &mut self,
         source: ImageCaptureSource,
-        toplevel: &ForeignToplevelHandle,
+        toplevel: ForeignToplevelHandle,
     ) {
         if let Some(&id) = toplevel.user_data().get::<WindowId>() {
             source.user_data().insert_if_missing(|| id);
@@ -338,6 +341,7 @@ impl ImageCopyCaptureHandler for Monotile {
     fn cursor_capture_constraints(
         &mut self,
         source: &ImageCaptureSource,
+        _pointer: &WlPointer,
     ) -> Option<BufferConstraints> {
         if self.state.locked {
             return None;

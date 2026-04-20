@@ -184,7 +184,7 @@ impl DrmState {
             return;
         };
 
-        let throttle = Some(Self::refresh_duration(&surface.output));
+        let refresh = Self::refresh_duration(&surface.output);
         let ptr = state.seat.get_pointer().unwrap();
         let pos = ptr.current_location();
         let mut elems = state.cursor.elements(&mut self.renderer, pos);
@@ -229,33 +229,32 @@ impl DrmState {
         if result.is_empty {
             // no damage, send deferred callbacks on estimated vblank
             surface.render = RenderState::WaitingForVBlank;
-            let _ = self.loop_handle.insert_source(
-                Timer::from_duration(throttle.unwrap()),
-                move |_, _, mt| {
-                    let drm = mt.backend.drm();
-                    let Some(s) = drm.surfaces.get_mut(&crtc) else {
-                        return TimeoutAction::Drop;
-                    };
-                    let redraw = s.render == RenderState::Queued;
-                    s.render = RenderState::Idle;
-                    let output = s.output.clone();
-                    if redraw {
-                        drm.schedule_render_crtc(crtc);
-                    }
-                    // TODO: multi-monitor
-                    let mon = &mt.state.monitors[mt.state.active_monitor];
-                    send_frame_callbacks(
-                        &mut mt.state.windows,
-                        mon,
-                        &output,
-                        mt.state.start_time.elapsed(),
-                        None,
-                        &mut mt.state.popups,
-                    );
-                    mt.state.confirm_lock(&output);
-                    TimeoutAction::Drop
-                },
-            );
+            let _ =
+                self.loop_handle
+                    .insert_source(Timer::from_duration(refresh), move |_, _, mt| {
+                        let drm = mt.backend.drm();
+                        let Some(s) = drm.surfaces.get_mut(&crtc) else {
+                            return TimeoutAction::Drop;
+                        };
+                        let redraw = s.render == RenderState::Queued;
+                        s.render = RenderState::Idle;
+                        let output = s.output.clone();
+                        if redraw {
+                            drm.schedule_render_crtc(crtc);
+                        }
+                        // TODO: multi-monitor
+                        let mon = &mt.state.monitors[mt.state.active_monitor];
+                        send_frame_callbacks(
+                            &mut mt.state.windows,
+                            mon,
+                            &output,
+                            mt.state.start_time.elapsed(),
+                            None,
+                            &mut mt.state.popups,
+                        );
+                        mt.state.confirm_lock(&output);
+                        TimeoutAction::Drop
+                    });
             return;
         }
 
@@ -271,7 +270,7 @@ impl DrmState {
             mon,
             &surface.output,
             elapsed,
-            throttle,
+            Some(refresh),
             &mut state.popups,
         );
         state.confirm_lock(&surface.output);
@@ -456,7 +455,7 @@ fn connector_connected(
     };
 
     let compositor = match DrmCompositor::new(
-        OutputModeSource::Auto(output.clone()),
+        OutputModeSource::Auto(output.downgrade()),
         surface,
         None,
         drm.allocator.clone(),

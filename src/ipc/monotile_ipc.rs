@@ -78,10 +78,10 @@ fn send_output_status(h: &ZmonotileOutputStatusV1, snap: &TagSnapshot) {
 }
 
 fn send_seat_status(h: &ZmonotileSeatStatusV1, snap: &TagSnapshot, output: &Output) {
-    if let Some(client) = h.client() {
-        if let Some(wl_output) = output.client_outputs(&client).next() {
-            h.focused_output(&wl_output);
-        }
+    if let Some(client) = h.client()
+        && let Some(wl_output) = output.client_outputs(&client).next()
+    {
+        h.focused_output(&wl_output);
     }
     let title = if snap.title.is_empty() { None } else { Some(snap.title.clone()) };
     h.focused_toplevel(
@@ -282,8 +282,8 @@ impl Dispatch<ZmonotileSeatControlV1, ()> for Monotile {
             }
             Request::AdjustMainCount { delta } => Action::AdjustMainCount(delta),
             Request::SetMainCount { count } => Action::SetMainCount(count as usize),
-            Request::AdjustMainRatio { delta } => Action::AdjustMainRatio(f64::from(delta) as f32),
-            Request::SetMainRatio { ratio } => Action::SetMainRatio(f64::from(ratio) as f32),
+            Request::AdjustMainRatio { delta } => Action::AdjustMainRatio(delta as f32),
+            Request::SetMainRatio { ratio } => Action::SetMainRatio(ratio as f32),
             Request::Destroy => return,
         };
         monotile.handle_action(action);

@@ -67,10 +67,10 @@ impl Monotile {
     fn on_popup_commit(&mut self, surface: &WlSurface) -> Option<usize> {
         let popup = self.state.popups.find_popup(surface)?;
 
-        if let PopupKind::Xdg(ref xdg) = popup {
-            if !xdg.is_initial_configure_sent() {
-                xdg.send_configure().expect("initial configure");
-            }
+        if let PopupKind::Xdg(ref xdg) = popup
+            && !xdg.is_initial_configure_sent()
+        {
+            xdg.send_configure().expect("initial configure");
         }
 
         if let Ok(popup_root) = find_popup_root_surface(&popup)

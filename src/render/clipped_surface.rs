@@ -14,7 +14,9 @@ use smithay::{
         glow::{GlowFrame, GlowRenderer},
         utils::{CommitCounter, DamageSet, OpaqueRegions},
     },
-    utils::{Buffer, Logical, Physical, Point, Rectangle, Scale, Size, Transform},
+    utils::{
+        Buffer, Logical, Physical, Point, Rectangle, Scale, Size, Transform, user_data::UserDataMap,
+    },
 };
 
 pub struct ClippedSurface {
@@ -171,13 +173,14 @@ impl RenderElement<GlowRenderer> for ClippedSurface {
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
         opaque: &[Rectangle<i32, Physical>],
+        cache: Option<&UserDataMap>,
     ) -> Result<(), GlesError> {
         // set the custom shader befor drawing
         let gles: &mut GlesFrame = frame.borrow_mut();
         gles.override_default_tex_program(self.program.clone(), self.uniforms.clone());
 
         // draw ...
-        RenderElement::<GlowRenderer>::draw(&self.inner, frame, src, dst, damage, opaque)?;
+        RenderElement::<GlowRenderer>::draw(&self.inner, frame, src, dst, damage, opaque, cache)?;
 
         // cleanup
         let gles: &mut GlesFrame = frame.borrow_mut();

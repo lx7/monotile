@@ -86,10 +86,10 @@ impl Backend {
     }
 
     pub fn change_vt(&mut self, vt: i32) {
-        if let Backend::Drm(drm) = self {
-            if let Err(err) = drm.session.change_vt(vt) {
-                warn!("failed to switch VT: {err}");
-            }
+        if let Backend::Drm(drm) = self
+            && let Err(err) = drm.session.change_vt(vt)
+        {
+            warn!("failed to switch VT: {err}");
         }
     }
 

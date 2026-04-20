@@ -66,10 +66,10 @@ impl SeatHandler for Monotile {
     }
 
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
-        if let CursorImageStatus::Named(icon) = &image {
-            if icon.name().contains("resize") {
-                return;
-            }
+        if let CursorImageStatus::Named(icon) = &image
+            && icon.name().contains("resize")
+        {
+            return;
         }
         self.state.cursor.status = image;
         self.backend.schedule_render(&self.state.mon().output);

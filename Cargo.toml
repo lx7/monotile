@@ -28,7 +28,7 @@ wayland-protocols-wlr = { version = "0.3", features = ["server"] }
 
 [dependencies.smithay]
 git = "https://github.com/Smithay/smithay.git"
-rev = "14a2009cd"
+rev = "dba255cd1"
 default-features = false
 features = [
     "backend_drm",
@@ -45,7 +45,7 @@ features = [
 
 [dependencies.smithay-drm-extras]
 git = "https://github.com/Smithay/smithay.git"
-rev = "14a2009cd"
+rev = "dba255cd1"
 
 [dev-dependencies]
 wayland-client = "0.31"

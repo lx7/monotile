@@ -25,7 +25,7 @@ impl TilingLayout {
     }
 
     pub fn symbol(&self) -> &str {
-        "[]=".into()
+        "[]="
     }
 
     pub fn compute_rects(

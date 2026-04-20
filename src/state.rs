@@ -127,7 +127,7 @@ impl Monotile {
         let path = self.state.config.path.clone();
         let config = match Config::load(Some(path)) {
             Ok(c) => {
-                notify("normal", "config", &format!("reloaded"));
+                notify("normal", "config", "reloaded");
                 c
             }
             Err(e) => {
@@ -382,7 +382,7 @@ impl State {
     }
 
     pub fn remove_monitor(&mut self, output: &Output) {
-        self.screencopy.remove_output(&output);
+        self.screencopy.remove_output(output);
 
         let Some(idx) = self.monitors.iter().position(|m| m.output == *output) else {
             return;

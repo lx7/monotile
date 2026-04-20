@@ -19,7 +19,7 @@ use smithay::{
         keyboard::{FilterResult, Keysym},
         pointer::*,
     },
-    reexports::input::Device,
+    reexports::input::{Device, DragLockState},
     utils::{Logical, Point, SERIAL_COUNTER},
 };
 
@@ -449,10 +449,10 @@ impl Monotile {
 
     pub fn device_added(&mut self, dev: &mut Device) {
         configure_device(dev, &self.state.config);
-        if dev.has_capability(DeviceCapability::Keyboard.into()) {
-            if let Some(kb) = self.state.seat.get_keyboard() {
-                dev.led_update(kb.led_state().into());
-            }
+        if dev.has_capability(DeviceCapability::Keyboard.into())
+            && let Some(kb) = self.state.seat.get_keyboard()
+        {
+            dev.led_update(kb.led_state().into());
         }
         let devices = self.state.seat.user_data().get::<Devices>().unwrap();
         devices.0.borrow_mut().push(dev.clone());
@@ -467,10 +467,10 @@ impl Monotile {
         let devices = self.state.seat.user_data().get::<Devices>().unwrap();
         for dev in devices.0.borrow_mut().iter_mut() {
             configure_device(dev, &self.state.config);
-            if dev.has_capability(DeviceCapability::Keyboard.into()) {
-                if let Some(kb) = self.state.seat.get_keyboard() {
-                    dev.led_update(kb.led_state().into());
-                }
+            if dev.has_capability(DeviceCapability::Keyboard.into())
+                && let Some(kb) = self.state.seat.get_keyboard()
+            {
+                dev.led_update(kb.led_state().into());
             }
         }
     }
@@ -483,11 +483,16 @@ fn configure_device(dev: &mut Device, config: &Config) {
 
     let kind = if is_touchpad {
         let tp = &config.seats["seat0"].touchpad;
+        let drag_lock = if tp.drag_lock {
+            DragLockState::EnabledTimeout
+        } else {
+            DragLockState::Disabled
+        };
         let _ = dev.config_accel_set_profile(tp.accel_profile.into());
         let _ = dev.config_accel_set_speed(tp.accel_speed);
         let _ = dev.config_tap_set_enabled(tp.tap);
         let _ = dev.config_tap_set_drag_enabled(tp.tap_and_drag);
-        let _ = dev.config_tap_set_drag_lock_enabled(tp.drag_lock);
+        let _ = dev.config_tap_set_drag_lock_enabled(drag_lock);
         let _ = dev.config_scroll_set_natural_scroll_enabled(tp.natural_scroll);
         let _ = dev.config_dwt_set_enabled(tp.disable_while_typing);
         let _ = dev.config_left_handed_set(tp.left_handed);
