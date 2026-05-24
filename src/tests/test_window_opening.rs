@@ -3,6 +3,31 @@ use crate::config::{Action, Rel};
 use smithay::{reexports::wayland_server::Resource, utils::Rectangle};
 use wayland_protocols::xdg::shell::client::xdg_toplevel::State as ToplevelState;
 
+/// Simulate a client that maps to it's own remembered size on first commit
+/// instead of the size the compositor configured.
+#[test]
+fn new_window_not_deactivated_during_open() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+
+    let w = open_window(&mut f, c);
+    let cfgs = f.client_mut(c).take_configures(w);
+
+    let mut seen_activated = false;
+    for cfg in &cfgs {
+        let active = cfg.states.contains(&ToplevelState::Activated);
+        assert!(
+            !(seen_activated && !active),
+            "sole window deactivated during open (configure churn): {cfgs:?}",
+        );
+        seen_activated |= active;
+    }
+    assert!(
+        seen_activated,
+        "window should be activated on open: {cfgs:?}",
+    );
+}
+
 fn open_window(f: &mut Fixture, c: usize) -> usize {
     let w = f.client_mut(c).create_window();
     f.client_mut(c).commit(w);

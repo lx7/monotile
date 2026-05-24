@@ -331,6 +331,28 @@ impl Client {
         let _ = self.queue.flush();
     }
 
+    /// Ack the last configure but commit a buffer with a different (not configured)
+    /// window geometry. Simulates client misbehaviour.
+    pub fn ack_and_commit_sized(&mut self, win: usize, w: i32, h: i32) {
+        let qh = self.queue.handle();
+        let ws = &self.data.windows[win];
+        if ws.last_serial != 0 {
+            ws.xdg_surface.ack_configure(ws.last_serial);
+        }
+        if self.data.buffer.is_none() {
+            let shm = self.data.shm.as_ref().expect("wl_shm not bound");
+            let mut tmp = tempfile::tempfile().unwrap();
+            tmp.write_all(&[0u8; 4]).unwrap();
+            let pool = shm.create_pool(tmp.as_fd(), 4, &qh, ());
+            self.data.buffer =
+                Some(pool.create_buffer(0, 1, 1, 4, wl_shm::Format::Argb8888, &qh, ()));
+        }
+        ws.xdg_surface.set_window_geometry(0, 0, w, h);
+        ws.surface.attach(self.data.buffer.as_ref(), 0, 0);
+        ws.surface.commit();
+        let _ = self.queue.flush();
+    }
+
     pub fn window(&self, win: usize) -> &WindowState {
         &self.data.windows[win]
     }
@@ -465,14 +487,22 @@ impl Client {
 
     pub fn get_activation_token(&mut self) -> XdgActivationTokenV1 {
         let qh = self.queue.handle();
-        let act = self.data.activation.as_ref().expect("xdg_activation_v1 not bound");
+        let act = self
+            .data
+            .activation
+            .as_ref()
+            .expect("xdg_activation_v1 not bound");
         let token = act.get_activation_token(&qh, ());
         let _ = self.queue.flush();
         token
     }
 
     pub fn activate(&self, token: &str, win: usize) {
-        let act = self.data.activation.as_ref().expect("xdg_activation_v1 not bound");
+        let act = self
+            .data
+            .activation
+            .as_ref()
+            .expect("xdg_activation_v1 not bound");
         act.activate(token.to_string(), &self.data.windows[win].surface);
         let _ = self.queue.flush();
     }

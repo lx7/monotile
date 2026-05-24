@@ -132,7 +132,7 @@ impl Monotile {
         // recompute_layout must set tiled_geo before on_commit
         self.recompute_layout(mon);
         self.state.windows[id].on_commit();
-        Some(mon)
+        None
     }
 
     fn on_layer_commit(&mut self, surface: &WlSurface) -> Option<usize> {
