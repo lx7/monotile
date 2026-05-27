@@ -4,9 +4,7 @@ pub mod drm;
 pub mod winit;
 
 use smithay::{
-    backend::{renderer::glow::GlowRenderer, session::Session},
-    output::Output,
-    wayland::image_copy_capture::DmabufConstraints,
+    backend::session::Session, output::Output, wayland::image_copy_capture::DmabufConstraints,
 };
 use tracing::warn;
 use winit::WinitState;
@@ -33,14 +31,6 @@ impl Backend {
         match self {
             Backend::Drm(drm) => drm,
             _ => panic!("called drm() on non-drm backend"),
-        }
-    }
-
-    pub fn renderer(&mut self) -> &mut GlowRenderer {
-        match self {
-            Backend::Winit(winit) => winit.backend.renderer(),
-            Backend::Drm(drm) => &mut drm.renderer,
-            Backend::Unset => panic!("called renderer() on unset backend"),
         }
     }
 

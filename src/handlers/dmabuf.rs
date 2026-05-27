@@ -18,7 +18,13 @@ impl DmabufHandler for Monotile {
         dmabuf: smithay::backend::allocator::dmabuf::Dmabuf,
         notifier: ImportNotifier,
     ) {
-        if self.backend.renderer().import_dmabuf(&dmabuf, None).is_ok() {
+        if self
+            .backend
+            .drm()
+            .renderer
+            .import_dmabuf(&dmabuf, None)
+            .is_ok()
+        {
             let _ = notifier.successful::<Monotile>();
         } else {
             notifier.failed();
