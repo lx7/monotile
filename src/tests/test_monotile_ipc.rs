@@ -479,12 +479,12 @@ fn seat_control_swap() {
     f.roundtrip(c);
 
     // swap focused window with next
-    let before: Vec<_> = f.mt.state.mon().tag().tiled.clone();
+    let before: Vec<_> = f.mt.state.mon().tag().layout.ids().collect();
     f.client(c).seat_control().swap(Position::Next);
     f.client(c).flush();
     f.roundtrip(c);
 
-    let after: Vec<_> = f.mt.state.mon().tag().tiled.clone();
+    let after: Vec<_> = f.mt.state.mon().tag().layout.ids().collect();
     assert_ne!(before, after, "tiled order should change after swap");
 }
 

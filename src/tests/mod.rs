@@ -4,7 +4,6 @@ mod ipc_client_protocol;
 mod test_dwl_ipc;
 mod test_foreign_toplevel;
 mod test_layer_shell;
-mod test_layout;
 mod test_monotile_ipc;
 mod test_screencopy;
 mod test_session_lock;

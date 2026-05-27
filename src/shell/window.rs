@@ -425,11 +425,14 @@ impl Windows {
     }
 
     pub fn visible(&self, tag: &Tag) -> Vec<&WindowElement> {
-        tag.window_ids().filter_map(|id| self.get(id)).collect()
+        tag.window_ids()
+            .into_iter()
+            .filter_map(|id| self.get(id))
+            .collect()
     }
 
     pub fn window_under(&self, tag: &Tag, pos: Point<f64, Logical>) -> Option<&WindowElement> {
-        for id in tag.window_ids().rev() {
+        for id in tag.window_ids().into_iter().rev() {
             if let Some(we) = self.get(id)
                 && we.render_geo.to_f64().contains(pos)
             {

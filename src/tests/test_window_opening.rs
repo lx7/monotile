@@ -197,7 +197,7 @@ fn focus_cycle() {
     // cycle focus to w1
     let tag = f.mt.state.mon().tag();
     if let Some(cur) = tag.focused_id()
-        && let Some(id) = tag.target(cur, Rel::Next)
+        && let Some(id) = tag.layout.target(cur, Rel::Next)
     {
         f.mt.set_focus(Some(id));
     }

@@ -171,9 +171,8 @@ impl Monitor {
     pub fn recompute_layout(&mut self, ws: &mut Windows, config: &Config) {
         let tag = &mut self.tags[self.active_tag];
 
-        tag.tiled
-            .retain(|&id| ws.get(id).is_some_and(|we| !we.floating));
-
+        tag.layout
+            .retain(|id| ws.get(id).is_some_and(|we| !we.floating));
         tag.floating
             .retain(|&id| ws.get(id).is_some_and(|we| we.floating));
 
@@ -183,8 +182,8 @@ impl Monitor {
                 if !tag.floating.contains(&id) {
                     tag.floating.push(id);
                 }
-            } else if !tag.tiled.contains(&id) {
-                tag.tiled.push(id);
+            } else {
+                tag.layout.add(id);
             }
         }
         tag.fullscreen = tag
@@ -193,13 +192,11 @@ impl Monitor {
             .copied()
             .find(|&id| ws.get(id).is_some_and(|we| we.fullscreen));
 
-        let geo = layer_map_for_output(&self.output).non_exclusive_zone();
-        let rects = tag
-            .layout
-            .compute_rects(tag.tiled.len(), geo, &config.layout);
-        for (&id, rect) in tag.tiled.iter().zip(rects) {
-            if let Some(we) = ws.get_mut(id) {
-                we.tiled_geo = rect;
+        let area = layer_map_for_output(&self.output).non_exclusive_zone();
+        tag.layout.recompute(area, &config.layout);
+        for tile in tag.layout.tiles() {
+            if let Some(we) = ws.get_mut(tile.id) {
+                we.tiled_geo = tile.rect;
             }
         }
         for &id in &tag.focus_stack {

@@ -312,7 +312,7 @@ impl Monotile {
             Focus(pos) => {
                 let tag = self.state.mon().tag();
                 if let Some(cur) = tag.focused_id()
-                    && let Some(id) = tag.target(cur, pos)
+                    && let Some(id) = tag.layout.target(cur, pos)
                 {
                     self.set_focus(Some(id));
                 }
@@ -321,7 +321,7 @@ impl Monotile {
             }
             Swap(pos) => {
                 if let Some(cur) = self.state.mon().tag().focused_id() {
-                    self.state.mon_mut().tag_mut().swap(cur, pos);
+                    self.state.mon_mut().tag_mut().layout.swap(cur, pos);
                 }
             }
             Close => {
@@ -362,16 +362,24 @@ impl Monotile {
                 self.state.mon_mut().toggle_tag(tag);
             }
             AdjustMainCount(delta) => {
-                self.state.mon_mut().tag_mut().adjust_main_count(delta);
+                self.state
+                    .mon_mut()
+                    .tag_mut()
+                    .layout
+                    .adjust_main_count(delta);
             }
             SetMainCount(count) => {
-                self.state.mon_mut().tag_mut().set_main_count(count);
+                self.state.mon_mut().tag_mut().layout.set_main_count(count);
             }
             AdjustMainRatio(delta) => {
-                self.state.mon_mut().tag_mut().adjust_main_factor(delta);
+                self.state
+                    .mon_mut()
+                    .tag_mut()
+                    .layout
+                    .adjust_main_factor(delta);
             }
             SetMainRatio(ratio) => {
-                self.state.mon_mut().tag_mut().set_main_factor(ratio);
+                self.state.mon_mut().tag_mut().layout.set_main_factor(ratio);
             }
             ReloadConfig => {
                 self.reload_config();

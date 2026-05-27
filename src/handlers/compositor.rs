@@ -94,7 +94,7 @@ impl Monotile {
                 (0, 0).into()
             } else {
                 let tag = mon.tag();
-                let count = tag.tiled.len() + 1;
+                let count = tag.layout.len() + 1;
                 let area = layer_map_for_output(&mon.output).non_exclusive_zone();
                 tag.layout
                     .compute_rects(count, area, &self.state.config.layout)

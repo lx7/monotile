@@ -490,7 +490,7 @@ impl State {
         }
 
         // windows and popups
-        for id in mon.tag().window_ids().rev() {
+        for id in mon.tag().window_ids().into_iter().rev() {
             let Some(we) = self.windows.get(id) else {
                 continue;
             };

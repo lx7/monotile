@@ -202,7 +202,7 @@ pub fn output_elements(
         return vec![];
     }
 
-    let n = mon.tag().tiled.len() + mon.tag().floating.len();
+    let n = mon.tag().layout.len() + mon.tag().floating.len();
     let mut elems = Vec::with_capacity(n * 20 + 32);
 
     if let Some(we) = mon.tag().fullscreen.and_then(|id| windows.get(id)) {
@@ -237,9 +237,10 @@ pub fn output_elements(
         ));
 
         let tag = mon.tag();
-        let tiled = tag.tiled.len();
+        let tiled = tag.layout.len();
 
-        let ids: Vec<_> = tag.window_ids().rev().collect();
+        let mut ids = tag.window_ids();
+        ids.reverse();
         for id in ids {
             let Some(we) = windows.get_mut(id) else {
                 continue;
