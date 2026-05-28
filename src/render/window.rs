@@ -5,15 +5,15 @@ use smithay::{
         Renderer,
         element::{
             Kind,
-            surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
+            surface::render_elements_from_surface_tree,
             texture::{TextureBuffer, TextureRenderElement},
         },
-        gles::{GlesTexture, Uniform, element::PixelShaderElement},
+        gles::{Uniform, element::PixelShaderElement},
         glow::GlowRenderer,
         utils::with_renderer_surface_state,
     },
     reexports::wayland_server::protocol::wl_surface::WlSurface,
-    utils::{IsAlive, Logical, Physical, Point, Rectangle, Scale},
+    utils::{IsAlive, Logical, Rectangle, Scale},
     wayland::seat::WaylandFocus,
 };
 
@@ -85,14 +85,11 @@ impl RenderStep {
     fn render_elements(
         &mut self,
         out: &mut Vec<MonotileElement>,
-        renderer: &mut GlowRenderer,
+        content: &mut Vec<Clippable>,
         shaders: &Shaders,
-        wl: Option<&WlSurface>,
-        texture: Option<&TextureBuffer<GlesTexture>>,
         win_geo: Rectangle<i32, Logical>,
         radius: f32,
-        surf_loc: Point<i32, Physical>,
-        exact_size: bool,
+        surface_fills_win: bool,
         scale: Scale<f64>,
     ) {
         let scale_f32 = scale.x as f32;
@@ -122,43 +119,16 @@ impl RenderStep {
                 background,
             } => {
                 let clip_r = if radius == 0.0 { 0.0 } else { *r };
-                if let Some(wl) = wl {
-                    let surfs: Vec<WaylandSurfaceRenderElement<GlowRenderer>> =
-                        render_elements_from_surface_tree(
-                            renderer,
-                            wl,
-                            surf_loc,
-                            scale,
-                            1.0,
-                            Kind::Unspecified,
-                        );
-                    for s in surfs {
-                        out.push(Clipped::wrap(
-                            Clippable::Surface(s),
-                            &shaders.clip,
-                            win_geo,
-                            clip_r,
-                            scale,
-                        ));
-                    }
-                } else if let Some(buffer) = texture {
-                    let elem = TextureRenderElement::from_texture_buffer(
-                        surf_loc.to_f64(),
-                        buffer,
-                        None,
-                        None,
-                        None,
-                        Kind::Unspecified,
-                    );
+                for clippable in content.drain(..) {
                     out.push(Clipped::wrap(
-                        Clippable::Texture(elem),
+                        clippable,
                         &shaders.clip,
                         win_geo,
                         clip_r,
                         scale,
                     ));
                 }
-                if !exact_size {
+                if !surface_fills_win {
                     let bg = background.get_or_insert_with(|| {
                         PixelShaderElement::new(
                             shaders.rect.clone(),
@@ -240,6 +210,13 @@ impl RenderStep {
 }
 
 impl WindowElement {
+    fn live_surface(&self) -> Option<WlSurface> {
+        let wl = self.window.wl_surface()?.into_owned();
+        let has_buffer =
+            with_renderer_surface_state(&wl, |st| st.buffer_size().is_some()).unwrap_or(false);
+        (wl.alive() && has_buffer).then_some(wl)
+    }
+
     pub fn render_elements(
         &mut self,
         out: &mut Vec<MonotileElement>,
@@ -250,18 +227,45 @@ impl WindowElement {
         disable_gaps: bool,
     ) {
         let win_geo = self.render_geo;
-        let wl = self.window.wl_surface().filter(|s| {
-            s.alive()
-                && with_renderer_surface_state(s, |st| st.buffer_size().is_some()).unwrap_or(false)
-        });
-        let texture = self.last_texture.as_ref().filter(|_| wl.is_none());
-        if wl.is_none() && texture.is_none() {
+        let surf_loc = self.surface_loc().to_physical_precise_round(scale);
+        let live = self.live_surface();
+
+        let mut content: Vec<Clippable> = match &live {
+            // render live surface
+            Some(wl) => render_elements_from_surface_tree(
+                renderer,
+                wl,
+                surf_loc,
+                scale,
+                1.0,
+                Kind::Unspecified,
+            )
+            .into_iter()
+            .map(Clippable::Surface)
+            .collect(),
+            // no live surface, use the last snapshot
+            None => self
+                .last_texture
+                .iter()
+                .map(|buf| {
+                    Clippable::Texture(TextureRenderElement::from_texture_buffer(
+                        surf_loc.to_f64(),
+                        buf,
+                        None,
+                        None,
+                        None,
+                        Kind::Unspecified,
+                    ))
+                })
+                .collect(),
+        };
+        if content.is_empty() {
             return;
         }
-        let surf_loc = self.surface_loc().to_physical_precise_round(scale);
-        let exact_size = wl.is_some() && self.window.geometry().size == win_geo.size;
 
-        if let Some(wl) = &wl {
+        let surface_fills_win = live.is_some() && self.window.geometry().size == win_geo.size;
+
+        if let Some(wl) = &live {
             out.extend(popup_elements(renderer, wl, win_geo.loc, scale));
         }
 
@@ -275,21 +279,18 @@ impl WindowElement {
             if !skip {
                 step.render_elements(
                     out,
-                    renderer,
+                    &mut content,
                     shaders,
-                    wl.as_deref(),
-                    texture,
                     win_geo,
                     self.radius,
-                    surf_loc,
-                    exact_size,
+                    surface_fills_win,
                     scale,
                 );
             }
         }
 
         // snapshot the live texture for layout transitions
-        if let Some(wl) = &wl
+        if let Some(wl) = &live
             && let Some(tex) = with_renderer_surface_state(wl, |state| {
                 Some(TextureBuffer::from_texture(
                     renderer,
