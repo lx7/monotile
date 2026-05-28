@@ -171,42 +171,7 @@ impl Monitor {
     pub fn recompute_layout(&mut self, ws: &mut Windows, config: &Config) {
         let area = layer_map_for_output(&self.output).non_exclusive_zone();
         let fs_geo = self.output_geometry();
-        let tag = &mut self.tags[self.active_tag];
-
-        tag.layout
-            .retain(|id| ws.get(id).is_some_and(|we| !we.floating));
-        tag.floating
-            .retain(|&id| ws.get(id).is_some_and(|we| we.floating));
-
-        for &id in &tag.focus_stack {
-            let Some(we) = ws.get(id) else { continue };
-            if we.floating {
-                if !tag.floating.contains(&id) {
-                    tag.floating.push(id);
-                }
-            } else {
-                tag.layout.add(id);
-            }
-        }
-        tag.fullscreen = tag
-            .focus_stack
-            .iter()
-            .copied()
-            .find(|&id| ws.get(id).is_some_and(|we| we.fullscreen));
-
-        tag.layout.recompute(area, &config.layout);
-        for &id in &tag.focus_stack {
-            let Some(we) = ws.get_mut(id) else { continue };
-            let target = if we.fullscreen {
-                fs_geo
-            } else if we.floating {
-                we.float_geo
-            } else {
-                let Some(rect) = tag.layout.position_of(id) else { continue };
-                rect
-            };
-            we.configure(target);
-        }
+        self.tags[self.active_tag].recompute_layout(ws, area, fs_geo, &config.layout);
     }
 
     pub fn window_ids(&self) -> Vec<WindowId> {

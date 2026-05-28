@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use super::{TilingLayout, WindowId};
+use smithay::utils::{Logical, Rectangle};
+
+use crate::config;
+
+use super::{TilingLayout, WindowId, Windows};
 
 #[derive(Debug, Default)]
 pub struct Tag {
@@ -39,7 +43,10 @@ impl Tag {
         if let Some(fs) = self.fullscreen {
             vec![fs]
         } else {
-            self.layout.ids().chain(self.floating.iter().copied()).collect()
+            self.layout
+                .ids()
+                .chain(self.floating.iter().copied())
+                .collect()
         }
     }
 
@@ -56,6 +63,51 @@ impl Tag {
         if let Some(pos) = self.floating.iter().position(|&wid| wid == id) {
             let id = self.floating.remove(pos);
             self.floating.push(id);
+        }
+    }
+
+    pub fn recompute_layout(
+        &mut self,
+        ws: &mut Windows,
+        area: Rectangle<i32, Logical>,
+        fs_geo: Rectangle<i32, Logical>,
+        cfg: &config::Layout,
+    ) {
+        self.layout
+            .retain(|id| ws.get(id).is_some_and(|we| !we.floating));
+        self.floating
+            .retain(|&id| ws.get(id).is_some_and(|we| we.floating));
+
+        for &id in &self.focus_stack {
+            let Some(we) = ws.get(id) else { continue };
+            if we.floating {
+                if !self.floating.contains(&id) {
+                    self.floating.push(id);
+                }
+            } else {
+                self.layout.add(id);
+            }
+        }
+        self.fullscreen = self
+            .focus_stack
+            .iter()
+            .copied()
+            .find(|&id| ws.get(id).is_some_and(|we| we.fullscreen));
+
+        self.layout.recompute(area, cfg);
+        for &id in &self.focus_stack {
+            let Some(we) = ws.get_mut(id) else { continue };
+            let target = if we.fullscreen {
+                fs_geo
+            } else if we.floating {
+                we.float_geo
+            } else {
+                let Some(rect) = self.layout.position_of(id) else {
+                    continue;
+                };
+                rect
+            };
+            we.configure(target);
         }
     }
 }
