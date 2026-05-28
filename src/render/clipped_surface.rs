@@ -8,28 +8,57 @@ use smithay::{
     backend::renderer::{
         element::{
             Element, Id, Kind, RenderElement, UnderlyingStorage,
-            surface::WaylandSurfaceRenderElement,
+            surface::WaylandSurfaceRenderElement, texture::TextureRenderElement,
         },
-        gles::{GlesError, GlesFrame, GlesTexProgram, Uniform, UniformValue},
+        gles::{GlesError, GlesFrame, GlesTexProgram, GlesTexture, Uniform, UniformValue},
         glow::{GlowFrame, GlowRenderer},
         utils::{CommitCounter, DamageSet, OpaqueRegions},
     },
+    render_elements,
     utils::{
         Buffer, Logical, Physical, Point, Rectangle, Scale, Size, Transform, user_data::UserDataMap,
     },
 };
 
-pub struct ClippedSurface {
-    inner: WaylandSurfaceRenderElement<GlowRenderer>,
+use super::MonotileElement;
+
+render_elements! {
+    pub Clippable<=GlowRenderer>;
+    Surface=WaylandSurfaceRenderElement<GlowRenderer>,
+    Texture=TextureRenderElement<GlesTexture>,
+}
+
+pub struct Clipped {
+    inner: Clippable,
     program: GlesTexProgram,
     geo: Rectangle<f64, Logical>,
     radius: f32,
     uniforms: Vec<Uniform<'static>>,
 }
 
-impl ClippedSurface {
-    pub fn new(
-        inner: WaylandSurfaceRenderElement<GlowRenderer>,
+impl Clipped {
+    pub fn wrap(
+        inner: Clippable,
+        program: &GlesTexProgram,
+        geo: Rectangle<i32, Logical>,
+        radius: f32,
+        scale: Scale<f64>,
+    ) -> MonotileElement {
+        let phys: Rectangle<i32, Physical> = geo.to_f64().to_physical_precise_round(scale);
+        if radius > 0.0 || !phys.contains_rect(inner.geometry(scale)) {
+            MonotileElement::Clipped(Self::new(inner, program.clone(), geo, radius, scale))
+        } else {
+            // If clipping is not necessary, return the plain Surface/Texture variant
+            // to keep buffer storage and direct scanout intact
+            match inner {
+                Clippable::Surface(s) => MonotileElement::Surface(s),
+                Clippable::Texture(t) => MonotileElement::Texture(t),
+            }
+        }
+    }
+
+    fn new(
+        inner: Clippable,
         program: GlesTexProgram,
         geo: Rectangle<i32, Logical>,
         radius: f32,
@@ -76,20 +105,6 @@ impl ClippedSurface {
         }
     }
 
-    pub fn will_clip(
-        inner: &WaylandSurfaceRenderElement<GlowRenderer>,
-        geo: Rectangle<i32, Logical>,
-        radius: f32,
-        scale: Scale<f64>,
-    ) -> bool {
-        if radius > 0.0 {
-            return true;
-        }
-        let phys: Rectangle<i32, Physical> = geo.to_f64().to_physical_precise_round(scale);
-        let elem = inner.geometry(scale);
-        !phys.contains_rect(elem)
-    }
-
     fn clip_rect(&self, scale: Scale<f64>) -> Rectangle<i32, Physical> {
         let mut r = self.geo.to_physical_precise_round(scale);
         r.loc -= self.geometry(scale).loc;
@@ -97,7 +112,7 @@ impl ClippedSurface {
     }
 }
 
-impl Element for ClippedSurface {
+impl Element for Clipped {
     fn id(&self) -> &Id {
         self.inner.id()
     }
@@ -125,7 +140,6 @@ impl Element for ClippedSurface {
         scale: Scale<f64>,
         commit: Option<CommitCounter>,
     ) -> DamageSet<i32, Physical> {
-        // clip damage rects to window geometry
         let clip = self.clip_rect(scale);
         self.inner
             .damage_since(scale, commit)
@@ -135,7 +149,6 @@ impl Element for ClippedSurface {
     }
 
     fn opaque_regions(&self, scale: Scale<f64>) -> OpaqueRegions<i32, Physical> {
-        // clip opaque regions
         let clip = self.clip_rect(scale);
         let clipped = self
             .inner
@@ -143,7 +156,7 @@ impl Element for ClippedSurface {
             .into_iter()
             .filter_map(|r| r.intersection(clip));
 
-        // substract corner areas
+        // subtract corner areas
         let r = self.radius as f64;
         let g = self.geo;
         let loc = self.geometry(scale).loc;
@@ -165,7 +178,7 @@ impl Element for ClippedSurface {
     }
 }
 
-impl RenderElement<GlowRenderer> for ClippedSurface {
+impl RenderElement<GlowRenderer> for Clipped {
     fn draw(
         &self,
         frame: &mut GlowFrame<'_, '_>,
@@ -175,19 +188,17 @@ impl RenderElement<GlowRenderer> for ClippedSurface {
         opaque: &[Rectangle<i32, Physical>],
         cache: Option<&UserDataMap>,
     ) -> Result<(), GlesError> {
-        // set the custom shader befor drawing
         let gles: &mut GlesFrame = frame.borrow_mut();
         gles.override_default_tex_program(self.program.clone(), self.uniforms.clone());
 
-        // draw ...
         RenderElement::<GlowRenderer>::draw(&self.inner, frame, src, dst, damage, opaque, cache)?;
 
-        // cleanup
         let gles: &mut GlesFrame = frame.borrow_mut();
         gles.clear_tex_program_override();
         Ok(())
     }
 
+    // Clipped pixels come from the shader, not the source buffer.
     fn underlying_storage(&self, _: &mut GlowRenderer) -> Option<UnderlyingStorage<'_>> {
         None
     }

@@ -145,11 +145,11 @@ impl Monotile {
         }
         // release transition and render
         for i in 0..self.state.monitors.len() {
-            let ready = self.state.monitors[i]
+            let processed = self.state.monitors[i]
                 .transition
                 .as_ref()
-                .is_some_and(|t| t.blocker.is_ready());
-            if ready {
+                .is_some_and(|t| t.blocker.is_processed());
+            if processed {
                 self.state.monitors[i].transition = None;
                 self.backend.schedule_render(&self.state.monitors[i].output);
             }

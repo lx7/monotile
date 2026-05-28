@@ -26,7 +26,7 @@ impl WinitState {
     pub fn render(&mut self, state: &mut State) -> Result<(), Box<dyn std::error::Error>> {
         let age = self.backend.buffer_age().unwrap_or(0);
         let (renderer, mut fb) = self.backend.bind()?;
-        let mon = &state.monitors[state.active_monitor];
+        let mon = &mut state.monitors[state.active_monitor];
         let elems = crate::render::output_elements(
             renderer,
             mon,

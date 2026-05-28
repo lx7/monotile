@@ -20,6 +20,7 @@ use smithay::{
                 memory::MemoryRenderBufferRenderElement,
                 render_elements,
                 surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
+                texture::TextureRenderElement,
             },
             gles::{
                 GlesPixelProgram, GlesRenderer, GlesTexProgram, GlesTexture, UniformName,
@@ -44,12 +45,13 @@ use crate::{
     config::Config,
     shell::{Monitor, Windows},
 };
-use clipped_surface::ClippedSurface;
+use clipped_surface::Clipped;
 
 render_elements! {
     pub MonotileElement<=GlowRenderer>;
     Surface=WaylandSurfaceRenderElement<GlowRenderer>,
-    Clipped=ClippedSurface,
+    Texture=TextureRenderElement<GlesTexture>,
+    Clipped=Clipped,
     Decoration=PixelShaderElement,
     Memory=MemoryRenderBufferRenderElement<GlowRenderer>,
 }
@@ -177,7 +179,7 @@ pub fn popup_elements(
 
 pub fn output_elements(
     renderer: &mut GlowRenderer,
-    mon: &Monitor,
+    mon: &mut Monitor,
     windows: &mut Windows,
     shaders: &Shaders,
     config: &Config,
@@ -254,6 +256,13 @@ pub fn output_elements(
                 config.layout.smart_borders && single_tiled,
                 config.layout.smart_gaps && single_tiled,
             );
+        }
+
+        // draw cached texture of closing windows
+        if let Some(t) = &mut mon.transition {
+            for closing in &mut t.closing {
+                closing.render_elements(&mut elems, renderer, shaders, scale, false, false);
+            }
         }
 
         elems.extend(layer_elements(

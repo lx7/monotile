@@ -7,7 +7,7 @@ use smithay::{
     utils::{IsAlive, Serial},
     wayland::{
         compositor::{Blocker, BlockerState, add_blocker, with_states},
-        shell::xdg::XdgToplevelSurfaceData,
+        shell::xdg::{ToplevelCachedState, XdgToplevelSurfaceData},
     },
 };
 
@@ -35,6 +35,14 @@ impl LayoutBlocker {
                 .pending
                 .iter()
                 .all(|(s, serial)| !s.alive() || serial_acked(s, *serial))
+    }
+
+    pub fn is_processed(&self) -> bool {
+        self.start.elapsed() >= ACK_TIMEOUT
+            || self
+                .pending
+                .iter()
+                .all(|(s, serial)| !s.alive() || serial_committed(s, *serial))
     }
 
     pub fn surfaces(&self) -> impl Iterator<Item = &WlSurface> {
@@ -85,5 +93,17 @@ fn serial_acked(surface: &WlSurface, serial: Serial) -> bool {
                     .is_some_and(|c| c.serial >= serial)
             })
             .unwrap_or(false)
+    })
+}
+
+fn serial_committed(surface: &WlSurface, serial: Serial) -> bool {
+    with_states(surface, |states| {
+        states
+            .cached_state
+            .get::<ToplevelCachedState>()
+            .current()
+            .last_acked
+            .as_ref()
+            .is_some_and(|c| c.serial >= serial)
     })
 }

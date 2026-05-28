@@ -2,16 +2,26 @@
 
 use smithay::{
     backend::renderer::{
-        element::{Kind, surface::render_elements_from_surface_tree},
-        gles::{Uniform, element::PixelShaderElement},
+        Renderer,
+        element::{
+            Kind,
+            surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
+            texture::{TextureBuffer, TextureRenderElement},
+        },
+        gles::{GlesTexture, Uniform, element::PixelShaderElement},
         glow::GlowRenderer,
+        utils::with_renderer_surface_state,
     },
     reexports::wayland_server::protocol::wl_surface::WlSurface,
-    utils::{Logical, Physical, Point, Rectangle, Scale},
+    utils::{IsAlive, Logical, Physical, Point, Rectangle, Scale},
     wayland::seat::WaylandFocus,
 };
 
-use super::{MonotileElement, Shaders, border, clipped_surface::ClippedSurface, popup_elements};
+use super::{
+    MonotileElement, Shaders, border,
+    clipped_surface::{Clippable, Clipped},
+    popup_elements,
+};
 use crate::{config, shell::WindowElement};
 
 #[derive(Debug)]
@@ -77,7 +87,8 @@ impl RenderStep {
         out: &mut Vec<MonotileElement>,
         renderer: &mut GlowRenderer,
         shaders: &Shaders,
-        wl: &WlSurface,
+        wl: Option<&WlSurface>,
+        texture: Option<&TextureBuffer<GlesTexture>>,
         win_geo: Rectangle<i32, Logical>,
         radius: f32,
         surf_loc: Point<i32, Physical>,
@@ -111,26 +122,41 @@ impl RenderStep {
                 background,
             } => {
                 let clip_r = if radius == 0.0 { 0.0 } else { *r };
-                let surfs = render_elements_from_surface_tree(
-                    renderer,
-                    wl,
-                    surf_loc,
-                    scale,
-                    1.0,
-                    Kind::Unspecified,
-                );
-                for s in surfs {
-                    if !ClippedSurface::will_clip(&s, win_geo, clip_r, scale) {
-                        out.push(MonotileElement::Surface(s));
-                    } else {
-                        out.push(MonotileElement::Clipped(ClippedSurface::new(
-                            s,
-                            shaders.clip.clone(),
+                if let Some(wl) = wl {
+                    let surfs: Vec<WaylandSurfaceRenderElement<GlowRenderer>> =
+                        render_elements_from_surface_tree(
+                            renderer,
+                            wl,
+                            surf_loc,
+                            scale,
+                            1.0,
+                            Kind::Unspecified,
+                        );
+                    for s in surfs {
+                        out.push(Clipped::wrap(
+                            Clippable::Surface(s),
+                            &shaders.clip,
                             win_geo,
                             clip_r,
                             scale,
-                        )));
+                        ));
                     }
+                } else if let Some(buffer) = texture {
+                    let elem = TextureRenderElement::from_texture_buffer(
+                        surf_loc.to_f64(),
+                        buffer,
+                        None,
+                        None,
+                        None,
+                        Kind::Unspecified,
+                    );
+                    out.push(Clipped::wrap(
+                        Clippable::Texture(elem),
+                        &shaders.clip,
+                        win_geo,
+                        clip_r,
+                        scale,
+                    ));
                 }
                 if !exact_size {
                     let bg = background.get_or_insert_with(|| {
@@ -224,11 +250,17 @@ impl WindowElement {
         disable_gaps: bool,
     ) {
         let win_geo = self.render_geo;
-        let wl = self.window.wl_surface().unwrap();
+        let wl = self.window.wl_surface().filter(|s| s.alive());
+        let texture = self.last_texture.as_ref().filter(|_| wl.is_none());
+        if wl.is_none() && texture.is_none() {
+            return;
+        }
         let surf_loc = self.surface_loc().to_physical_precise_round(scale);
-        let exact_size = self.window.geometry().size == win_geo.size;
+        let exact_size = wl.is_some() && self.window.geometry().size == win_geo.size;
 
-        out.extend(popup_elements(renderer, &wl, win_geo.loc, scale));
+        if let Some(wl) = &wl {
+            out.extend(popup_elements(renderer, wl, win_geo.loc, scale));
+        }
 
         for &key in self.render_pipeline.iter().rev() {
             let step = self.render_steps.get_mut(&key).expect("render_step exists");
@@ -242,7 +274,8 @@ impl WindowElement {
                     out,
                     renderer,
                     shaders,
-                    &wl,
+                    wl.as_deref(),
+                    texture,
                     win_geo,
                     self.radius,
                     surf_loc,
@@ -250,6 +283,22 @@ impl WindowElement {
                     scale,
                 );
             }
+        }
+
+        // snapshot the live texture for layout transitions
+        if let Some(wl) = &wl
+            && let Some(tex) = with_renderer_surface_state(wl, |state| {
+                Some(TextureBuffer::from_texture(
+                    renderer,
+                    state.texture(renderer.context_id())?.clone(),
+                    state.buffer_scale(),
+                    state.buffer_transform(),
+                    None,
+                ))
+            })
+            .flatten()
+        {
+            self.last_texture = Some(tex);
         }
     }
 }
