@@ -42,8 +42,11 @@ impl XdgShellHandler for Monotile {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
-        if let Some(mon) = self.state.destroy_window(&surface.wl_surface().id()) {
-            self.recompute_layout(mon);
+        let Some((mon, closed)) = self.state.destroy_window(&surface.wl_surface().id()) else {
+            return;
+        };
+        if let Some(transition) = self.recompute_layout(mon) {
+            transition.closing.push(closed);
         }
     }
 

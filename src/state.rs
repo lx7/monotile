@@ -21,7 +21,7 @@ use smithay::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration_manager::Mode as KdeMode,
         wayland_server::{
-            Display, DisplayHandle, Resource,
+            Client, Display, DisplayHandle, Resource,
             backend::{ClientData, ClientId, DisconnectReason, ObjectId},
             protocol::wl_surface::WlSurface,
         },
@@ -63,7 +63,10 @@ use crate::{
     },
     ipc::IpcState,
     render::cursor::CursorManager,
-    shell::{Monitor, MonitorSettings, Monitors, Tag, Unmapped, WindowElement, WindowId, Windows},
+    shell::{
+        LayoutTransition, Monitor, MonitorSettings, Monitors, Tag, Unmapped, WindowElement,
+        WindowId, Windows,
+    },
     spawn::notify,
 };
 
@@ -114,16 +117,44 @@ impl Monotile {
         )
     }
 
-    pub fn recompute_layout(&mut self, idx: usize) {
-        let config = &self.state.config;
-        let mon = &mut self.state.monitors[idx];
-        mon.recompute_layout(&mut self.state.windows, config);
+    pub fn recompute_layout(&mut self, idx: usize) -> Option<&mut LayoutTransition> {
         self.update_focus();
         self.backend
             .schedule_render(&self.state.monitors[idx].output);
+        let config = &self.state.config;
+        self.state.monitors[idx].recompute_layout(&mut self.state.windows, config)
     }
 
-    pub fn unblock_ready_transitions(&mut self) {}
+    pub fn unblock_ready_transitions(&mut self) {
+        // collect ready clients
+        let mut clients: Vec<Client> = Vec::new();
+        for mon in self.state.monitors.iter() {
+            let Some(t) = mon.transition.as_ref().filter(|t| t.blocker.is_ready()) else {
+                continue;
+            };
+            clients.extend(t.blocker.surfaces().filter_map(|s| s.client()));
+        }
+        // notify smithay to apply the cached commits
+        if !clients.is_empty() {
+            let dh = self.state.display_handle.clone();
+            for client in &clients {
+                if let Some(data) = client.get_data::<ClientState>() {
+                    data.compositor_state.blocker_cleared(self, &dh);
+                }
+            }
+        }
+        // release transition and render
+        for i in 0..self.state.monitors.len() {
+            let ready = self.state.monitors[i]
+                .transition
+                .as_ref()
+                .is_some_and(|t| t.blocker.is_ready());
+            if ready {
+                self.state.monitors[i].transition = None;
+                self.backend.schedule_render(&self.state.monitors[i].output);
+            }
+        }
+    }
 
     pub fn reload_config(&mut self) {
         let path = self.state.config.path.clone();
@@ -454,13 +485,14 @@ impl State {
         id
     }
 
-    pub fn destroy_window(&mut self, surface: &ObjectId) -> Option<usize> {
+    pub fn destroy_window(&mut self, surface: &ObjectId) -> Option<(usize, WindowElement)> {
         self.unmapped.remove(surface);
         let we = self.windows.remove(surface)?;
         self.screencopy.remove_toplevel(we.id);
         self.foreign_toplevel.remove(we.id);
-        self.monitors[we.monitor].unmap(we.id);
-        Some(we.monitor)
+        let mon = we.monitor;
+        self.monitors[mon].unmap(we.id);
+        Some((mon, we))
     }
 
     pub fn surface_under(

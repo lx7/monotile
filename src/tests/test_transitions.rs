@@ -14,8 +14,13 @@ fn closing_stack_window_holds_layout_until_main_acks() {
     let mut f = Fixture::new();
     let c = f.add_client();
 
-    open_window(&mut f, c); // main
-    open_window(&mut f, c); // stack
+    open_window(&mut f, c); // main (window 0)
+    open_window(&mut f, c); // stack (window 1)
+
+    // settle the layout
+    f.client_mut(c).ack_and_commit(0);
+    f.roundtrip(c);
+    f.mt.unblock_ready_transitions();
 
     let tiles = f.mt.state.mon().tag().layout.tiles();
     assert_eq!(tiles.len(), 2, "expected two tiled windows");

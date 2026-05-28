@@ -37,7 +37,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let autostart_pgid = spawn::autostart(args.autostart);
 
-    event_loop.run(None, &mut monotile, |mt| mt.state.flush_clients())?;
+    event_loop.run(None, &mut monotile, |mt| {
+        mt.unblock_ready_transitions();
+        mt.state.flush_clients();
+    })?;
 
     if let Some(pgid) = autostart_pgid {
         spawn::kill_autostart(pgid);

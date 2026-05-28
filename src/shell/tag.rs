@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use smithay::utils::{Logical, Rectangle};
+use smithay::{
+    reexports::wayland_server::protocol::wl_surface::WlSurface,
+    utils::{Logical, Rectangle, Serial},
+};
 
 use crate::config;
 
@@ -72,7 +75,7 @@ impl Tag {
         area: Rectangle<i32, Logical>,
         fs_geo: Rectangle<i32, Logical>,
         cfg: &config::Layout,
-    ) {
+    ) -> Vec<(WlSurface, Serial)> {
         self.layout
             .retain(|id| ws.get(id).is_some_and(|we| !we.floating));
         self.floating
@@ -95,6 +98,7 @@ impl Tag {
             .find(|&id| ws.get(id).is_some_and(|we| we.fullscreen));
 
         self.layout.recompute(area, cfg);
+        let mut configured = Vec::new();
         for &id in &self.focus_stack {
             let Some(we) = ws.get_mut(id) else { continue };
             let target = if we.fullscreen {
@@ -107,7 +111,12 @@ impl Tag {
                 };
                 rect
             };
-            we.configure(target);
+            if let Some(serial) = we.configure(target)
+                && let Some(tl) = we.window.toplevel()
+            {
+                configured.push((tl.wl_surface().clone(), serial));
+            }
         }
+        configured
     }
 }

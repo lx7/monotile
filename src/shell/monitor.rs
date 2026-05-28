@@ -169,10 +169,20 @@ impl Monitor {
         Rectangle::new((0, 0).into(), size.to_logical(1))
     }
 
-    pub fn recompute_layout(&mut self, ws: &mut Windows, config: &Config) {
+    pub fn recompute_layout(
+        &mut self,
+        ws: &mut Windows,
+        config: &Config,
+    ) -> Option<&mut LayoutTransition> {
         let area = layer_map_for_output(&self.output).non_exclusive_zone();
         let fs_geo = self.output_geometry();
-        self.tags[self.active_tag].recompute_layout(ws, area, fs_geo, &config.layout);
+        let outgoing = self.tags[self.active_tag].clone();
+        let configured =
+            self.tags[self.active_tag].recompute_layout(ws, area, fs_geo, &config.layout);
+        if let Some(transition) = LayoutTransition::new(configured, outgoing) {
+            self.transition = Some(transition);
+        }
+        self.transition.as_mut()
     }
 
     pub fn window_ids(&self) -> Vec<WindowId> {
