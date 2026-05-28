@@ -6,7 +6,7 @@ use crate::config;
 
 use super::{TilingLayout, WindowId, Windows};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Tag {
     pub floating: Vec<WindowId>,
     pub focus_stack: Vec<WindowId>,

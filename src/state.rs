@@ -123,6 +123,8 @@ impl Monotile {
             .schedule_render(&self.state.monitors[idx].output);
     }
 
+    pub fn unblock_ready_transitions(&mut self) {}
+
     pub fn reload_config(&mut self) {
         let path = self.state.config.path.clone();
         let config = match Config::load(Some(path)) {
@@ -378,6 +380,7 @@ impl State {
             prev_tag: 0,
             exclusive_layer: None,
             lock_surface: None,
+            transition: None,
         });
     }
 

@@ -14,7 +14,7 @@ use smithay::{
 
 use crate::config::{self, Config, ModeConfig};
 
-use super::{Tag, WindowId, Windows};
+use super::{LayoutTransition, Tag, WindowId, Windows};
 
 #[derive(Debug)]
 pub struct MonitorSettings {
@@ -80,6 +80,7 @@ pub struct Monitor {
     pub prev_tag: usize,
     pub exclusive_layer: Option<WlSurface>,
     pub lock_surface: Option<LockSurface>,
+    pub transition: Option<LayoutTransition>,
 }
 
 impl Monitor {

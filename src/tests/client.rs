@@ -353,6 +353,14 @@ impl Client {
         let _ = self.queue.flush();
     }
 
+    pub fn destroy_window(&mut self, win: usize) {
+        let ws = &self.data.windows[win];
+        ws.toplevel.destroy();
+        ws.xdg_surface.destroy();
+        ws.surface.destroy();
+        let _ = self.queue.flush();
+    }
+
     pub fn window(&self, win: usize) -> &WindowState {
         &self.data.windows[win]
     }
