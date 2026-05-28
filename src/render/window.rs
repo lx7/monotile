@@ -250,7 +250,10 @@ impl WindowElement {
         disable_gaps: bool,
     ) {
         let win_geo = self.render_geo;
-        let wl = self.window.wl_surface().filter(|s| s.alive());
+        let wl = self.window.wl_surface().filter(|s| {
+            s.alive()
+                && with_renderer_surface_state(s, |st| st.buffer_size().is_some()).unwrap_or(false)
+        });
         let texture = self.last_texture.as_ref().filter(|_| wl.is_none());
         if wl.is_none() && texture.is_none() {
             return;
