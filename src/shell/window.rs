@@ -6,6 +6,7 @@ use derive_more::{Deref, DerefMut};
 
 use slotmap::SlotMap;
 use smithay::{
+    backend::renderer::{element::texture::TextureBuffer, gles::GlesTexture},
     desktop::Window,
     reexports::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
@@ -108,6 +109,7 @@ pub struct WindowElement {
     pub float_geo: Rectangle<i32, Logical>,
     pub render_geo: Rectangle<i32, Logical>,
     configured_geo: Rectangle<i32, Logical>,
+    pub content_offset: Point<i32, Logical>,
 
     // rendering: steps keyed by (rule_index, slot)
     pub render_steps: BTreeMap<(usize, u32), RenderStep>,
@@ -117,6 +119,7 @@ pub struct WindowElement {
 
     // true after client commits a buffer, cleared after send_frame
     pub buffer_committed: bool,
+    pub last_texture: Option<TextureBuffer<GlesTexture>>,
 }
 
 impl WindowElement {
@@ -126,9 +129,9 @@ impl WindowElement {
         let window = unmapped.window;
         let (app_id, title) = window.toplevel().unwrap().info();
 
-        let float_size = window.geometry().size;
+        let geom = window.geometry();
         let configured_size =
-            if placement.floating { float_size } else { placement.configured_size };
+            if placement.floating { geom.size } else { placement.configured_size };
         Self {
             id,
             window,
@@ -140,7 +143,7 @@ impl WindowElement {
             focused: false,
             screencasts: 0,
             urgent: false,
-            float_geo: Rectangle::from_size(float_size),
+            float_geo: Rectangle::from_size(geom.size),
             render_steps: BTreeMap::new(),
             render_pipeline: Vec::new(),
             radius: 0.0,
@@ -148,6 +151,8 @@ impl WindowElement {
             configured_geo: Rectangle::from_size(configured_size),
             render_geo: Rectangle::default(),
             buffer_committed: false,
+            content_offset: geom.loc,
+            last_texture: None,
         }
     }
 
@@ -247,7 +252,7 @@ impl WindowElement {
     }
 
     pub fn surface_loc(&self) -> Point<i32, Logical> {
-        self.render_geo.loc - self.window.geometry().loc
+        self.render_geo.loc - self.content_offset
     }
 
     pub fn set_app_id(&mut self, app_id: String) {
@@ -340,6 +345,7 @@ impl WindowElement {
     pub fn on_commit(&mut self) {
         self.window.on_commit();
         self.buffer_committed = true;
+        self.content_offset = self.window.geometry().loc;
 
         // accept client-initiated size for floating windows
         if self.floating && !self.fullscreen {
