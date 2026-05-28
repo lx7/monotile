@@ -11,7 +11,7 @@ use smithay::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::{Resource, backend::ObjectId, protocol::wl_surface::WlSurface},
     },
-    utils::{Logical, Point, Rectangle, Size},
+    utils::{Logical, Point, Rectangle, Serial, Size},
     wayland::{
         compositor::with_states,
         shell::xdg::{SurfaceCachedState, ToplevelSurface, XdgToplevelSurfaceData},
@@ -105,15 +105,8 @@ pub struct WindowElement {
     pub urgent: bool,
     pub screencasts: u32,
 
-    // target geometry
-    pub tiled_geo: Rectangle<i32, Logical>,
     pub float_geo: Rectangle<i32, Logical>,
-    pub fullscreen_geo: Rectangle<i32, Logical>,
-
-    // current on-screen geo
     pub render_geo: Rectangle<i32, Logical>,
-
-    // last configure sent to client
     configured_geo: Rectangle<i32, Logical>,
 
     // rendering: steps keyed by (rule_index, slot)
@@ -147,9 +140,7 @@ impl WindowElement {
             focused: false,
             screencasts: 0,
             urgent: false,
-            tiled_geo: Rectangle::default(),
             float_geo: Rectangle::from_size(float_size),
-            fullscreen_geo: Rectangle::default(),
             render_steps: BTreeMap::new(),
             render_pipeline: Vec::new(),
             radius: 0.0,
@@ -225,16 +216,6 @@ impl WindowElement {
         }
     }
 
-    pub fn geo(&self) -> Rectangle<i32, Logical> {
-        if self.fullscreen {
-            self.fullscreen_geo
-        } else if self.floating {
-            self.float_geo
-        } else {
-            self.tiled_geo
-        }
-    }
-
     pub fn min_max_size(&self) -> (Size<i32, Logical>, Size<i32, Logical>) {
         self.window
             .toplevel()
@@ -253,22 +234,20 @@ impl WindowElement {
         if let Some(tl) = self.window.toplevel() {
             tl.with_pending_state(|s| s.states.set(xdg_toplevel::State::Resizing));
         }
-        self.configure();
+        let target = self.float_geo;
+        self.configure(target);
     }
 
     pub fn finish_resize_float(&mut self) {
         if let Some(tl) = self.window.toplevel() {
             tl.with_pending_state(|s| s.states.unset(xdg_toplevel::State::Resizing));
         }
-        self.configure();
+        let target = self.float_geo;
+        self.configure(target);
     }
 
     pub fn surface_loc(&self) -> Point<i32, Logical> {
         self.render_geo.loc - self.window.geometry().loc
-    }
-
-    pub fn target_loc(&self) -> Point<i32, Logical> {
-        self.geo().loc - self.window.geometry().loc
     }
 
     pub fn set_app_id(&mut self, app_id: String) {
@@ -308,14 +287,11 @@ impl WindowElement {
         }
     }
 
-    pub fn set_fullscreen(&mut self, geo: Option<Rectangle<i32, Logical>>) {
-        self.fullscreen = geo.is_some();
-        if let Some(g) = geo {
-            self.fullscreen_geo = g;
-        }
+    pub fn set_fullscreen(&mut self, fullscreen: bool) {
+        self.fullscreen = fullscreen;
         if let Some(tl) = self.window.toplevel() {
             tl.with_pending_state(|s| {
-                if self.fullscreen {
+                if fullscreen {
                     s.states.set(xdg_toplevel::State::Fullscreen);
                 } else {
                     s.states.unset(xdg_toplevel::State::Fullscreen);
@@ -341,25 +317,24 @@ impl WindowElement {
         }
     }
 
-    pub fn configure(&mut self) {
-        let target = self.geo();
-        // nothing changed
+    pub fn configure(&mut self, target: Rectangle<i32, Logical>) -> Option<Serial> {
         if target == self.configured_geo {
-            return;
+            return None;
         }
-        // position-only - update render_geo, no client roundtrip
+
+        // position only, no client roundtrip
         if target.size == self.configured_geo.size {
             self.render_geo.loc = target.loc;
             self.configured_geo = target;
             self.clear_render_cache();
-            return;
+            return None;
         }
-        let Some(tl) = self.window.toplevel() else {
-            return;
-        };
+
+        // size changed, send configure to client
+        let tl = self.window.toplevel()?;
         self.configured_geo = target;
         tl.with_pending_state(|s| s.size = Some(target.size));
-        tl.send_pending_configure();
+        tl.send_pending_configure()
     }
 
     pub fn on_commit(&mut self) {
@@ -375,8 +350,8 @@ impl WindowElement {
             }
         }
 
-        if self.render_geo != self.geo() {
-            self.render_geo = self.geo();
+        if self.render_geo != self.configured_geo {
+            self.render_geo = self.configured_geo;
             self.clear_render_cache();
         }
     }

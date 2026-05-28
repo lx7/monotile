@@ -100,8 +100,7 @@ impl XdgShellHandler for Monotile {
     ) {
         if let Some(id) = self.state.windows.find_by_surface(surface.wl_surface()) {
             let mon = self.state.windows[id].monitor;
-            let geo = self.state.monitors[mon].output_geometry();
-            self.state.windows[id].set_fullscreen(Some(geo));
+            self.state.windows[id].set_fullscreen(true);
             self.recompute_layout(mon);
         }
     }
@@ -109,7 +108,7 @@ impl XdgShellHandler for Monotile {
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
         if let Some(id) = self.state.windows.find_by_surface(surface.wl_surface()) {
             let monitor = self.state.windows[id].monitor;
-            self.state.windows[id].set_fullscreen(None);
+            self.state.windows[id].set_fullscreen(false);
             self.recompute_layout(monitor);
         }
     }
@@ -206,7 +205,7 @@ impl Monotile {
         let mon = self.state.mon();
 
         let parent_loc = if let Some(we) = parent {
-            we.target_loc()
+            we.surface_loc()
         } else {
             let map = layer_map_for_output(&mon.output);
             let Some(l) = map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL) else {

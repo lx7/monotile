@@ -126,7 +126,7 @@ impl Monitor {
             return;
         };
         if let Some(we) = ws.get_mut(id) {
-            we.set_fullscreen(None);
+            we.set_fullscreen(false);
         }
         for t in &mut self.tags {
             t.remove(id);
@@ -169,6 +169,8 @@ impl Monitor {
     }
 
     pub fn recompute_layout(&mut self, ws: &mut Windows, config: &Config) {
+        let area = layer_map_for_output(&self.output).non_exclusive_zone();
+        let fs_geo = self.output_geometry();
         let tag = &mut self.tags[self.active_tag];
 
         tag.layout
@@ -192,17 +194,18 @@ impl Monitor {
             .copied()
             .find(|&id| ws.get(id).is_some_and(|we| we.fullscreen));
 
-        let area = layer_map_for_output(&self.output).non_exclusive_zone();
         tag.layout.recompute(area, &config.layout);
-        for tile in tag.layout.tiles() {
-            if let Some(we) = ws.get_mut(tile.id) {
-                we.tiled_geo = tile.rect;
-            }
-        }
         for &id in &tag.focus_stack {
-            if let Some(we) = ws.get_mut(id) {
-                we.configure();
-            }
+            let Some(we) = ws.get_mut(id) else { continue };
+            let target = if we.fullscreen {
+                fs_geo
+            } else if we.floating {
+                we.float_geo
+            } else {
+                let Some(rect) = tag.layout.position_of(id) else { continue };
+                rect
+            };
+            we.configure(target);
         }
     }
 

@@ -340,12 +340,8 @@ impl Monotile {
             }
             ToggleFullscreen => {
                 if let Some(id) = self.state.mon().tag().focused_id() {
-                    let geo = if self.state.windows[id].fullscreen {
-                        None
-                    } else {
-                        Some(self.state.mon().output_geometry())
-                    };
-                    self.state.windows[id].set_fullscreen(geo);
+                    let on = !self.state.windows[id].fullscreen;
+                    self.state.windows[id].set_fullscreen(on);
                 }
             }
             FocusTag(tag) => {
@@ -426,7 +422,7 @@ impl Monotile {
             _ => return,
         };
         let id = we.id;
-        let geo = we.geo();
+        let geo = we.render_geo;
         let ptr = self.state.seat.get_pointer().unwrap();
         match action {
             Action::Move => {

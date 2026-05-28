@@ -411,7 +411,7 @@ impl State {
         if !ids.is_empty() && !self.monitors.is_empty() {
             for &id in &ids {
                 if let Some(we) = self.windows.get_mut(id) {
-                    we.set_fullscreen(None);
+                    we.set_fullscreen(false);
                     we.monitor = self.active_monitor;
                 }
             }

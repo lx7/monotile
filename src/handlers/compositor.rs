@@ -129,7 +129,7 @@ impl Monotile {
         }
         let id = self.state.map(unmapped);
         let mon = self.state.windows[id].monitor;
-        // recompute_layout must set tiled_geo before on_commit
+        // recompute_layout configures the window before on_commit sets render_geo
         self.recompute_layout(mon);
         self.state.windows[id].on_commit();
         None
