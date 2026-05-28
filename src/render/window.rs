@@ -289,8 +289,9 @@ impl WindowElement {
             }
         }
 
-        // snapshot the live texture for layout transitions
-        if let Some(wl) = &live
+        // refresh the snapshot when the client committed a new buffer
+        if self.texture_dirty
+            && let Some(wl) = &live
             && let Some(tex) = with_renderer_surface_state(wl, |state| {
                 Some(TextureBuffer::from_texture(
                     renderer,
@@ -303,6 +304,7 @@ impl WindowElement {
             .flatten()
         {
             self.last_texture = Some(tex);
+            self.texture_dirty = false;
         }
     }
 }

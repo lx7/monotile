@@ -119,6 +119,8 @@ pub struct WindowElement {
 
     // true after client commits a buffer, cleared after send_frame
     pub buffer_committed: bool,
+    // true after client commits a buffer, cleared once last_texture is refreshed
+    pub texture_dirty: bool,
     pub last_texture: Option<TextureBuffer<GlesTexture>>,
 }
 
@@ -151,6 +153,7 @@ impl WindowElement {
             configured_geo: Rectangle::from_size(configured_size),
             render_geo: Rectangle::default(),
             buffer_committed: false,
+            texture_dirty: false,
             content_offset: geom.loc,
             last_texture: None,
         }
@@ -345,6 +348,7 @@ impl WindowElement {
     pub fn on_commit(&mut self) {
         self.window.on_commit();
         self.buffer_committed = true;
+        self.texture_dirty = true;
         self.content_offset = self.window.geometry().loc;
 
         // accept client-initiated size for floating windows
