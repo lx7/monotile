@@ -5,8 +5,6 @@ use smithay::{
     utils::{Logical, Rectangle, Serial},
 };
 
-use crate::config;
-
 use super::{TilingLayout, WindowId, Windows};
 
 #[derive(Debug, Default, Clone)]
@@ -74,7 +72,6 @@ impl Tag {
         ws: &mut Windows,
         area: Rectangle<i32, Logical>,
         fs_geo: Rectangle<i32, Logical>,
-        cfg: &config::Layout,
     ) -> Vec<(WlSurface, Serial)> {
         self.layout
             .retain(|id| ws.get(id).is_some_and(|we| !we.floating));
@@ -97,7 +94,7 @@ impl Tag {
             .copied()
             .find(|&id| ws.get(id).is_some_and(|we| we.fullscreen));
 
-        self.layout.recompute(area, cfg);
+        self.layout.recompute(area);
         let mut configured = Vec::new();
         for &id in &self.focus_stack {
             let Some(we) = ws.get_mut(id) else { continue };

@@ -97,7 +97,7 @@ impl Monotile {
                 let count = tag.layout.len() + 1;
                 let area = layer_map_for_output(&mon.output).non_exclusive_zone();
                 tag.layout
-                    .compute_rects(count, area, &self.state.config.layout)
+                    .compute_rects(count, area)
                     .last()
                     .map(|r| r.size)
                     .unwrap_or(area.size)

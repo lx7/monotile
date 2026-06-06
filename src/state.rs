@@ -121,8 +121,7 @@ impl Monotile {
         self.update_focus();
         self.backend
             .schedule_render(&self.state.monitors[idx].output);
-        let config = &self.state.config;
-        self.state.monitors[idx].recompute_layout(&mut self.state.windows, config)
+        self.state.monitors[idx].recompute_layout(&mut self.state.windows)
     }
 
     pub fn unblock_ready_transitions(&mut self) {
@@ -188,8 +187,11 @@ impl Monotile {
         self.state.monitors.update_rules(&self.state.config.outputs);
         self.backend.apply_output_settings(&self.state.monitors);
         self.reconfigure_devices();
-        for i in 0..self.state.monitors.len() {
-            self.state.monitors[i].recompute_layout(&mut self.state.windows, &self.state.config);
+        for mon in self.state.monitors.iter_mut() {
+            for tag in &mut mon.tags {
+                tag.layout.config = self.state.config.layout.clone();
+            }
+            mon.recompute_layout(&mut self.state.windows);
         }
         self.update_focus();
         self.backend.schedule_render_all();
@@ -455,7 +457,7 @@ impl State {
             for id in ids {
                 mon.tag_mut().add(id);
             }
-            mon.recompute_layout(&mut self.windows, &self.config);
+            mon.recompute_layout(&mut self.windows);
         }
         self.ipc.dirty = true;
     }

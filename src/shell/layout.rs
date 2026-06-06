@@ -16,6 +16,7 @@ pub struct Tile {
 pub struct TilingLayout {
     pub main_count: usize,
     pub main_factor: f32,
+    pub config: config::Layout,
     tiles: Vec<Tile>,
 }
 
@@ -24,6 +25,7 @@ impl Default for TilingLayout {
         Self {
             main_count: config::TileConfig::default().main_count,
             main_factor: config::TileConfig::default().main_factor,
+            config: config::Layout::default(),
             tiles: Vec::new(),
         }
     }
@@ -123,8 +125,8 @@ impl TilingLayout {
         self.main_count = count.max(1);
     }
 
-    pub fn recompute(&mut self, area: Rectangle<i32, Logical>, cfg: &config::Layout) {
-        let rects = self.compute_rects(self.tiles.len(), area, cfg);
+    pub fn recompute(&mut self, area: Rectangle<i32, Logical>) {
+        let rects = self.compute_rects(self.tiles.len(), area);
         for (tile, rect) in self.tiles.iter_mut().zip(rects) {
             tile.rect = rect;
         }
@@ -134,7 +136,6 @@ impl TilingLayout {
         &self,
         count: usize,
         area: Rectangle<i32, Logical>,
-        layout: &config::Layout,
     ) -> Vec<Rectangle<i32, Logical>> {
         if count == 0 {
             return vec![];
@@ -143,9 +144,9 @@ impl TilingLayout {
         let main_count = self.main_count.min(count);
         let stack_count = count - main_count;
 
-        let disable_gaps = layout.smart_gaps && count == 1;
-        let outer = if disable_gaps { 0 } else { layout.outer_gap };
-        let inner = if disable_gaps { 0 } else { layout.inner_gap };
+        let disable_gaps = self.config.smart_gaps && count == 1;
+        let outer = if disable_gaps { 0 } else { self.config.outer_gap };
+        let inner = if disable_gaps { 0 } else { self.config.inner_gap };
 
         let usable = if outer == 0 {
             area
@@ -300,13 +301,9 @@ mod tests {
         l
     }
 
-    fn compute(layout: &TilingLayout, count: usize) -> Vec<Rectangle<i32, Logical>> {
-        layout.compute_rects(count, area(), &config::Layout::default())
-    }
-
     #[test]
     fn zero_windows() {
-        let rects = compute(&TilingLayout::default(), 0);
+        let rects = TilingLayout::default().compute_rects(0, area());
         assert!(rects.is_empty(), "zero windows should produce no rects");
     }
 
@@ -314,7 +311,7 @@ mod tests {
     fn single_window_fills_area() {
         let c = config::Layout::default();
         let outer = c.outer_gap;
-        let rects = compute(&TilingLayout::default(), 1);
+        let rects = TilingLayout::default().compute_rects(1, area());
         assert_eq!(rects.len(), 1, "single window should produce 1 rect");
         let expected = Rectangle::new((outer, outer).into(), (W - 2 * outer, H - 2 * outer).into());
         assert_eq!(rects[0], expected, "single window should fill usable area");
@@ -331,7 +328,7 @@ mod tests {
         let usable_h = H - 2 * outer;
         let mw = (usable_w as f32 * mfact) as i32;
 
-        let rects = compute(&with_main(1, mfact), 2);
+        let rects = with_main(1, mfact).compute_rects(2, area());
         assert_eq!(rects.len(), 2, "two windows should produce 2 rects");
 
         assert_eq!(rects[0].loc, (outer, outer).into(), "main loc");
@@ -357,7 +354,7 @@ mod tests {
         let stack_w = usable_w - mw - inner + half;
         let stack_h = (usable_h - inner) / 2;
 
-        let rects = compute(&with_main(1, mfact), 3);
+        let rects = with_main(1, mfact).compute_rects(3, area());
         assert_eq!(rects.len(), 3, "three windows should produce 3 rects");
 
         assert_eq!(rects[0].loc, (outer, outer).into(), "main loc");
@@ -373,7 +370,7 @@ mod tests {
 
     #[test]
     fn main_count_two() {
-        let rects = compute(&with_main(2, 0.5), 3);
+        let rects = with_main(2, 0.5).compute_rects(3, area());
         assert_eq!(rects.len(), 3, "should produce 3 rects");
 
         assert_eq!(rects[0].loc.x, rects[1].loc.x, "mains should share x");
@@ -390,7 +387,7 @@ mod tests {
 
     #[test]
     fn main_count_exceeds_window_count() {
-        let rects = compute(&with_main(3, 0.5), 2);
+        let rects = with_main(3, 0.5).compute_rects(2, area());
         assert_eq!(rects.len(), 2, "should produce 2 rects");
         assert_eq!(rects[0].loc.x, rects[1].loc.x, "both should share x");
         assert!(
@@ -401,7 +398,7 @@ mod tests {
 
     #[test]
     fn mfact_extremes() {
-        let rects = compute(&with_main(1, 0.1), 2);
+        let rects = with_main(1, 0.1).compute_rects(2, area());
         let main_w = rects[0].size.w;
         let stack_w = rects[1].size.w;
         assert!(
@@ -409,7 +406,7 @@ mod tests {
             "stack should be much wider: m={main_w} s={stack_w}",
         );
 
-        let rects = compute(&with_main(1, 0.9), 2);
+        let rects = with_main(1, 0.9).compute_rects(2, area());
         let main_w = rects[0].size.w;
         let stack_w = rects[1].size.w;
         assert!(
@@ -420,7 +417,7 @@ mod tests {
 
     #[test]
     fn windows_cover_area_without_overlap() {
-        let rects = compute(&with_main(1, 0.5), 4);
+        let rects = with_main(1, 0.5).compute_rects(4, area());
         assert_eq!(rects.len(), 4, "should produce 4 rects");
 
         for i in 0..rects.len() {
@@ -439,7 +436,7 @@ mod tests {
     #[test]
     fn all_rects_fit_within_area() {
         for count in 1..=6 {
-            let rects = compute(&with_main(1, 0.5), count);
+            let rects = with_main(1, 0.5).compute_rects(count, area());
             for (i, r) in rects.iter().enumerate() {
                 assert!(
                     r.loc.x >= 0 && r.loc.y >= 0,
