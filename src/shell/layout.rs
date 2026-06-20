@@ -4,13 +4,7 @@ use smithay::utils::{Logical, Rectangle};
 
 use crate::config::{self, Rel};
 
-use super::WindowId;
-
-#[derive(Debug, Clone, Copy)]
-pub struct Tile {
-    pub id: WindowId,
-    pub rect: Rectangle<i32, Logical>,
-}
+use super::{Tile, WindowId};
 
 #[derive(Debug, Clone)]
 pub struct TilingLayout {
