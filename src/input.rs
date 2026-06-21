@@ -7,6 +7,7 @@ use crate::{
     config::{Action, Config, Mods, Trigger},
     grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
     handlers::Devices,
+    shell::View,
     spawn::spawn,
 };
 use smithay::{
@@ -416,13 +417,16 @@ impl Monotile {
             }
         }
 
-        let tag = self.state.mon().tag();
-        let we = match self.state.windows.window_under(tag, pos) {
-            Some(we) if we.floating => we,
-            _ => return,
+        let mon = self.state.mon();
+        let view = View::project(mon.tag(), &self.state.windows, mon.output_geometry());
+        let Some(tile) = view.window_under(pos) else {
+            return;
         };
-        let id = we.id;
-        let geo = we.render_geo;
+        if !self.state.windows[tile.id].floating {
+            return;
+        }
+        let id = tile.id;
+        let geo = tile.rect;
         let ptr = self.state.seat.get_pointer().unwrap();
         match action {
             Action::Move => {

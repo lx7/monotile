@@ -416,14 +416,4 @@ impl Windows {
             .collect()
     }
 
-    pub fn window_under(&self, tag: &Tag, pos: Point<f64, Logical>) -> Option<&WindowElement> {
-        for id in tag.window_ids().into_iter().rev() {
-            if let Some(we) = self.get(id)
-                && we.render_geo.to_f64().contains(pos)
-            {
-                return Some(we);
-            }
-        }
-        None
-    }
 }

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use smithay::utils::{Logical, Rectangle};
+use smithay::utils::{Logical, Point, Rectangle};
 
 use super::{Tag, WindowId, Windows};
 
@@ -42,5 +42,23 @@ impl View {
             tiled,
             floating,
         }
+    }
+
+    pub fn rect_of(&self, id: WindowId) -> Option<Rectangle<i32, Logical>> {
+        self.fullscreen
+            .iter()
+            .chain(&self.tiled)
+            .chain(&self.floating)
+            .find(|t| t.id == id)
+            .map(|t| t.rect)
+    }
+
+    pub fn window_under(&self, pos: Point<f64, Logical>) -> Option<Tile> {
+        self.floating
+            .iter()
+            .rev()
+            .chain(self.tiled.iter().rev())
+            .find(|t| t.rect.to_f64().contains(pos))
+            .copied()
     }
 }

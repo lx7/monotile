@@ -64,7 +64,7 @@ use crate::{
     ipc::IpcState,
     render::cursor::CursorManager,
     shell::{
-        LayoutTransition, Monitor, MonitorSettings, Monitors, Tag, Unmapped, WindowElement,
+        LayoutTransition, Monitor, MonitorSettings, Monitors, Tag, Unmapped, View, WindowElement,
         WindowId, Windows,
     },
     spawn::notify,
@@ -527,16 +527,20 @@ impl State {
         }
 
         // windows and popups
+        let view = View::project(mon.tag(), &self.windows, mon.output_geometry());
         for id in mon.tag().window_ids().into_iter().rev() {
             let Some(we) = self.windows.get(id) else {
                 continue;
             };
-            let loc = we.surface_loc();
+            let Some(rect) = view.rect_of(id) else {
+                continue;
+            };
+            let loc = rect.loc - we.content_offset;
             let rel = pos - loc.to_f64();
             if let Some((s, point)) = we.window.surface_under(rel, WindowSurfaceType::ALL) {
                 return (Some((s, (point + loc).to_f64())), Some(id));
             }
-            if we.render_geo.to_f64().contains(pos) {
+            if rect.to_f64().contains(pos) {
                 return (None, Some(id));
             }
         }
