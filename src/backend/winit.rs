@@ -27,6 +27,7 @@ impl WinitState {
         let age = self.backend.buffer_age().unwrap_or(0);
         let (renderer, mut fb) = self.backend.bind()?;
         let mon = &mut state.monitors[state.active_monitor];
+        mon.views.pop_ready();
         let elems = crate::render::output_elements(
             renderer,
             mon,
@@ -94,7 +95,9 @@ pub fn init(
     );
     output.set_preferred(mode);
 
-    monotile.state.add_monitor(output.clone(), MonitorSettings::default());
+    monotile
+        .state
+        .add_monitor(output.clone(), MonitorSettings::default());
     info!("output: winit {}x{}", mode.size.w, mode.size.h);
 
     let damage_tracker = OutputDamageTracker::from_output(&output);

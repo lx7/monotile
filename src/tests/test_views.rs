@@ -1,5 +1,7 @@
+use smithay::utils::Rectangle;
+
 use super::Fixture;
-use crate::shell::View;
+use crate::{config::Config, shell::View};
 
 fn open_window(f: &mut Fixture, c: usize) -> usize {
     let w = f.client_mut(c).create_window();
@@ -13,13 +15,11 @@ fn open_window(f: &mut Fixture, c: usize) -> usize {
 fn settle(f: &mut Fixture, c: usize, win: usize) {
     f.client_mut(c).ack_and_commit(win);
     f.roundtrip(c);
-    f.mt.unblock_ready_transitions();
+    f.mt.advance_view_queues();
 }
 
 fn project(f: &Fixture) -> View {
-    let st = &f.mt.state;
-    let mon = &st.monitors[st.active_monitor];
-    View::project(mon.tag(), &st.windows, mon.output_geometry())
+    View::project(f.mt.state.mon().tag(), Vec::new())
 }
 
 #[test]
@@ -43,11 +43,8 @@ fn two_tiled_windows_project_in_layout_order() {
     let _b = open_window(&mut f, c);
     settle(&mut f, c, a);
 
-    let st = &f.mt.state;
-    let mon = &st.monitors[st.active_monitor];
-    let order: Vec<_> = mon.tag().layout.ids().collect();
-    let v = View::project(mon.tag(), &st.windows, mon.output_geometry());
-
+    let order: Vec<_> = f.mt.state.mon().tag().layout.ids().collect();
+    let v = project(&f);
     assert_eq!(v.tiled.len(), 2);
     assert_eq!(
         v.tiled.iter().map(|t| t.id).collect::<Vec<_>>(),
@@ -68,13 +65,11 @@ fn floating_window_lands_in_floating_group() {
 
     let v = project(&f);
     assert!(v.tiled.is_empty(), "floating window not tiled");
-    assert_eq!(v.floating.len(), 1);
-    assert_eq!(v.floating[0].id, id);
-    assert_eq!(v.floating[0].rect, f.mt.state.windows[id].float_geo);
+    assert_eq!(v.floating, vec![id]);
 }
 
 #[test]
-fn fullscreen_window_projects_to_fullscreen_at_output_rect() {
+fn fullscreen_window_projects_to_fullscreen() {
     let mut f = Fixture::new();
     let c = f.add_client();
     let a = open_window(&mut f, c);
@@ -83,13 +78,27 @@ fn fullscreen_window_projects_to_fullscreen_at_output_rect() {
     f.mt.recompute_layout(f.mt.state.active_monitor);
     settle(&mut f, c, a);
 
-    let st = &f.mt.state;
-    let mon = &st.monitors[st.active_monitor];
-    let v = View::project(mon.tag(), &st.windows, mon.output_geometry());
-
+    let v = project(&f);
     assert!(v.tiled.is_empty() && v.floating.is_empty());
-    assert_eq!(v.fullscreen.map(|t| t.id), Some(id));
-    assert_eq!(v.fullscreen.map(|t| t.rect), Some(mon.output_geometry()));
+    assert_eq!(v.fullscreen, Some(id));
+}
+
+#[test]
+fn smart_gaps_single_window_fills_area() {
+    let mut config = Config::new();
+    config.layout.smart_gaps = true;
+    config.layout.outer_gap = 20;
+    let mut f = Fixture::with_config(config);
+    let c = f.add_client();
+    let a = open_window(&mut f, c);
+    settle(&mut f, c, a);
+
+    let tile = f.mt.state.mon().views.front().unwrap().tiled[0].rect;
+    assert_eq!(
+        tile,
+        Rectangle::from_size((1000, 800).into()),
+        "a lone tiled window fills the whole area with smart_gaps",
+    );
 }
 
 #[test]

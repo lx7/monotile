@@ -107,15 +107,14 @@ pub struct WindowElement {
     pub screencasts: u32,
 
     pub float_geo: Rectangle<i32, Logical>,
-    pub render_geo: Rectangle<i32, Logical>,
-    configured_geo: Rectangle<i32, Logical>,
+    configured_size: Size<i32, Logical>,
     pub content_offset: Point<i32, Logical>,
 
-    // rendering: steps keyed by (rule_index, slot)
     pub render_steps: BTreeMap<(usize, u32), RenderStep>,
     pub render_pipeline: Vec<(usize, u32)>,
     pub radius: f32,
     rules: Vec<config::WindowRule>,
+    pub(crate) cache_geo: Rectangle<i32, Logical>,
 
     // true after client commits a buffer, cleared after send_frame
     pub buffer_committed: bool,
@@ -150,8 +149,8 @@ impl WindowElement {
             render_pipeline: Vec::new(),
             radius: 0.0,
             rules,
-            configured_geo: Rectangle::from_size(configured_size),
-            render_geo: Rectangle::default(),
+            cache_geo: Rectangle::default(),
+            configured_size,
             buffer_committed: false,
             texture_dirty: false,
             content_offset: geom.loc,
@@ -242,20 +241,18 @@ impl WindowElement {
         if let Some(tl) = self.window.toplevel() {
             tl.with_pending_state(|s| s.states.set(xdg_toplevel::State::Resizing));
         }
-        let target = self.float_geo;
-        self.configure(target);
+        self.configure(self.float_geo.size);
     }
 
     pub fn finish_resize_float(&mut self) {
         if let Some(tl) = self.window.toplevel() {
             tl.with_pending_state(|s| s.states.unset(xdg_toplevel::State::Resizing));
         }
-        let target = self.float_geo;
-        self.configure(target);
+        self.configure(self.float_geo.size);
     }
 
-    pub fn surface_loc(&self) -> Point<i32, Logical> {
-        self.render_geo.loc - self.content_offset
+    pub fn surface_loc(&self, geo: Rectangle<i32, Logical>) -> Point<i32, Logical> {
+        geo.loc - self.content_offset
     }
 
     pub fn set_app_id(&mut self, app_id: String) {
@@ -319,29 +316,13 @@ impl WindowElement {
         }
     }
 
-    fn clear_render_cache(&mut self) {
-        for step in self.render_steps.values_mut() {
-            step.clear();
-        }
-    }
-
-    pub fn configure(&mut self, target: Rectangle<i32, Logical>) -> Option<Serial> {
-        if target == self.configured_geo {
+    pub fn configure(&mut self, size: Size<i32, Logical>) -> Option<Serial> {
+        if size == self.configured_size {
             return None;
         }
-
-        // position only, no client roundtrip
-        if target.size == self.configured_geo.size {
-            self.render_geo.loc = target.loc;
-            self.configured_geo = target;
-            self.clear_render_cache();
-            return None;
-        }
-
-        // size changed, send configure to client
         let tl = self.window.toplevel()?;
-        self.configured_geo = target;
-        tl.with_pending_state(|s| s.size = Some(target.size));
+        self.configured_size = size;
+        tl.with_pending_state(|s| s.size = Some(size));
         tl.send_pending_configure()
     }
 
@@ -356,13 +337,8 @@ impl WindowElement {
             let committed = self.window.geometry().size;
             if committed != self.float_geo.size {
                 self.float_geo.size = committed;
-                self.configured_geo.size = committed;
+                self.configured_size = committed;
             }
-        }
-
-        if self.render_geo != self.configured_geo {
-            self.render_geo = self.configured_geo;
-            self.clear_render_cache();
         }
     }
 }
@@ -374,6 +350,7 @@ pub struct Windows {
     inner: SlotMap<WindowId, WindowElement>,
     by_surface: HashMap<ObjectId, WindowId>,
     pub focused: Option<WindowId>,
+    zombies: Vec<WindowId>,
 }
 
 impl Windows {
@@ -391,6 +368,28 @@ impl Windows {
             self.focused = None;
         }
         self.inner.remove(id)
+    }
+
+    pub fn detach(&mut self, surface: &ObjectId) -> Option<WindowId> {
+        let id = self.by_surface.remove(surface)?;
+        if self.focused == Some(id) {
+            self.focused = None;
+        }
+        self.zombies.push(id);
+        Some(id)
+    }
+
+    pub fn reap(&mut self, is_held: impl Fn(WindowId) -> bool) {
+        let mut i = 0;
+        while i < self.zombies.len() {
+            let id = self.zombies[i];
+            if is_held(id) {
+                i += 1;
+            } else {
+                self.inner.remove(id);
+                self.zombies.swap_remove(i);
+            }
+        }
     }
 
     pub fn update_rules(&mut self, rules: &[config::WindowRule]) {
@@ -415,5 +414,4 @@ impl Windows {
             .filter_map(|id| self.get(id))
             .collect()
     }
-
 }

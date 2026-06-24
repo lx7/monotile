@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
+mod blocker;
 mod layout;
 mod monitor;
 mod tag;
-mod transition;
 mod view;
 mod window;
 
+pub use blocker::LayoutBlocker;
 pub use layout::TilingLayout;
 pub use monitor::{Monitor, MonitorSettings, Monitors};
 pub use tag::Tag;
-pub use transition::{LayoutBlocker, LayoutTransition};
-pub use view::{Tile, View};
+pub use view::{Tile, View, Views};
 pub use window::{Placement, ToplevelSurfaceExt, Unmapped, WindowElement, Windows};
 
 use slotmap::new_key_type;

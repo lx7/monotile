@@ -109,10 +109,10 @@ fn toplevel_capture_info(
     let we = windows.get(id)?;
     let mon = &monitors[we.monitor];
     let scale = mon.output.current_scale().fractional_scale();
-    let geo = we.render_geo.to_f64().to_physical(scale);
+    let size = we.window.geometry().size.to_f64().to_physical(scale);
     Some((
         mon.output.clone(),
-        (geo.size.w as i32, geo.size.h as i32).into(),
+        (size.w as i32, size.h as i32).into(),
         Scale::from(scale),
     ))
 }
@@ -471,7 +471,6 @@ pub fn capture_frame(
                     frame.fail(CaptureFailureReason::Unknown);
                     continue;
                 };
-                let window_loc = we.render_geo.loc;
                 let loc = Point::from((0, 0)) - we.window.geometry().loc;
                 let surf_loc = loc.to_physical_precise_round(scale);
                 let surfs: Vec<WaylandSurfaceRenderElement<GlowRenderer>> =
@@ -487,6 +486,10 @@ pub fn capture_frame(
                     crate::render::popup_elements(renderer, &wl, loc, scale);
                 elems.extend(surfs.into_iter().map(MonotileElement::Surface));
                 if s.session.draw_cursor() {
+                    let window_loc = state.monitors[we.monitor]
+                        .window_rect(&state.windows, id)
+                        .map(|r| r.loc)
+                        .unwrap_or_default();
                     let ptr_pos = state.seat.get_pointer().unwrap().current_location();
                     let local_pos = ptr_pos - window_loc.to_f64();
                     elems.splice(0..0, state.cursor.elements(renderer, local_pos));

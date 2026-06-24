@@ -1,8 +1,27 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use smithay::utils::{Logical, Point, Rectangle};
+use std::collections::VecDeque;
 
-use super::{Tag, WindowId, Windows};
+use derive_more::{Deref, DerefMut};
+use smithay::{
+    reexports::wayland_server::protocol::wl_surface::WlSurface,
+    utils::{Logical, Rectangle, Serial},
+};
+
+use super::{LayoutBlocker, Tag, WindowId};
+
+#[derive(Debug, Default, Deref, DerefMut)]
+pub struct Views(VecDeque<View>);
+
+impl Views {
+    pub fn pop_ready(&mut self) -> bool {
+        let before = self.len();
+        while self.len() > 1 && self[1].blocker.is_committed() {
+            self.pop_front();
+        }
+        self.len() != before
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Tile {
@@ -10,55 +29,32 @@ pub struct Tile {
     pub rect: Rectangle<i32, Logical>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug)]
 pub struct View {
-    pub fullscreen: Option<Tile>,
+    pub fullscreen: Option<WindowId>,
     pub tiled: Vec<Tile>,
-    pub floating: Vec<Tile>,
+    pub floating: Vec<WindowId>,
+    pub blocker: LayoutBlocker,
 }
 
 impl View {
-    pub fn project(tag: &Tag, ws: &Windows, fs_geo: Rectangle<i32, Logical>) -> Self {
-        if let Some(id) = tag.fullscreen {
-            return Self {
-                fullscreen: Some(Tile { id, rect: fs_geo }),
-                tiled: Vec::new(),
-                floating: Vec::new(),
-            };
-        }
-        let tiled = tag.layout.tiles().to_vec();
-        let floating = tag
-            .floating
-            .iter()
-            .filter_map(|&id| {
-                ws.get(id).map(|we| Tile {
-                    id,
-                    rect: we.float_geo,
-                })
-            })
-            .collect();
+    pub fn project(tag: &Tag, configured: Vec<(WlSurface, Serial)>) -> Self {
+        let (fullscreen, tiled, floating) = if let Some(id) = tag.fullscreen {
+            (Some(id), Vec::new(), Vec::new())
+        } else {
+            (None, tag.layout.tiles().to_vec(), tag.floating.clone())
+        };
         Self {
-            fullscreen: None,
+            fullscreen,
             tiled,
             floating,
+            blocker: LayoutBlocker::install(configured),
         }
     }
 
-    pub fn rect_of(&self, id: WindowId) -> Option<Rectangle<i32, Logical>> {
-        self.fullscreen
-            .iter()
-            .chain(&self.tiled)
-            .chain(&self.floating)
-            .find(|t| t.id == id)
-            .map(|t| t.rect)
-    }
-
-    pub fn window_under(&self, pos: Point<f64, Logical>) -> Option<Tile> {
-        self.floating
-            .iter()
-            .rev()
-            .chain(self.tiled.iter().rev())
-            .find(|t| t.rect.to_f64().contains(pos))
-            .copied()
+    pub fn contains(&self, id: WindowId) -> bool {
+        self.fullscreen == Some(id)
+            || self.tiled.iter().any(|t| t.id == id)
+            || self.floating.contains(&id)
     }
 }

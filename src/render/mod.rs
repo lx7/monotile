@@ -204,10 +204,14 @@ pub fn output_elements(
         return vec![];
     }
 
-    let n = mon.tag().layout.len() + mon.tag().floating.len();
-    let mut elems = Vec::with_capacity(n * 20 + 32);
+    let view = mon.views.front();
+    let mut elems = Vec::with_capacity(windows.len() * 20 + 32);
 
-    if let Some(we) = mon.tag().fullscreen.and_then(|id| windows.get(id)) {
+    if let Some(we) = view
+        .and_then(|v| v.fullscreen)
+        .and_then(|id| windows.get(id))
+    {
+        let geo = mon.output_geometry();
         elems.extend(layer_popup_elements(
             renderer,
             output,
@@ -217,12 +221,12 @@ pub fn output_elements(
         elems.extend(layer_elements(renderer, output, &[Layer::Overlay], scale));
 
         let wl = we.window.wl_surface().unwrap();
-        elems.extend(popup_elements(renderer, &wl, we.render_geo.loc, scale));
+        elems.extend(popup_elements(renderer, &wl, geo.loc, scale));
 
         let surfs = render_elements_from_surface_tree(
             renderer,
             &wl,
-            we.surface_loc().to_physical_precise_round(scale),
+            we.surface_loc(geo).to_physical_precise_round(scale),
             scale,
             1.0,
             Kind::ScanoutCandidate,
@@ -238,31 +242,15 @@ pub fn output_elements(
             scale,
         ));
 
-        let tag = mon.tag();
-        let tiled = tag.layout.len();
-
-        let mut ids = tag.window_ids();
-        ids.reverse();
-        for id in ids {
-            let Some(we) = windows.get_mut(id) else {
-                continue;
-            };
-            let single_tiled = tiled == 1 && !we.floating;
-            we.render_elements(
+        if let Some(view) = view {
+            view.render_elements(
                 &mut elems,
                 renderer,
                 shaders,
                 scale,
-                config.layout.smart_borders && single_tiled,
-                config.layout.smart_gaps && single_tiled,
+                &config.layout,
+                windows,
             );
-        }
-
-        // draw cached texture of closing windows
-        if let Some(t) = &mut mon.transition {
-            for closing in &mut t.closing {
-                closing.render_elements(&mut elems, renderer, shaders, scale, false, false);
-            }
         }
 
         elems.extend(layer_elements(

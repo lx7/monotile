@@ -184,6 +184,7 @@ impl DrmState {
             return;
         };
         let mon = &mut state.monitors[idx];
+        mon.views.pop_ready();
 
         let refresh = Self::refresh_duration(&surface.output);
         let ptr = state.seat.get_pointer().unwrap();

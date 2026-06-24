@@ -64,8 +64,7 @@ use crate::{
     ipc::IpcState,
     render::cursor::CursorManager,
     shell::{
-        LayoutTransition, Monitor, MonitorSettings, Monitors, Tag, Unmapped, View, WindowElement,
-        WindowId, Windows,
+        Monitor, MonitorSettings, Monitors, Tag, Unmapped, Views, WindowElement, WindowId, Windows,
     },
     spawn::notify,
 };
@@ -117,40 +116,37 @@ impl Monotile {
         )
     }
 
-    pub fn recompute_layout(&mut self, idx: usize) -> Option<&mut LayoutTransition> {
+    pub fn recompute_layout(&mut self, idx: usize) {
         self.update_focus();
         self.backend
             .schedule_render(&self.state.monitors[idx].output);
-        self.state.monitors[idx].recompute_layout(&mut self.state.windows)
+        self.state.monitors[idx].recompute_layout(&mut self.state.windows);
     }
 
-    pub fn unblock_ready_transitions(&mut self) {
-        // collect ready clients
-        let mut clients: Vec<Client> = Vec::new();
-        for mon in self.state.monitors.iter() {
-            let Some(t) = mon.transition.as_ref().filter(|t| t.blocker.is_ready()) else {
-                continue;
-            };
-            clients.extend(t.blocker.surfaces().filter_map(|s| s.client()));
-        }
-        // notify smithay to apply the cached commits
-        if !clients.is_empty() {
-            let dh = self.state.display_handle.clone();
-            for client in &clients {
-                if let Some(data) = client.get_data::<ClientState>() {
-                    data.compositor_state.blocker_cleared(self, &dh);
-                }
+    pub fn advance_view_queues(&mut self) {
+        self.unblock_ready_views();
+        // the render path also pops, this handles the timeout
+        for i in 0..self.state.monitors.len() {
+            if self.state.monitors[i].views.pop_ready() {
+                self.backend.schedule_render(&self.state.monitors[i].output);
             }
         }
-        // release transition and render
-        for i in 0..self.state.monitors.len() {
-            let processed = self.state.monitors[i]
-                .transition
-                .as_ref()
-                .is_some_and(|t| t.blocker.is_processed());
-            if processed {
-                self.state.monitors[i].transition = None;
-                self.backend.schedule_render(&self.state.monitors[i].output);
+        let monitors = &self.state.monitors;
+        self.state.windows.reap(|id| monitors.contains_window(id));
+    }
+
+    fn unblock_ready_views(&mut self) {
+        let clients: Vec<Client> = self
+            .state
+            .monitors
+            .iter()
+            .filter_map(|m| m.views.get(1))
+            .flat_map(|v| v.blocker.ready_clients())
+            .collect();
+        let dh = self.state.display_handle.clone();
+        for client in clients {
+            if let Some(data) = client.get_data::<ClientState>() {
+                data.compositor_state.blocker_cleared(self, &dh);
             }
         }
     }
@@ -404,6 +400,9 @@ impl State {
         let global = output.create_global::<Monotile>(&self.display_handle);
         let mut tags = Vec::new();
         tags.resize_with(settings.tags.len(), Tag::default);
+        for tag in &mut tags {
+            tag.layout.config = self.config.layout.clone();
+        }
         self.monitors.push(Monitor {
             output,
             global,
@@ -413,7 +412,7 @@ impl State {
             prev_tag: 0,
             exclusive_layer: None,
             lock_surface: None,
-            transition: None,
+            views: Views::default(),
         });
     }
 
@@ -487,14 +486,14 @@ impl State {
         id
     }
 
-    pub fn destroy_window(&mut self, surface: &ObjectId) -> Option<(usize, WindowElement)> {
+    pub fn destroy_window(&mut self, surface: &ObjectId) -> Option<usize> {
         self.unmapped.remove(surface);
-        let we = self.windows.remove(surface)?;
-        self.screencopy.remove_toplevel(we.id);
-        self.foreign_toplevel.remove(we.id);
-        let mon = we.monitor;
-        self.monitors[mon].unmap(we.id);
-        Some((mon, we))
+        let id = self.windows.detach(surface)?;
+        self.screencopy.remove_toplevel(id);
+        self.foreign_toplevel.remove(id);
+        let mon = self.windows[id].monitor;
+        self.monitors[mon].unmap(id);
+        Some(mon)
     }
 
     pub fn surface_under(
@@ -527,12 +526,11 @@ impl State {
         }
 
         // windows and popups
-        let view = View::project(mon.tag(), &self.windows, mon.output_geometry());
         for id in mon.tag().window_ids().into_iter().rev() {
             let Some(we) = self.windows.get(id) else {
                 continue;
             };
-            let Some(rect) = view.rect_of(id) else {
+            let Some(rect) = mon.window_rect(&self.windows, id) else {
                 continue;
             };
             let loc = rect.loc - we.content_offset;

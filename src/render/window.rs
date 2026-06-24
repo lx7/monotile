@@ -22,7 +22,10 @@ use super::{
     clipped_surface::{Clippable, Clipped},
     popup_elements,
 };
-use crate::{config, shell::WindowElement};
+use crate::{
+    config,
+    shell::{View, WindowElement, Windows},
+};
 
 #[derive(Debug)]
 pub enum RenderStep {
@@ -74,7 +77,7 @@ impl RenderStep {
         })
     }
 
-    pub fn clear(&mut self) {
+    fn clear(&mut self) {
         match self {
             Self::Border { elements, .. } => elements.clear(),
             Self::WindowSurface { background, .. } => *background = None,
@@ -217,17 +220,27 @@ impl WindowElement {
         (wl.alive() && has_buffer).then_some(wl)
     }
 
+    fn sync_render_cache(&mut self, win_geo: Rectangle<i32, Logical>) {
+        if win_geo != self.cache_geo {
+            for step in self.render_steps.values_mut() {
+                step.clear();
+            }
+            self.cache_geo = win_geo;
+        }
+    }
+
     pub fn render_elements(
         &mut self,
         out: &mut Vec<MonotileElement>,
         renderer: &mut GlowRenderer,
         shaders: &Shaders,
         scale: Scale<f64>,
+        win_geo: Rectangle<i32, Logical>,
         disable_border: bool,
         disable_gaps: bool,
     ) {
-        let win_geo = self.render_geo;
-        let surf_loc = self.surface_loc().to_physical_precise_round(scale);
+        self.sync_render_cache(win_geo);
+        let surf_loc = self.surface_loc(win_geo).to_physical_precise_round(scale);
         let live = self.live_surface();
 
         let mut content: Vec<Clippable> = match &live {
@@ -305,6 +318,39 @@ impl WindowElement {
         {
             self.last_texture = Some(tex);
             self.texture_dirty = false;
+        }
+    }
+}
+
+impl View {
+    pub fn render_elements(
+        &self,
+        out: &mut Vec<MonotileElement>,
+        renderer: &mut GlowRenderer,
+        shaders: &Shaders,
+        scale: Scale<f64>,
+        layout: &config::Layout,
+        windows: &mut Windows,
+    ) {
+        let lone = self.tiled.len() == 1;
+        for &id in self.floating.iter().rev() {
+            if let Some(we) = windows.get_mut(id) {
+                let geo = we.float_geo;
+                we.render_elements(out, renderer, shaders, scale, geo, false, false);
+            }
+        }
+        for tile in self.tiled.iter().rev() {
+            if let Some(we) = windows.get_mut(tile.id) {
+                we.render_elements(
+                    out,
+                    renderer,
+                    shaders,
+                    scale,
+                    tile.rect,
+                    layout.smart_borders && lone,
+                    layout.smart_gaps && lone,
+                );
+            }
         }
     }
 }

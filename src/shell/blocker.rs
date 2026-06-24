@@ -3,15 +3,13 @@
 use std::time::{Duration, Instant};
 
 use smithay::{
-    reexports::wayland_server::protocol::wl_surface::WlSurface,
+    reexports::wayland_server::{Client, Resource, protocol::wl_surface::WlSurface},
     utils::{IsAlive, Serial},
     wayland::{
         compositor::{Blocker, BlockerState, add_blocker, with_states},
         shell::xdg::{ToplevelCachedState, XdgToplevelSurfaceData},
     },
 };
-
-use super::{Tag, WindowElement};
 
 const ACK_TIMEOUT: Duration = Duration::from_millis(300);
 
@@ -22,22 +20,18 @@ pub struct LayoutBlocker {
 }
 
 impl LayoutBlocker {
-    pub fn new(pending: Vec<(WlSurface, Serial)>) -> Self {
-        Self {
-            pending,
+    pub fn install(configured: Vec<(WlSurface, Serial)>) -> Self {
+        let blocker = Self {
+            pending: configured,
             start: Instant::now(),
+        };
+        for surface in blocker.surfaces().cloned().collect::<Vec<_>>() {
+            add_blocker(&surface, blocker.clone());
         }
+        blocker
     }
 
-    pub fn is_ready(&self) -> bool {
-        self.start.elapsed() >= ACK_TIMEOUT
-            || self
-                .pending
-                .iter()
-                .all(|(s, serial)| !s.alive() || serial_acked(s, *serial))
-    }
-
-    pub fn is_processed(&self) -> bool {
+    pub fn is_committed(&self) -> bool {
         self.start.elapsed() >= ACK_TIMEOUT
             || self
                 .pending
@@ -45,38 +39,29 @@ impl LayoutBlocker {
                 .all(|(s, serial)| !s.alive() || serial_committed(s, *serial))
     }
 
-    pub fn surfaces(&self) -> impl Iterator<Item = &WlSurface> {
+    fn is_ready(&self) -> bool {
+        self.start.elapsed() >= ACK_TIMEOUT
+            || self
+                .pending
+                .iter()
+                .all(|(s, serial)| !s.alive() || serial_acked(s, *serial))
+    }
+
+    fn surfaces(&self) -> impl Iterator<Item = &WlSurface> {
         self.pending.iter().map(|(s, _)| s)
+    }
+
+    pub fn ready_clients(&self) -> impl Iterator<Item = Client> + '_ {
+        self.is_ready()
+            .then(|| self.surfaces().filter_map(|s| s.client()))
+            .into_iter()
+            .flatten()
     }
 }
 
 impl Blocker for LayoutBlocker {
     fn state(&self) -> BlockerState {
         if self.is_ready() { BlockerState::Released } else { BlockerState::Pending }
-    }
-}
-
-#[derive(Debug)]
-pub struct LayoutTransition {
-    pub blocker: LayoutBlocker,
-    pub outgoing: Tag,
-    pub closing: Vec<WindowElement>,
-}
-
-impl LayoutTransition {
-    pub fn new(configured: Vec<(WlSurface, Serial)>, outgoing: Tag) -> Option<Self> {
-        if configured.is_empty() {
-            return None;
-        }
-        let blocker = LayoutBlocker::new(configured);
-        for surface in blocker.surfaces().cloned().collect::<Vec<_>>() {
-            add_blocker(&surface, blocker.clone());
-        }
-        Some(Self {
-            blocker,
-            outgoing,
-            closing: Vec::new(),
-        })
     }
 }
 

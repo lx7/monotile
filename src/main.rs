@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let autostart_pgid = spawn::autostart(args.autostart);
 
     event_loop.run(None, &mut monotile, |mt| {
-        mt.unblock_ready_transitions();
+        mt.advance_view_queues();
         mt.state.flush_clients();
     })?;
 

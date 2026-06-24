@@ -129,7 +129,7 @@ impl Monotile {
         }
         let id = self.state.map(unmapped);
         let mon = self.state.windows[id].monitor;
-        // recompute_layout configures the window before on_commit sets render_geo
+        // recompute_layout queues the first view before on_commit applies the buffer
         self.recompute_layout(mon);
         self.state.windows[id].on_commit();
         None

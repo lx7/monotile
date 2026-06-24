@@ -42,12 +42,10 @@ impl XdgShellHandler for Monotile {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
-        let Some((mon, closed)) = self.state.destroy_window(&surface.wl_surface().id()) else {
+        let Some(mon) = self.state.destroy_window(&surface.wl_surface().id()) else {
             return;
         };
-        if let Some(transition) = self.recompute_layout(mon) {
-            transition.closing.push(closed);
-        }
+        self.recompute_layout(mon);
     }
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
@@ -200,15 +198,12 @@ impl Monotile {
 
         // constraint rect depends on whether parent is a window or layer surface
         let popup_offset = get_popup_toplevel_coords(&kind);
-        let parent = self
-            .state
-            .windows
-            .find_by_surface(&root)
-            .and_then(|id| self.state.windows.get(id));
+        let parent_id = self.state.windows.find_by_surface(&root);
         let mon = self.state.mon();
 
-        let parent_loc = if let Some(we) = parent {
-            we.surface_loc()
+        let parent_loc = if let Some(id) = parent_id {
+            let rect = mon.window_rect(&self.state.windows, id).unwrap_or_default();
+            self.state.windows[id].surface_loc(rect)
         } else {
             let map = layer_map_for_output(&mon.output);
             let Some(l) = map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL) else {

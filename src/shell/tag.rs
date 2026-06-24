@@ -108,7 +108,7 @@ impl Tag {
                 };
                 rect
             };
-            if let Some(serial) = we.configure(target)
+            if let Some(serial) = we.configure(target.size)
                 && let Some(tl) = we.window.toplevel()
             {
                 configured.push((tl.wl_surface().clone(), serial));

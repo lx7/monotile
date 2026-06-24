@@ -14,7 +14,7 @@ use smithay::{
 
 use crate::config::{self, ModeConfig};
 
-use super::{LayoutTransition, Tag, WindowId, Windows};
+use super::{Tag, View, Views, WindowId, Windows};
 
 #[derive(Debug)]
 pub struct MonitorSettings {
@@ -80,7 +80,7 @@ pub struct Monitor {
     pub prev_tag: usize,
     pub exclusive_layer: Option<WlSurface>,
     pub lock_surface: Option<LockSurface>,
-    pub transition: Option<LayoutTransition>,
+    pub views: Views,
 }
 
 impl Monitor {
@@ -153,7 +153,7 @@ impl Monitor {
     }
 
     pub fn set_active_tag(&mut self, tag: usize) {
-        if tag >= self.tags.len() {
+        if tag >= self.tags.len() || tag == self.active_tag {
             return;
         }
         self.prev_tag = self.active_tag;
@@ -169,15 +169,23 @@ impl Monitor {
         Rectangle::new((0, 0).into(), size.to_logical(1))
     }
 
-    pub fn recompute_layout(&mut self, ws: &mut Windows) -> Option<&mut LayoutTransition> {
+    pub fn window_rect(&self, ws: &Windows, id: WindowId) -> Option<Rectangle<i32, Logical>> {
+        let we = ws.get(id)?;
+        if we.fullscreen {
+            Some(self.output_geometry())
+        } else if we.floating {
+            Some(we.float_geo)
+        } else {
+            self.tag().layout.position_of(id)
+        }
+    }
+
+    pub fn recompute_layout(&mut self, ws: &mut Windows) {
         let area = layer_map_for_output(&self.output).non_exclusive_zone();
         let fs_geo = self.output_geometry();
-        let outgoing = self.tag().clone();
         let configured = self.tag_mut().recompute_layout(ws, area, fs_geo);
-        if let Some(transition) = LayoutTransition::new(configured, outgoing) {
-            self.transition = Some(transition);
-        }
-        self.transition.as_mut()
+        let view = View::project(self.tag(), configured);
+        self.views.push_back(view);
     }
 
     pub fn window_ids(&self) -> Vec<WindowId> {
@@ -208,6 +216,10 @@ pub struct Monitors(pub Vec<Monitor>);
 impl Monitors {
     pub fn by_output(&self, output: &Output) -> Option<(usize, &Monitor)> {
         self.iter().enumerate().find(|(_, m)| m.output == *output)
+    }
+
+    pub fn contains_window(&self, id: WindowId) -> bool {
+        self.iter().any(|m| m.views.iter().any(|v| v.contains(id)))
     }
 
     pub fn update_rules(&mut self, rules: &[config::OutputRule]) {
