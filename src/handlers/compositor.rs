@@ -122,6 +122,7 @@ impl Monotile {
         }
 
         let mut unmapped = self.state.unmapped.remove(&surface.id()).unwrap();
+        // process the buffer commit before mapping
         unmapped.window.on_commit();
         let floating = unmapped.should_float();
         if let Some(p) = &mut unmapped.placement {
@@ -129,9 +130,7 @@ impl Monotile {
         }
         let id = self.state.map(unmapped);
         let mon = self.state.windows[id].monitor;
-        // recompute_layout queues the first view before on_commit applies the buffer
         self.recompute_layout(mon);
-        self.state.windows[id].on_commit();
         None
     }
 

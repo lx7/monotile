@@ -151,8 +151,8 @@ impl WindowElement {
             rules,
             cache_geo: Rectangle::default(),
             configured_size,
-            buffer_committed: false,
-            texture_dirty: false,
+            buffer_committed: true,
+            texture_dirty: true,
             content_offset: geom.loc,
             last_texture: None,
         }
