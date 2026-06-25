@@ -3,7 +3,7 @@
 A small and light tiling Wayland compositor in Rust.
 
 > [!NOTE]
-> monotile is under active development. Usable as a daily driver, but some features are still missing (multi-monitor, screen sharing etc).
+> monotile is under active development. Usable as a daily driver, but some features are still missing.
 
 ## Features
 
@@ -38,7 +38,7 @@ A small and light tiling Wayland compositor in Rust.
 
 ## Building monotile
 
-Requires Rust 1.85 or later.
+Requires Rust 1.88 or later.
 
 ### NixOS
 
@@ -67,7 +67,7 @@ cargo build --release
 ### Debian / Ubuntu
 
 ```bash
-# rust toolchain (1.85+)
+# rust toolchain (1.88+)
 # Debian 13+ / Ubuntu 25.04+:
 sudo apt-get install -y cargo
 # older distros:
