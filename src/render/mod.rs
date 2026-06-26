@@ -42,7 +42,7 @@ use smithay::{
 pub use window::RenderStep;
 
 use crate::{
-    config::Config,
+    config::{Config, Layout},
     shell::{Monitor, Windows},
 };
 use clipped_surface::Clipped;
@@ -108,51 +108,64 @@ pub fn compile_shaders(renderer: &mut GlowRenderer) -> Shaders {
     Shaders { rect, shadow, clip }
 }
 
-fn layer_elements(
-    renderer: &mut GlowRenderer,
-    output: &Output,
-    layers: &[Layer],
-    scale: Scale<f64>,
-) -> Vec<MonotileElement> {
-    let map = layer_map_for_output(output);
-    let mut elems = Vec::new();
-    for layer in layers {
-        for surface in map.layers_on(*layer).rev() {
-            let geo = map.layer_geometry(surface).unwrap();
-            let surfs = render_elements_from_surface_tree(
-                renderer,
-                surface.wl_surface(),
-                geo.loc.to_physical_precise_round(scale),
-                scale,
-                1.0,
-                Kind::Unspecified,
-            );
-            elems.extend(surfs.into_iter().map(MonotileElement::Surface));
-        }
-    }
-    elems
+pub struct RenderCtx<'a> {
+    pub(crate) renderer: &'a mut GlowRenderer,
+    pub(crate) shaders: &'a Shaders,
+    pub(crate) layout: &'a Layout,
+    pub(crate) scale: Scale<f64>,
+    pub(crate) elems: Vec<MonotileElement>,
+    output: &'a Output,
 }
 
-fn layer_popup_elements(
-    renderer: &mut GlowRenderer,
-    output: &Output,
-    layers: &[Layer],
-    scale: Scale<f64>,
-) -> Vec<MonotileElement> {
-    let map = layer_map_for_output(output);
-    let mut elems = Vec::new();
-    for layer in layers {
-        for surface in map.layers_on(*layer).rev() {
-            let geo = map.layer_geometry(surface).unwrap();
-            elems.extend(popup_elements(
-                renderer,
-                surface.wl_surface(),
-                geo.loc,
-                scale,
-            ));
+impl RenderCtx<'_> {
+    fn layers(&mut self, layers: &[Layer]) {
+        let map = layer_map_for_output(self.output);
+        for layer in layers {
+            for surface in map.layers_on(*layer).rev() {
+                let geo = map.layer_geometry(surface).unwrap();
+                let surfs = render_elements_from_surface_tree(
+                    self.renderer,
+                    surface.wl_surface(),
+                    geo.loc.to_physical_precise_round(self.scale),
+                    self.scale,
+                    1.0,
+                    Kind::Unspecified,
+                );
+                self.elems
+                    .extend(surfs.into_iter().map(MonotileElement::Surface));
+            }
         }
     }
-    elems
+
+    fn layer_popups(&mut self, layers: &[Layer]) {
+        let map = layer_map_for_output(self.output);
+        for layer in layers {
+            for surface in map.layers_on(*layer).rev() {
+                let origin = map.layer_geometry(surface).unwrap().loc;
+                let popups =
+                    popup_elements(self.renderer, surface.wl_surface(), origin, self.scale);
+                self.elems.extend(popups);
+            }
+        }
+    }
+
+    pub(crate) fn popups(&mut self, surface: &WlSurface, origin: Point<i32, Logical>) {
+        let popups = popup_elements(self.renderer, surface, origin, self.scale);
+        self.elems.extend(popups);
+    }
+
+    fn surface_tree(&mut self, surface: &WlSurface, loc: Point<i32, Logical>, kind: Kind) {
+        let surfs = render_elements_from_surface_tree(
+            self.renderer,
+            surface,
+            loc.to_physical_precise_round(self.scale),
+            self.scale,
+            1.0,
+            kind,
+        );
+        self.elems
+            .extend(surfs.into_iter().map(MonotileElement::Surface));
+    }
 }
 
 pub fn popup_elements(
@@ -189,79 +202,48 @@ pub fn output_elements(
     let out_scale = output.current_scale().fractional_scale();
     let scale = Scale::from(out_scale);
 
+    let mut ctx = RenderCtx {
+        renderer,
+        shaders,
+        layout: &config.layout,
+        scale,
+        elems: Vec::with_capacity(windows.len() * 20 + 32),
+        output,
+    };
+
     if let Some(lock) = &mon.lock_surface {
-        let surfs = render_elements_from_surface_tree(
-            renderer,
-            lock.wl_surface(),
-            (0, 0),
-            scale,
-            1.0,
-            Kind::Unspecified,
-        );
-        return surfs.into_iter().map(MonotileElement::Surface).collect();
+        ctx.surface_tree(lock.wl_surface(), (0, 0).into(), Kind::Unspecified);
+        return ctx.elems;
     }
     if locked {
-        return vec![];
+        return ctx.elems;
     }
 
     let view = mon.views.front();
-    let mut elems = Vec::with_capacity(windows.len() * 20 + 32);
 
     if let Some(we) = view
         .and_then(|v| v.fullscreen)
         .and_then(|id| windows.get(id))
     {
         let geo = mon.output_geometry();
-        elems.extend(layer_popup_elements(
-            renderer,
-            output,
-            &[Layer::Overlay],
-            scale,
-        ));
-        elems.extend(layer_elements(renderer, output, &[Layer::Overlay], scale));
+        ctx.layer_popups(&[Layer::Overlay]);
+        ctx.layers(&[Layer::Overlay]);
 
         let wl = we.window.wl_surface().unwrap();
-        elems.extend(popup_elements(renderer, &wl, geo.loc, scale));
-
-        let surfs = render_elements_from_surface_tree(
-            renderer,
-            &wl,
-            we.surface_loc(geo).to_physical_precise_round(scale),
-            scale,
-            1.0,
-            Kind::ScanoutCandidate,
-        );
-        elems.extend(surfs.into_iter().map(MonotileElement::Surface));
+        ctx.popups(&wl, geo.loc);
+        ctx.surface_tree(&wl, we.surface_loc(geo), Kind::ScanoutCandidate);
     } else {
-        let all = &[Layer::Overlay, Layer::Top, Layer::Bottom, Layer::Background];
-        elems.extend(layer_popup_elements(renderer, output, all, scale));
-        elems.extend(layer_elements(
-            renderer,
-            output,
-            &[Layer::Overlay, Layer::Top],
-            scale,
-        ));
+        ctx.layer_popups(&[Layer::Overlay, Layer::Top, Layer::Bottom, Layer::Background]);
+        ctx.layers(&[Layer::Overlay, Layer::Top]);
 
         if let Some(view) = view {
-            view.render_elements(
-                &mut elems,
-                renderer,
-                shaders,
-                scale,
-                &config.layout,
-                windows,
-            );
+            view.render_elements(&mut ctx, windows);
         }
 
-        elems.extend(layer_elements(
-            renderer,
-            output,
-            &[Layer::Bottom, Layer::Background],
-            scale,
-        ));
+        ctx.layers(&[Layer::Bottom, Layer::Background]);
     }
 
-    elems
+    ctx.elems
 }
 
 pub fn send_frame_callbacks(

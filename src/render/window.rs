@@ -9,7 +9,6 @@ use smithay::{
             texture::{TextureBuffer, TextureRenderElement},
         },
         gles::{Uniform, element::PixelShaderElement},
-        glow::GlowRenderer,
         utils::with_renderer_surface_state,
     },
     reexports::wayland_server::protocol::wl_surface::WlSurface,
@@ -18,7 +17,7 @@ use smithay::{
 };
 
 use super::{
-    MonotileElement, Shaders, border,
+    MonotileElement, RenderCtx, Shaders, border,
     clipped_surface::{Clippable, Clipped},
     popup_elements,
 };
@@ -231,25 +230,26 @@ impl WindowElement {
 
     pub fn render_elements(
         &mut self,
-        out: &mut Vec<MonotileElement>,
-        renderer: &mut GlowRenderer,
-        shaders: &Shaders,
-        scale: Scale<f64>,
+        ctx: &mut RenderCtx,
         win_geo: Rectangle<i32, Logical>,
-        disable_border: bool,
-        disable_gaps: bool,
+        lone: bool,
     ) {
+        let disable_border = ctx.layout.smart_borders && lone;
+        let disable_gaps = ctx.layout.smart_gaps && lone;
+
         self.sync_render_cache(win_geo);
-        let surf_loc = self.surface_loc(win_geo).to_physical_precise_round(scale);
+        let surf_loc = self
+            .surface_loc(win_geo)
+            .to_physical_precise_round(ctx.scale);
         let live = self.live_surface();
 
         let mut content: Vec<Clippable> = match &live {
             // render live surface
             Some(wl) => render_elements_from_surface_tree(
-                renderer,
+                ctx.renderer,
                 wl,
                 surf_loc,
-                scale,
+                ctx.scale,
                 1.0,
                 Kind::Unspecified,
             )
@@ -279,7 +279,8 @@ impl WindowElement {
         let surface_fills_win = live.is_some() && self.window.geometry().size == win_geo.size;
 
         if let Some(wl) = &live {
-            out.extend(popup_elements(renderer, wl, win_geo.loc, scale));
+            let popups = popup_elements(ctx.renderer, wl, win_geo.loc, ctx.scale);
+            ctx.elems.extend(popups);
         }
 
         for &key in self.render_pipeline.iter().rev() {
@@ -291,13 +292,13 @@ impl WindowElement {
             };
             if !skip {
                 step.render_elements(
-                    out,
+                    &mut ctx.elems,
                     &mut content,
-                    shaders,
+                    ctx.shaders,
                     win_geo,
                     self.radius,
                     surface_fills_win,
-                    scale,
+                    ctx.scale,
                 );
             }
         }
@@ -306,9 +307,10 @@ impl WindowElement {
         if self.texture_dirty
             && let Some(wl) = &live
             && let Some(tex) = with_renderer_surface_state(wl, |state| {
+                let cid = ctx.renderer.context_id();
                 Some(TextureBuffer::from_texture(
-                    renderer,
-                    state.texture(renderer.context_id())?.clone(),
+                    ctx.renderer,
+                    state.texture(cid)?.clone(),
                     state.buffer_scale(),
                     state.buffer_transform(),
                     None,
@@ -323,33 +325,17 @@ impl WindowElement {
 }
 
 impl View {
-    pub fn render_elements(
-        &self,
-        out: &mut Vec<MonotileElement>,
-        renderer: &mut GlowRenderer,
-        shaders: &Shaders,
-        scale: Scale<f64>,
-        layout: &config::Layout,
-        windows: &mut Windows,
-    ) {
+    pub fn render_elements(&self, ctx: &mut RenderCtx, windows: &mut Windows) {
         let lone = self.tiled.len() == 1;
         for &id in self.floating.iter().rev() {
             if let Some(we) = windows.get_mut(id) {
                 let geo = we.float_geo;
-                we.render_elements(out, renderer, shaders, scale, geo, false, false);
+                we.render_elements(ctx, geo, false);
             }
         }
         for tile in self.tiled.iter().rev() {
             if let Some(we) = windows.get_mut(tile.id) {
-                we.render_elements(
-                    out,
-                    renderer,
-                    shaders,
-                    scale,
-                    tile.rect,
-                    layout.smart_borders && lone,
-                    layout.smart_gaps && lone,
-                );
+                we.render_elements(ctx, tile.rect, lone);
             }
         }
     }
