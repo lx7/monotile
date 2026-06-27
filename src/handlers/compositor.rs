@@ -102,11 +102,7 @@ impl Monotile {
                     .map(|r| r.size)
                     .unwrap_or(area.size)
             };
-            let tl = unmapped.window.toplevel().unwrap();
-            if !floating {
-                tl.with_pending_state(|s| s.size = Some(configured_size));
-            }
-            tl.send_configure();
+            unmapped.configure_initial(configured_size, !floating);
             unmapped.placement = Some(Placement {
                 floating,
                 monitor: self.state.active_monitor,

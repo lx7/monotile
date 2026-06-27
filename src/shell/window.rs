@@ -23,6 +23,23 @@ use crate::{config, render::RenderStep};
 
 use super::{Tag, WindowId};
 
+fn set_tiled(tl: &ToplevelSurface, tiled: bool) {
+    tl.with_pending_state(|s| {
+        for edge in [
+            xdg_toplevel::State::TiledLeft,
+            xdg_toplevel::State::TiledRight,
+            xdg_toplevel::State::TiledTop,
+            xdg_toplevel::State::TiledBottom,
+        ] {
+            if tiled {
+                s.states.set(edge);
+            } else {
+                s.states.unset(edge);
+            }
+        }
+    });
+}
+
 pub trait ToplevelSurfaceExt {
     fn info(&self) -> (String, String);
 }
@@ -63,6 +80,17 @@ impl Unmapped {
             placement: None,
             rules,
         }
+    }
+
+    pub fn configure_initial(&self, size: Size<i32, Logical>, tiled: bool) {
+        let Some(tl) = self.window.toplevel() else {
+            return;
+        };
+        if tiled {
+            tl.with_pending_state(|s| s.size = Some(size));
+            set_tiled(&tl, true);
+        }
+        tl.send_configure();
     }
 
     pub fn should_float(&self) -> bool {
@@ -302,6 +330,7 @@ impl WindowElement {
                     s.states.unset(xdg_toplevel::State::Fullscreen);
                 }
             });
+            set_tiled(&tl, !fullscreen && !self.floating);
         }
     }
 
@@ -313,6 +342,7 @@ impl WindowElement {
             tl.with_pending_state(|s| {
                 s.states.unset(xdg_toplevel::State::Fullscreen);
             });
+            set_tiled(&tl, !floating);
         }
     }
 
