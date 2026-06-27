@@ -1,15 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 use smithay::{
-    backend::renderer::{
-        Color32F,
-        damage::OutputDamageTracker,
-        element::{
-            Kind,
-            surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
-        },
-        glow::GlowRenderer,
-    },
+    backend::renderer::{Color32F, damage::OutputDamageTracker, element::Kind, glow::GlowRenderer},
     delegate_image_capture_source, delegate_image_copy_capture, delegate_output_capture_source,
     delegate_toplevel_capture_source,
     output::{Output, WeakOutput},
@@ -467,24 +459,12 @@ pub fn capture_frame(
                     frame.fail(CaptureFailureReason::Unknown);
                     continue;
                 };
-                let Some(wl) = we.window.wl_surface() else {
+                if we.window.wl_surface().is_none() {
                     frame.fail(CaptureFailureReason::Unknown);
                     continue;
-                };
-                let loc = Point::from((0, 0)) - we.window.geometry().loc;
-                let surf_loc = loc.to_physical_precise_round(scale);
-                let surfs: Vec<WaylandSurfaceRenderElement<GlowRenderer>> =
-                    render_elements_from_surface_tree(
-                        renderer,
-                        &wl,
-                        surf_loc,
-                        scale,
-                        1.0,
-                        Kind::Unspecified,
-                    );
-                let mut elems: Vec<MonotileElement> =
-                    crate::render::popup_elements(renderer, &wl, loc, scale);
-                elems.extend(surfs.into_iter().map(MonotileElement::Surface));
+                }
+                let mut elems =
+                    we.render_content(renderer, (0, 0).into(), scale, Kind::Unspecified);
                 if s.session.draw_cursor() {
                     let window_loc = state.monitors[we.monitor]
                         .window_rect(&state.windows, id)

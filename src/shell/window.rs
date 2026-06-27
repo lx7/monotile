@@ -251,8 +251,8 @@ impl WindowElement {
         self.configure(self.float_geo.size);
     }
 
-    pub fn surface_loc(&self, geo: Rectangle<i32, Logical>) -> Point<i32, Logical> {
-        geo.loc - self.content_offset
+    pub fn surface_loc(&self, loc: Point<i32, Logical>) -> Point<i32, Logical> {
+        loc - self.content_offset
     }
 
     pub fn set_app_id(&mut self, app_id: String) {

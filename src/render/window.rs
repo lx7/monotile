@@ -9,10 +9,11 @@ use smithay::{
             texture::{TextureBuffer, TextureRenderElement},
         },
         gles::{Uniform, element::PixelShaderElement},
+        glow::GlowRenderer,
         utils::with_renderer_surface_state,
     },
     reexports::wayland_server::protocol::wl_surface::WlSurface,
-    utils::{IsAlive, Logical, Rectangle, Scale},
+    utils::{IsAlive, Logical, Point, Rectangle, Scale},
     wayland::seat::WaylandFocus,
 };
 
@@ -228,6 +229,23 @@ impl WindowElement {
         }
     }
 
+    pub fn render_content(
+        &self,
+        renderer: &mut GlowRenderer,
+        origin: Point<i32, Logical>,
+        scale: Scale<f64>,
+        kind: Kind,
+    ) -> Vec<MonotileElement> {
+        let Some(wl) = self.window.wl_surface() else {
+            return Vec::new();
+        };
+        let mut elems = popup_elements(renderer, &wl, origin, scale);
+        let surf_loc = self.surface_loc(origin).to_physical_precise_round(scale);
+        let surfs = render_elements_from_surface_tree(renderer, &wl, surf_loc, scale, 1.0, kind);
+        elems.extend(surfs.into_iter().map(MonotileElement::Surface));
+        elems
+    }
+
     pub fn render_elements(
         &mut self,
         ctx: &mut RenderCtx,
@@ -239,7 +257,7 @@ impl WindowElement {
 
         self.sync_render_cache(win_geo);
         let surf_loc = self
-            .surface_loc(win_geo)
+            .surface_loc(win_geo.loc)
             .to_physical_precise_round(ctx.scale);
         let live = self.live_surface();
 

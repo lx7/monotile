@@ -33,10 +33,7 @@ use smithay::{
     output::Output,
     reexports::wayland_server::protocol::{wl_buffer, wl_surface::WlSurface},
     utils::{Buffer as BufferCoords, Logical, Physical, Point, Rectangle, Scale, Size, Transform},
-    wayland::{
-        dmabuf::get_dmabuf, seat::WaylandFocus, shell::wlr_layer::Layer,
-        shm::with_buffer_contents_mut,
-    },
+    wayland::{dmabuf::get_dmabuf, shell::wlr_layer::Layer, shm::with_buffer_contents_mut},
 };
 
 pub use window::RenderStep;
@@ -149,11 +146,6 @@ impl RenderCtx<'_> {
         }
     }
 
-    pub(crate) fn popups(&mut self, surface: &WlSurface, origin: Point<i32, Logical>) {
-        let popups = popup_elements(self.renderer, surface, origin, self.scale);
-        self.elems.extend(popups);
-    }
-
     fn surface_tree(&mut self, surface: &WlSurface, loc: Point<i32, Logical>, kind: Kind) {
         let surfs = render_elements_from_surface_tree(
             self.renderer,
@@ -229,9 +221,8 @@ pub fn output_elements(
         ctx.layer_popups(&[Layer::Overlay]);
         ctx.layers(&[Layer::Overlay]);
 
-        let wl = we.window.wl_surface().unwrap();
-        ctx.popups(&wl, geo.loc);
-        ctx.surface_tree(&wl, we.surface_loc(geo), Kind::ScanoutCandidate);
+        let content = we.render_content(ctx.renderer, geo.loc, ctx.scale, Kind::ScanoutCandidate);
+        ctx.elems.extend(content);
     } else {
         ctx.layer_popups(&[Layer::Overlay, Layer::Top, Layer::Bottom, Layer::Background]);
         ctx.layers(&[Layer::Overlay, Layer::Top]);

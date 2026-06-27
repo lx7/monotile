@@ -203,7 +203,7 @@ impl Monotile {
 
         let parent_loc = if let Some(id) = parent_id {
             let rect = mon.window_rect(&self.state.windows, id).unwrap_or_default();
-            self.state.windows[id].surface_loc(rect)
+            self.state.windows[id].surface_loc(rect.loc)
         } else {
             let map = layer_map_for_output(&mon.output);
             let Some(l) = map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL) else {
