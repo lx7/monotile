@@ -48,7 +48,10 @@ fn activation_sets_urgent() {
     // w2 is focused (top of focus stack); w1 is not
     let ids = all_window_ids(&f);
     let w1_id = ids[1]; // w1 is second in focus stack (w2 was mapped last)
-    assert!(!f.mt.state.windows[w1_id].focused, "w1 should not be focused");
+    assert!(
+        !f.mt.state.windows[w1_id].focused,
+        "w1 should not be focused"
+    );
 
     // activate w1 (unfocused window)
     let token = get_token(&mut f, c);

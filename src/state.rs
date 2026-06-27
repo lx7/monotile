@@ -63,9 +63,7 @@ use crate::{
     },
     ipc::IpcState,
     render::cursor::CursorManager,
-    shell::{
-        Monitor, MonitorSettings, Monitors, Unmapped, WindowElement, WindowId, Windows,
-    },
+    shell::{Monitor, MonitorSettings, Monitors, Unmapped, WindowElement, WindowId, Windows},
     spawn::notify,
 };
 

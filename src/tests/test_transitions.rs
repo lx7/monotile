@@ -34,7 +34,11 @@ fn front_tiled_rect(f: &Fixture, id: WindowId) -> Option<Rectangle<i32, Logical>
 }
 
 fn front_shows(f: &Fixture, id: WindowId) -> bool {
-    f.mt.state.mon().views.front().is_some_and(|v| v.contains(id))
+    f.mt.state
+        .mon()
+        .views
+        .front()
+        .is_some_and(|v| v.contains(id))
 }
 
 #[test]
@@ -54,7 +58,11 @@ fn closing_stack_window_holds_view_until_main_commits() {
     f.client_mut(c).destroy_window(1);
     f.roundtrip(c);
 
-    assert_eq!(views_len(&f), 2, "closing the stack window queues a held view");
+    assert_eq!(
+        views_len(&f),
+        2,
+        "closing the stack window queues a held view"
+    );
     assert_eq!(
         f.mt.state.mon().views.front().unwrap().tiled.len(),
         2,
