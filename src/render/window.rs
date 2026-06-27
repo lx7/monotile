@@ -18,7 +18,7 @@ use smithay::{
 };
 
 use super::{
-    MonotileElement, RenderCtx, Shaders, border,
+    MonotileElement, RenderCtx, border,
     clipped_surface::{Clippable, Clipped},
     popup_elements,
 };
@@ -87,15 +87,13 @@ impl RenderStep {
 
     fn render_elements(
         &mut self,
-        out: &mut Vec<MonotileElement>,
+        ctx: &mut RenderCtx,
         content: &mut Vec<Clippable>,
-        shaders: &Shaders,
         win_geo: Rectangle<i32, Logical>,
         radius: f32,
         surface_fills_win: bool,
-        scale: Scale<f64>,
     ) {
-        let scale_f32 = scale.x as f32;
+        let scale_f32 = ctx.scale.x as f32;
         match self {
             RenderStep::Border {
                 width,
@@ -104,7 +102,7 @@ impl RenderStep {
             } => {
                 if elements.is_empty() {
                     *elements = border::create_elements(
-                        &shaders.rect,
+                        &ctx.shaders.rect,
                         win_geo,
                         radius,
                         *width,
@@ -113,7 +111,7 @@ impl RenderStep {
                     );
                 }
                 for d in elements.iter() {
-                    out.push(MonotileElement::Decoration(d.clone()));
+                    ctx.elems.push(MonotileElement::Decoration(d.clone()));
                 }
             }
             RenderStep::WindowSurface {
@@ -123,18 +121,18 @@ impl RenderStep {
             } => {
                 let clip_r = if radius == 0.0 { 0.0 } else { *r };
                 for clippable in content.drain(..) {
-                    out.push(Clipped::wrap(
+                    ctx.elems.push(Clipped::wrap(
                         clippable,
-                        &shaders.clip,
+                        &ctx.shaders.clip,
                         win_geo,
                         clip_r,
-                        scale,
+                        ctx.scale,
                     ));
                 }
                 if !surface_fills_win {
                     let bg = background.get_or_insert_with(|| {
                         PixelShaderElement::new(
-                            shaders.rect.clone(),
+                            ctx.shaders.rect.clone(),
                             win_geo,
                             None,
                             1.0,
@@ -152,7 +150,7 @@ impl RenderStep {
                             Kind::Unspecified,
                         )
                     });
-                    out.push(MonotileElement::Decoration(bg.clone()));
+                    ctx.elems.push(MonotileElement::Decoration(bg.clone()));
                 } else {
                     *background = None;
                 }
@@ -174,7 +172,7 @@ impl RenderStep {
                 );
                 let shadow = element.get_or_insert_with(|| {
                     PixelShaderElement::new(
-                        shaders.shadow.clone(),
+                        ctx.shaders.shadow.clone(),
                         rect,
                         None,
                         1.0,
@@ -206,7 +204,7 @@ impl RenderStep {
                         Kind::Unspecified,
                     )
                 });
-                out.push(MonotileElement::Decoration(shadow.clone()));
+                ctx.elems.push(MonotileElement::Decoration(shadow.clone()));
             }
         }
     }
@@ -309,15 +307,7 @@ impl WindowElement {
                 RenderStep::WindowSurface { .. } => false,
             };
             if !skip {
-                step.render_elements(
-                    &mut ctx.elems,
-                    &mut content,
-                    ctx.shaders,
-                    win_geo,
-                    self.radius,
-                    surface_fills_win,
-                    ctx.scale,
-                );
+                step.render_elements(ctx, &mut content, win_geo, self.radius, surface_fills_win);
             }
         }
 

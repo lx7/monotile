@@ -25,6 +25,8 @@ impl SessionLockHandler for Monotile {
         self.state.locked = true;
         self.set_focus(None);
         let mons = &self.state.monitors;
+        // Output is hashed by identity, the clippy warning is not relevant here.
+        #[allow(clippy::mutable_key_type)]
         let outputs: HashSet<_> = mons.iter().map(|m| m.output.clone()).collect();
         if outputs.is_empty() {
             locker.lock();

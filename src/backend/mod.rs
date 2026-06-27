@@ -12,6 +12,7 @@ use winit::WinitState;
 use self::drm::DrmState;
 use crate::shell::Monitors;
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum Backend {
     Winit(WinitState),
