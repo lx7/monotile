@@ -72,6 +72,12 @@ pub struct Monotile {
     pub state: State,
 }
 
+pub struct SurfaceUnder {
+    pub surface: Option<(WlSurface, Point<f64, Logical>)>,
+    pub window: Option<WindowId>,
+    pub monitor: usize,
+}
+
 impl Monotile {
     pub fn new(config: Config) -> (EventLoop<'static, Monotile>, Self) {
         let event_loop: EventLoop<Monotile> = EventLoop::try_new().expect("event loop");
@@ -480,17 +486,19 @@ impl State {
         Some(mon)
     }
 
-    pub fn surface_under(
-        &self,
-        pos: Point<f64, Logical>,
-    ) -> (Option<(WlSurface, Point<f64, Logical>)>, Option<WindowId>) {
+    pub fn surface_under(&self, pos: Point<f64, Logical>) -> SurfaceUnder {
+        let monitor = self.active_monitor;
         if self.locked {
             let surface = self
                 .mon()
                 .lock_surface
                 .as_ref()
                 .map(|ls| (ls.wl_surface().clone(), pos));
-            return (surface, None);
+            return SurfaceUnder {
+                surface,
+                window: None,
+                monitor,
+            };
         }
 
         let mon = self.mon();
@@ -504,9 +512,12 @@ impl State {
         };
 
         // overlay / top layers
-        let hit = layer_hit(Layer::Overlay).or_else(|| layer_hit(Layer::Top));
-        if let Some(hit) = hit {
-            return (Some(hit), None);
+        if let Some(hit) = layer_hit(Layer::Overlay).or_else(|| layer_hit(Layer::Top)) {
+            return SurfaceUnder {
+                surface: Some(hit),
+                window: None,
+                monitor,
+            };
         }
 
         // windows and popups
@@ -520,16 +531,28 @@ impl State {
             let loc = rect.loc - we.content_offset;
             let rel = pos - loc.to_f64();
             if let Some((s, point)) = we.window.surface_under(rel, WindowSurfaceType::ALL) {
-                return (Some((s, (point + loc).to_f64())), Some(id));
+                return SurfaceUnder {
+                    surface: Some((s, (point + loc).to_f64())),
+                    window: Some(id),
+                    monitor,
+                };
             }
             if rect.to_f64().contains(pos) {
-                return (None, Some(id));
+                return SurfaceUnder {
+                    surface: None,
+                    window: Some(id),
+                    monitor,
+                };
             }
         }
 
         // bottom / background layers
-        let hit = layer_hit(Layer::Bottom).or_else(|| layer_hit(Layer::Background));
-        (hit, None)
+        let surface = layer_hit(Layer::Bottom).or_else(|| layer_hit(Layer::Background));
+        SurfaceUnder {
+            surface,
+            window: None,
+            monitor,
+        }
     }
 
     pub fn insert_client(&mut self, stream: UnixStream) {

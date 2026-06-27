@@ -138,7 +138,7 @@ impl Monotile {
                     }
 
                     // raise window and focus
-                    let (_, id) = self.state.surface_under(pointer.current_location());
+                    let id = self.state.surface_under(pointer.current_location()).window;
                     if let Some(id) = id {
                         self.state.mon_mut().tag_mut().raise(id);
                         self.set_focus(Some(id));
@@ -262,19 +262,19 @@ impl Monotile {
     ) {
         let pointer = self.state.seat.get_pointer().unwrap();
 
-        let (target, window_id) = self.state.surface_under(pos);
+        let under = self.state.surface_under(pos);
 
         if !pointer.is_grabbed()
             && self.state.config.seats["seat0"].focus_follows_cursor
-            && window_id.is_some()
-            && window_id != self.state.mon().tag().focused_id()
+            && under.window.is_some()
+            && under.window != self.state.mon().tag().focused_id()
         {
-            self.set_focus(window_id);
+            self.set_focus(under.window);
         }
 
         pointer.motion(
             self,
-            target,
+            under.surface,
             &MotionEvent {
                 location: pos,
                 serial,
@@ -283,8 +283,8 @@ impl Monotile {
         );
         pointer.frame(self);
 
-        // TODO: get cursor and output from seat when multi-seat is implemented
-        let output = &self.state.mon().output;
+        // TODO: get cursor from seat when multi-seat is implemented
+        let output = &self.state.monitors[under.monitor].output;
         if !self.state.locked {
             let hotspot = self.state.cursor.hotspot;
             self.state
@@ -416,7 +416,7 @@ impl Monotile {
             }
         }
 
-        let Some(id) = self.state.surface_under(pos).1 else {
+        let Some(id) = self.state.surface_under(pos).window else {
             return;
         };
         if !self.state.windows[id].floating {
@@ -428,7 +428,7 @@ impl Monotile {
             Action::Move => {
                 self.state.cursor.override_icon = Some(CursorIcon::AllScroll);
                 let start = GrabStartData {
-                    focus: self.state.surface_under(pos).0,
+                    focus: self.state.surface_under(pos).surface,
                     button: btn,
                     location: pos,
                 };
@@ -440,7 +440,7 @@ impl Monotile {
                 let corner = (geo.loc + geo.size - Point::new(2, 2)).to_f64();
                 ptr.set_location(corner);
                 let start = GrabStartData {
-                    focus: self.state.surface_under(corner).0,
+                    focus: self.state.surface_under(corner).surface,
                     button: btn,
                     location: corner,
                 };
