@@ -150,15 +150,17 @@ fn first_window_activated() {
     let c = f.add_client();
 
     let w = open_window(&mut f, c);
-    f.client_mut(c).take_configures(w); // drain initial
 
-    // trigger focus sync
-    f.mt.update_focus();
-    f.roundtrip(c);
-
+    // the window is activated when it maps, update_focus must not re-send a configure
     assert!(
         is_activated(&mut f, c, w),
         "sole window should be activated"
+    );
+    f.mt.update_focus();
+    f.roundtrip(c);
+    assert!(
+        f.client_mut(c).take_configures(w).is_empty(),
+        "re-focusing the already-focused window should send no configure"
     );
 }
 

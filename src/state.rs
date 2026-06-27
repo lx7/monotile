@@ -203,8 +203,9 @@ impl Monotile {
     }
 
     pub fn set_focus(&mut self, id: Option<WindowId>) {
-        // unfocus current
-        if let Some(old) = self.state.windows.focused {
+        if let Some(old) = self.state.windows.focused
+            && Some(old) != id
+        {
             if let Some(we) = self.state.windows.get_mut(old) {
                 we.set_focused(false);
             }
