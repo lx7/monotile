@@ -165,3 +165,59 @@ fn tag_switch_without_resize_settles_immediately() {
         "the new tag is presented immediately",
     );
 }
+
+#[test]
+fn idle_inhibit_follows_visibility() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    let idx = f.mt.state.active_monitor;
+
+    open_window(&mut f, c);
+    settle(&mut f, c, 0);
+    let id = f.mt.state.monitors[idx].tags[0].focus_stack[0];
+
+    // simulate an idle inhibitor on the window's surface
+    let surface = f.mt.state.windows[id]
+        .window
+        .toplevel()
+        .unwrap()
+        .wl_surface()
+        .clone();
+    f.mt.state.idle_inhibitors.push(surface);
+
+    f.mt.state.refresh_idle_inhibit();
+    assert!(
+        f.mt.state.idle_notifier_state.is_inhibited(),
+        "a visible inhibitor blocks idle",
+    );
+
+    // hide it on another tag
+    f.mt.state.monitors[idx].set_active_tag(1);
+    f.mt.recompute_layout(idx);
+    f.roundtrip(c);
+    f.mt.advance_view_queues();
+    f.mt.state.refresh_idle_inhibit();
+    assert!(
+        !f.mt.state.idle_notifier_state.is_inhibited(),
+        "a hidden inhibitor must not block idle",
+    );
+
+    // bring it back
+    f.mt.state.monitors[idx].set_active_tag(0);
+    f.mt.recompute_layout(idx);
+    f.roundtrip(c);
+    f.mt.advance_view_queues();
+    f.mt.state.refresh_idle_inhibit();
+    assert!(
+        f.mt.state.idle_notifier_state.is_inhibited(),
+        "visible again blocks idle",
+    );
+
+    // locked session is never inhibited, even with a visible inhibitor
+    f.mt.state.locked = true;
+    f.mt.state.refresh_idle_inhibit();
+    assert!(
+        !f.mt.state.idle_notifier_state.is_inhibited(),
+        "a locked session is not inhibited",
+    );
+}

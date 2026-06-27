@@ -28,7 +28,7 @@ use smithay::{
     },
     utils::{Logical, Point, SERIAL_COUNTER},
     wayland::{
-        compositor::{CompositorClientState, CompositorState},
+        compositor::{CompositorClientState, CompositorState, get_parent},
         cursor_shape::CursorShapeManagerState,
         dmabuf::{DmabufGlobal, DmabufState},
         idle_inhibit::IdleInhibitManagerState,
@@ -569,15 +569,25 @@ impl State {
         }
     }
 
+    pub fn refresh_idle_inhibit(&mut self) {
+        let inhibited = !self.locked
+            && self.idle_inhibitors.iter().any(|surface| {
+                let mut root = surface.clone();
+                while let Some(parent) = get_parent(&root) {
+                    root = parent;
+                }
+                self.windows
+                    .find_by_surface(&root)
+                    .is_none_or(|id| self.monitors.shows_window(id))
+            });
+        self.idle_notifier_state.set_is_inhibited(inhibited);
+    }
+
     pub fn flush_clients(&mut self) {
         self.idle_notifier_activity = false;
 
-        let before = self.idle_inhibitors.len();
         self.idle_inhibitors.retain(|s| s.is_alive());
-        if self.idle_inhibitors.len() != before {
-            self.idle_notifier_state
-                .set_is_inhibited(!self.idle_inhibitors.is_empty());
-        }
+        self.refresh_idle_inhibit();
 
         self.screencopy.cleanup();
         self.foreign_toplevel.flush(&self.windows);

@@ -255,6 +255,11 @@ impl Monitors {
         self.iter().any(|m| m.views.iter().any(|v| v.contains(id)))
     }
 
+    pub fn shows_window(&self, id: WindowId) -> bool {
+        self.iter()
+            .any(|m| m.views.front().is_some_and(|v| v.contains(id)))
+    }
+
     pub fn update_rules(&mut self, rules: &[config::OutputRule]) {
         for mon in self.iter_mut() {
             let props = mon.output.physical_properties();
