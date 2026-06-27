@@ -392,14 +392,6 @@ impl Windows {
         id
     }
 
-    pub fn remove(&mut self, surface: &ObjectId) -> Option<WindowElement> {
-        let id = self.by_surface.remove(surface)?;
-        if self.focused == Some(id) {
-            self.focused = None;
-        }
-        self.inner.remove(id)
-    }
-
     pub fn detach(&mut self, surface: &ObjectId) -> Option<WindowId> {
         let id = self.by_surface.remove(surface)?;
         if self.focused == Some(id) {
