@@ -225,7 +225,7 @@ pub fn output_elements(
         .and_then(|v| v.fullscreen)
         .and_then(|id| windows.get(id))
     {
-        let geo = mon.output_geometry();
+        let geo = mon.geometry();
         ctx.layer_popups(&[Layer::Overlay]);
         ctx.layers(&[Layer::Overlay]);
 

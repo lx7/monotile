@@ -216,7 +216,7 @@ impl Monotile {
         };
 
         // convert output rect to popup-local coordinates
-        let mut target = mon.output_geometry();
+        let mut target = mon.geometry();
         target.loc -= parent_loc;
         target.loc -= popup_offset;
 

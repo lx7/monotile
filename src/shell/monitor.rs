@@ -81,9 +81,37 @@ pub struct Monitor {
     pub exclusive_layer: Option<WlSurface>,
     pub lock_surface: Option<LockSurface>,
     pub views: Views,
+    pub output_geo: Rectangle<i32, Logical>,
 }
 
 impl Monitor {
+    pub fn new(
+        output: Output,
+        global: GlobalId,
+        settings: MonitorSettings,
+        layout: &config::Layout,
+    ) -> Self {
+        let mut tags = Vec::new();
+        tags.resize_with(settings.tags.len(), Tag::default);
+        for tag in &mut tags {
+            tag.layout.config = layout.clone();
+        }
+        let mut mon = Self {
+            output,
+            global,
+            settings,
+            tags,
+            active_tag: 0,
+            prev_tag: 0,
+            exclusive_layer: None,
+            lock_surface: None,
+            views: Views::default(),
+            output_geo: Rectangle::default(),
+        };
+        mon.refresh_geometry();
+        mon
+    }
+
     pub fn tag(&self) -> &Tag {
         &self.tags[self.active_tag]
     }
@@ -164,15 +192,19 @@ impl Monitor {
         std::mem::swap(&mut self.active_tag, &mut self.prev_tag);
     }
 
-    pub fn output_geometry(&self) -> Rectangle<i32, Logical> {
+    pub fn geometry(&self) -> Rectangle<i32, Logical> {
+        self.output_geo
+    }
+
+    fn refresh_geometry(&mut self) {
         let size = self.output.current_mode().unwrap().size;
-        Rectangle::new((0, 0).into(), size.to_logical(1))
+        self.output_geo = Rectangle::new((0, 0).into(), size.to_logical(1));
     }
 
     pub fn window_rect(&self, ws: &Windows, id: WindowId) -> Option<Rectangle<i32, Logical>> {
         let we = ws.get(id)?;
         if we.fullscreen {
-            Some(self.output_geometry())
+            Some(self.geometry())
         } else if we.floating {
             Some(we.float_geo)
         } else {
@@ -181,8 +213,9 @@ impl Monitor {
     }
 
     pub fn recompute_layout(&mut self, ws: &mut Windows) {
+        self.refresh_geometry();
         let area = layer_map_for_output(&self.output).non_exclusive_zone();
-        let fs_geo = self.output_geometry();
+        let fs_geo = self.geometry();
         let configured = self.tag_mut().recompute_layout(ws, area, fs_geo);
         let view = View::project(self.tag(), configured);
         self.views.push_back(view);

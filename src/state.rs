@@ -64,7 +64,7 @@ use crate::{
     ipc::IpcState,
     render::cursor::CursorManager,
     shell::{
-        Monitor, MonitorSettings, Monitors, Tag, Unmapped, Views, WindowElement, WindowId, Windows,
+        Monitor, MonitorSettings, Monitors, Unmapped, WindowElement, WindowId, Windows,
     },
     spawn::notify,
 };
@@ -398,28 +398,14 @@ impl State {
 
     pub fn add_monitor(&mut self, output: Output, settings: MonitorSettings) {
         let global = output.create_global::<Monotile>(&self.display_handle);
-        let mut tags = Vec::new();
-        tags.resize_with(settings.tags.len(), Tag::default);
-        for tag in &mut tags {
-            tag.layout.config = self.config.layout.clone();
-        }
-        self.monitors.push(Monitor {
-            output,
-            global,
-            settings,
-            tags,
-            active_tag: 0,
-            prev_tag: 0,
-            exclusive_layer: None,
-            lock_surface: None,
-            views: Views::default(),
-        });
+        let mon = Monitor::new(output, global, settings, &self.config.layout);
+        self.monitors.push(mon);
     }
 
     pub fn remove_monitor(&mut self, output: &Output) {
         self.screencopy.remove_output(output);
 
-        let Some(idx) = self.monitors.iter().position(|m| m.output == *output) else {
+        let Some((idx, _)) = self.monitors.by_output(output) else {
             return;
         };
         // clean up layer surfaces on this output
