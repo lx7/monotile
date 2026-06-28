@@ -28,6 +28,10 @@ fn new_window_not_deactivated_during_open() {
     );
 }
 
+fn windows_on_tag(f: &Fixture) -> usize {
+    f.mt.state.mon().tag().window_ids().len()
+}
+
 fn open_window(f: &mut Fixture, c: usize) -> usize {
     let w = f.client_mut(c).create_window();
     f.client_mut(c).commit(w);
@@ -51,7 +55,7 @@ fn two_windows() {
 
     let w2 = open_window(&mut f, c);
     assert_eq!(
-        f.mt.state.windows.visible(f.mt.state.mon().tag()).len(),
+        windows_on_tag(&f),
         2,
         "compositor should have 2 visible windows",
     );
@@ -116,7 +120,7 @@ fn tag_switch() {
         cfgs.len(),
     );
     assert_eq!(
-        f.mt.state.windows.visible(f.mt.state.mon().tag()).len(),
+        windows_on_tag(&f),
         0,
         "tag 1 should have no visible windows",
     );
@@ -125,7 +129,7 @@ fn tag_switch() {
     let mon = &mut f.mt.state.monitors[f.mt.state.active_monitor];
     mon.set_active_tag(0);
     assert_eq!(
-        f.mt.state.windows.visible(f.mt.state.mon().tag()).len(),
+        windows_on_tag(&f),
         1,
         "tag 0 should have 1 visible window",
     );
@@ -234,7 +238,7 @@ fn focus_after_remove() {
     f.roundtrip(c);
 
     assert_eq!(
-        f.mt.state.windows.visible(f.mt.state.mon().tag()).len(),
+        windows_on_tag(&f),
         1,
         "should have 1 visible window after remove",
     );

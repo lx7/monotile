@@ -331,28 +331,6 @@ impl Client {
         let _ = self.queue.flush();
     }
 
-    /// Ack the last configure but commit a buffer with a different (not configured)
-    /// window geometry. Simulates client misbehaviour.
-    pub fn ack_and_commit_sized(&mut self, win: usize, w: i32, h: i32) {
-        let qh = self.queue.handle();
-        let ws = &self.data.windows[win];
-        if ws.last_serial != 0 {
-            ws.xdg_surface.ack_configure(ws.last_serial);
-        }
-        if self.data.buffer.is_none() {
-            let shm = self.data.shm.as_ref().expect("wl_shm not bound");
-            let mut tmp = tempfile::tempfile().unwrap();
-            tmp.write_all(&[0u8; 4]).unwrap();
-            let pool = shm.create_pool(tmp.as_fd(), 4, &qh, ());
-            self.data.buffer =
-                Some(pool.create_buffer(0, 1, 1, 4, wl_shm::Format::Argb8888, &qh, ()));
-        }
-        ws.xdg_surface.set_window_geometry(0, 0, w, h);
-        ws.surface.attach(self.data.buffer.as_ref(), 0, 0);
-        ws.surface.commit();
-        let _ = self.queue.flush();
-    }
-
     pub fn destroy_window(&mut self, win: usize) {
         let ws = &self.data.windows[win];
         ws.toplevel.destroy();

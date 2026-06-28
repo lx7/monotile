@@ -21,7 +21,7 @@ use smithay::{
 
 use crate::{config, render::RenderStep};
 
-use super::{Tag, WindowId};
+use super::WindowId;
 
 fn set_tiled(tl: &ToplevelSurface, tiled: bool) {
     tl.with_pending_state(|s| {
@@ -428,12 +428,5 @@ impl Windows {
     pub fn focused_surface(&self) -> Option<WlSurface> {
         let we = self.get(self.focused?)?;
         we.window.toplevel().map(|tl| tl.wl_surface().clone())
-    }
-
-    pub fn visible(&self, tag: &Tag) -> Vec<&WindowElement> {
-        tag.window_ids()
-            .into_iter()
-            .filter_map(|id| self.get(id))
-            .collect()
     }
 }
