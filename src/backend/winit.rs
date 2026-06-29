@@ -47,16 +47,8 @@ impl WinitState {
         std::mem::drop(fb);
         self.backend.submit(rendered.damage.map(|x| x.as_slice()))?;
 
-        let mon = &state.monitors[state.active_monitor];
         let throttle = Some(std::time::Duration::from_millis(16));
-        crate::render::send_frame_callbacks(
-            &mut state.windows,
-            mon,
-            &self.output,
-            state.start_time.elapsed(),
-            throttle,
-            &mut state.popups,
-        );
+        state.send_frame_callbacks(&self.output, throttle);
 
         state.confirm_lock(&self.output);
         self.backend.window().request_redraw();

@@ -41,6 +41,7 @@ pub use window::RenderStep;
 use crate::{
     config::{Config, Layout},
     shell::{Monitor, Windows},
+    state::State,
 };
 use clipped_surface::Clipped;
 
@@ -237,34 +238,38 @@ pub fn output_elements(
     ctx.elems
 }
 
-pub fn send_frame_callbacks(
-    windows: &mut Windows,
-    mon: &Monitor,
-    output: &Output,
-    elapsed: Duration,
-    throttle: Option<Duration>,
-    popups: &mut PopupManager,
-) {
-    if let Some(ls) = &mon.lock_surface {
-        send_frames_surface_tree(ls.wl_surface(), output, elapsed, None, |_, _| {
-            Some(output.clone())
-        });
-    }
-    for id in mon.tag().window_ids() {
-        if let Some(we) = windows.get_mut(id)
-            && we.buffer_committed
-        {
-            we.buffer_committed = false;
-            we.window
-                .send_frame(output, elapsed, throttle, |_, _| Some(output.clone()));
+impl State {
+    pub fn send_frame_callbacks(&mut self, output: &Output, throttle: Option<Duration>) {
+        let Some((idx, _)) = self.monitors.by_output(output) else {
+            return;
+        };
+        let elapsed = self.start_time.elapsed();
+        if let Some(ls) = &self.monitors[idx].lock_surface {
+            send_frames_surface_tree(ls.wl_surface(), output, elapsed, None, |_, _| {
+                Some(output.clone())
+            });
         }
+        if let Some(surface) = self.cursor.dnd_icon_surface() {
+            send_frames_surface_tree(surface, output, elapsed, Some(Duration::ZERO), |_, _| {
+                Some(output.clone())
+            });
+        }
+        for id in self.monitors[idx].tag().window_ids() {
+            if let Some(we) = self.windows.get_mut(id)
+                && we.buffer_committed
+            {
+                we.buffer_committed = false;
+                we.window
+                    .send_frame(output, elapsed, throttle, |_, _| Some(output.clone()));
+            }
+        }
+        let mut map = layer_map_for_output(output);
+        for layer in map.layers() {
+            layer.send_frame(output, elapsed, throttle, |_, _| Some(output.clone()));
+        }
+        self.popups.cleanup();
+        map.cleanup();
     }
-    let mut map = layer_map_for_output(output);
-    for layer in map.layers() {
-        layer.send_frame(output, elapsed, throttle, |_, _| Some(output.clone()));
-    }
-    popups.cleanup();
-    map.cleanup();
 }
 
 pub fn render_to_buffer<E: RenderElement<GlowRenderer>>(

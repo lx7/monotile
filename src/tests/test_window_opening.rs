@@ -128,11 +128,7 @@ fn tag_switch() {
     // switch back - window should be visible again
     let mon = &mut f.mt.state.monitors[f.mt.state.active_monitor];
     mon.set_active_tag(0);
-    assert_eq!(
-        windows_on_tag(&f),
-        1,
-        "tag 0 should have 1 visible window",
-    );
+    assert_eq!(windows_on_tag(&f), 1, "tag 0 should have 1 visible window",);
 }
 
 /// Check that the last configure for a window has the Activated state.

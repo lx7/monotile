@@ -15,7 +15,7 @@ use smithay::{
         },
     },
     input::pointer::{CursorIcon, CursorImageStatus, CursorImageSurfaceData},
-    reexports::wayland_server::Resource,
+    reexports::wayland_server::{Resource, protocol::wl_surface::WlSurface},
     utils::{Logical, Point, Scale, Transform},
     wayland::compositor,
 };
@@ -32,9 +32,15 @@ struct Cursor {
     hotspot: Point<i32, Logical>,
 }
 
+struct DndIcon {
+    surface: WlSurface,
+    offset: Point<i32, Logical>,
+}
+
 pub struct CursorManager {
     pub status: CursorImageStatus,
     pub override_icon: Option<CursorIcon>,
+    dnd_icon: Option<DndIcon>,
     pub scale: f32,
     pub hotspot: Point<i32, Logical>,
     pub size: u32,
@@ -52,6 +58,7 @@ impl CursorManager {
         let mut cursor_manager = Self {
             status: CursorImageStatus::default_named(),
             override_icon: None,
+            dnd_icon: None,
             scale,
             hotspot: Point::default(),
             theme,
@@ -99,6 +106,41 @@ impl CursorManager {
         &self.cache[icon.name()]
     }
 
+    pub fn set_dnd_icon(&mut self, surface: Option<WlSurface>) {
+        self.dnd_icon = surface.map(|surface| DndIcon {
+            surface,
+            offset: Point::default(),
+        });
+    }
+
+    pub fn clear_dnd_icon(&mut self) {
+        self.dnd_icon = None;
+    }
+
+    pub fn dnd_icon_surface(&self) -> Option<&WlSurface> {
+        self.dnd_icon.as_ref().map(|icon| &icon.surface)
+    }
+
+    pub fn on_dnd_commit(&mut self, surface: &WlSurface) {
+        let Some(icon) = &mut self.dnd_icon else {
+            return;
+        };
+        if &icon.surface != surface {
+            return;
+        }
+        let delta = compositor::with_states(surface, |states| {
+            states
+                .cached_state
+                .get::<compositor::SurfaceAttributes>()
+                .current()
+                .buffer_delta
+                .take()
+        });
+        if let Some(delta) = delta {
+            icon.offset += delta;
+        }
+    }
+
     pub fn elements(
         &mut self,
         renderer: &mut GlowRenderer,
@@ -109,13 +151,18 @@ impl CursorManager {
         {
             self.status = CursorImageStatus::default_named();
         }
+        if let Some(icon) = &self.dnd_icon
+            && !icon.surface.is_alive()
+        {
+            self.dnd_icon = None;
+        }
         let scale = Scale::from(self.scale as f64);
 
-        if let Some(icon) = self.override_icon {
+        let (hotspot, mut elems) = if let Some(icon) = self.override_icon {
             let cached = self.get_icon(icon);
             let hotspot = cached.hotspot;
             let loc = (pos - hotspot.to_f64()).to_physical_precise_round(scale);
-            let result = match MemoryRenderBufferRenderElement::from_buffer(
+            let elems = match MemoryRenderBufferRenderElement::from_buffer(
                 renderer,
                 loc,
                 &cached.buffer,
@@ -127,11 +174,34 @@ impl CursorManager {
                 Ok(elem) => vec![MonotileElement::Memory(elem)],
                 Err(_) => vec![],
             };
-            self.hotspot = hotspot;
-            return result;
-        }
+            (hotspot, elems)
+        } else {
+            self.status_elements(renderer, pos, scale)
+        };
+        self.hotspot = hotspot;
 
-        let (hotspot, elems) = match &self.status {
+        if let Some(icon) = &self.dnd_icon {
+            let loc = (pos + icon.offset.to_f64()).to_physical_precise_round(scale);
+            let icon_elems: Vec<MonotileElement> = render_elements_from_surface_tree(
+                renderer,
+                &icon.surface,
+                loc,
+                scale,
+                1.0,
+                Kind::Unspecified,
+            );
+            elems.extend(icon_elems);
+        }
+        elems
+    }
+
+    fn status_elements(
+        &mut self,
+        renderer: &mut GlowRenderer,
+        pos: Point<f64, Logical>,
+        scale: Scale<f64>,
+    ) -> (Point<i32, Logical>, Vec<MonotileElement>) {
+        match &self.status {
             CursorImageStatus::Hidden => (Point::default(), vec![]),
             CursorImageStatus::Named(icon) => {
                 let cached = self.get_icon(*icon);
@@ -170,9 +240,7 @@ impl CursorManager {
                 );
                 (hotspot, elems)
             }
-        };
-        self.hotspot = hotspot;
-        elems
+        }
     }
 }
 

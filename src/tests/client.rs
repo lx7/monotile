@@ -9,8 +9,9 @@ use std::sync::{
 use wayland_client::{
     Connection, Dispatch, EventQueue, QueueHandle,
     protocol::{
-        wl_buffer, wl_callback, wl_compositor, wl_output, wl_registry, wl_seat, wl_shm,
-        wl_shm_pool, wl_surface,
+        wl_buffer, wl_callback, wl_compositor, wl_data_device, wl_data_device_manager,
+        wl_data_source, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool,
+        wl_surface,
     },
 };
 use wayland_protocols::ext::foreign_toplevel_list::v1::client::{
@@ -63,6 +64,10 @@ struct ClientData {
     wm_base: Option<xdg_wm_base::XdgWmBase>,
     shm: Option<wl_shm::WlShm>,
     buffer: Option<wl_buffer::WlBuffer>,
+    data_device_manager: Option<wl_data_device_manager::WlDataDeviceManager>,
+    data_device: Option<wl_data_device::WlDataDevice>,
+    pointer: Option<wl_pointer::WlPointer>,
+    pub pointer_serial: u32,
     layer_shell: Option<ZwlrLayerShellV1>,
     layers: Vec<LayerState>,
     windows: Vec<WindowState>,
@@ -231,6 +236,10 @@ impl Client {
             wm_base: None,
             shm: None,
             buffer: None,
+            data_device_manager: None,
+            data_device: None,
+            pointer: None,
+            pointer_serial: 0,
             layer_shell: None,
             layers: Vec::new(),
             windows: Vec::new(),
@@ -309,6 +318,67 @@ impl Client {
     pub fn commit(&self, win: usize) {
         self.data.windows[win].surface.commit();
         let _ = self.queue.flush();
+    }
+
+    /// Create the seat pointer so the client receives pointer events
+    pub fn bind_pointer(&mut self) {
+        let qh = self.queue.handle();
+        let seat = self.data.ipc_seat.as_ref().expect("wl_seat not bound");
+        self.data.pointer = Some(seat.get_pointer(&qh, ()));
+        let _ = self.queue.flush();
+    }
+
+    pub fn bind_data_device(&mut self) {
+        let qh = self.queue.handle();
+        let mgr = self
+            .data
+            .data_device_manager
+            .as_ref()
+            .expect("wl_data_device_manager not bound");
+        let seat = self.data.ipc_seat.as_ref().expect("wl_seat not bound");
+        self.data.data_device = Some(mgr.get_data_device(seat, &qh, ()));
+        let _ = self.queue.flush();
+    }
+
+    pub fn create_data_source(&self) -> wl_data_source::WlDataSource {
+        let qh = self.queue.handle();
+        let mgr = self
+            .data
+            .data_device_manager
+            .as_ref()
+            .expect("wl_data_device_manager not bound");
+        let source = mgr.create_data_source(&qh, ());
+        let _ = self.queue.flush();
+        source
+    }
+
+    pub fn create_surface(&self) -> wl_surface::WlSurface {
+        let qh = self.queue.handle();
+        let comp = self.data.compositor.as_ref().expect("compositor not bound");
+        let surface = comp.create_surface(&qh, ());
+        let _ = self.queue.flush();
+        surface
+    }
+
+    pub fn start_drag(
+        &self,
+        source: Option<&wl_data_source::WlDataSource>,
+        origin: usize,
+        icon: Option<&wl_surface::WlSurface>,
+        serial: u32,
+    ) {
+        let dd = self
+            .data
+            .data_device
+            .as_ref()
+            .expect("data device not bound");
+        let origin = &self.data.windows[origin].surface;
+        dd.start_drag(source, origin, icon, serial);
+        let _ = self.queue.flush();
+    }
+
+    pub fn pointer_serial(&self) -> u32 {
+        self.data.pointer_serial
     }
 
     pub fn ack_and_commit(&mut self, win: usize) {
@@ -662,6 +732,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientData {
                 }
                 "wl_shm" => {
                     state.shm = Some(registry.bind(name, version, qh, ()));
+                }
+                "wl_data_device_manager" => {
+                    state.data_device_manager = Some(registry.bind(name, version, qh, ()));
                 }
                 "wl_output" => {
                     state.ipc_output = Some(registry.bind(name, version, qh, ()));
@@ -1295,11 +1368,50 @@ impl Dispatch<ExtImageCopyCaptureFrameV1, ()> for ClientData {
     }
 }
 
-impl Dispatch<wayland_client::protocol::wl_pointer::WlPointer, ()> for ClientData {
+impl Dispatch<wl_pointer::WlPointer, ()> for ClientData {
+    fn event(
+        state: &mut Self,
+        _: &wl_pointer::WlPointer,
+        event: wl_pointer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_pointer::Event::Button { serial, .. } = event {
+            state.pointer_serial = serial;
+        }
+    }
+}
+
+impl Dispatch<wl_data_device_manager::WlDataDeviceManager, ()> for ClientData {
     fn event(
         _: &mut Self,
-        _: &wayland_client::protocol::wl_pointer::WlPointer,
-        _: wayland_client::protocol::wl_pointer::Event,
+        _: &wl_data_device_manager::WlDataDeviceManager,
+        _: wl_data_device_manager::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<wl_data_device::WlDataDevice, ()> for ClientData {
+    fn event(
+        _: &mut Self,
+        _: &wl_data_device::WlDataDevice,
+        _: wl_data_device::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<wl_data_source::WlDataSource, ()> for ClientData {
+    fn event(
+        _: &mut Self,
+        _: &wl_data_source::WlDataSource,
+        _: wl_data_source::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,

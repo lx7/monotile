@@ -1,8 +1,12 @@
 use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
+use smithay::backend::input::ButtonState;
+use smithay::input::pointer::{ButtonEvent, MotionEvent};
 use smithay::output::{Mode, Output, PhysicalProperties, Subpixel};
 use smithay::reexports::calloop::EventLoop;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::utils::{Logical, Point, SERIAL_COUNTER};
 
 use super::client::Client;
 use crate::{Monotile, config::Config, shell::MonitorSettings};
@@ -92,6 +96,43 @@ impl Fixture {
         self.event_loop
             .dispatch(Some(Duration::ZERO), &mut self.mt)
             .unwrap();
+    }
+
+    pub fn pointer_press(&mut self, surface: &WlSurface, location: Point<f64, Logical>) {
+        let ptr = self.mt.state.seat.get_pointer().unwrap();
+        ptr.motion(
+            &mut self.mt,
+            Some((surface.clone(), (0.0, 0.0).into())),
+            &MotionEvent {
+                location,
+                serial: SERIAL_COUNTER.next_serial(),
+                time: 0,
+            },
+        );
+        ptr.button(
+            &mut self.mt,
+            &ButtonEvent {
+                serial: SERIAL_COUNTER.next_serial(),
+                time: 1,
+                button: 0x110,
+                state: ButtonState::Pressed,
+            },
+        );
+        ptr.frame(&mut self.mt);
+    }
+
+    pub fn pointer_release(&mut self) {
+        let ptr = self.mt.state.seat.get_pointer().unwrap();
+        ptr.button(
+            &mut self.mt,
+            &ButtonEvent {
+                serial: SERIAL_COUNTER.next_serial(),
+                time: 2,
+                button: 0x110,
+                state: ButtonState::Released,
+            },
+        );
+        ptr.frame(&mut self.mt);
     }
 
     pub fn fail_pending_captures(&mut self) {

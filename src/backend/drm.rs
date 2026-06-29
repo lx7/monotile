@@ -50,7 +50,7 @@ use wayland_server::Weak;
 use crate::{
     Monotile,
     handlers::screencopy,
-    render::{Shaders, send_frame_callbacks},
+    render::Shaders,
     shell::{MonitorSettings, Monitors},
     state::State,
 };
@@ -244,16 +244,7 @@ impl DrmState {
                         if redraw {
                             drm.schedule_render_crtc(crtc);
                         }
-                        // TODO: multi-monitor
-                        let mon = &mt.state.monitors[mt.state.active_monitor];
-                        send_frame_callbacks(
-                            &mut mt.state.windows,
-                            mon,
-                            &output,
-                            mt.state.start_time.elapsed(),
-                            None,
-                            &mut mt.state.popups,
-                        );
+                        mt.state.send_frame_callbacks(&output, None);
                         mt.state.confirm_lock(&output);
                         TimeoutAction::Drop
                     });
@@ -266,15 +257,7 @@ impl DrmState {
         }
         surface.render = RenderState::WaitingForVBlank;
 
-        let (_, mon) = state.monitors.by_output(&surface.output).unwrap();
-        send_frame_callbacks(
-            &mut state.windows,
-            mon,
-            &surface.output,
-            elapsed,
-            Some(refresh),
-            &mut state.popups,
-        );
+        state.send_frame_callbacks(&surface.output, Some(refresh));
         state.confirm_lock(&surface.output);
     }
 

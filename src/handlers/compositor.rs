@@ -37,6 +37,7 @@ impl CompositorHandler for Monotile {
         }
 
         self.state.popups.commit(surface);
+        self.state.cursor.on_dnd_commit(surface);
 
         if let Some(mon) = self
             .on_window_commit(surface)

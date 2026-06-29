@@ -20,13 +20,13 @@ use smithay::{
     delegate_viewporter, delegate_xdg_activation,
     input::{
         Seat, SeatHandler, SeatState,
-        dnd::{DnDGrab, DndGrabHandler, GrabType, Source},
+        dnd::{DnDGrab, DndGrabHandler, DndTarget, GrabType, Source},
         keyboard::LedState,
         pointer::{CursorImageStatus, Focus},
     },
     reexports::input::Device,
     reexports::wayland_server::{Resource, protocol::wl_surface::WlSurface},
-    utils::Serial,
+    utils::{Logical, Point, Serial},
     wayland::{
         output::OutputHandler,
         selection::{
@@ -125,16 +125,29 @@ impl ExtDataControlHandler for Monotile {
 }
 delegate_ext_data_control!(Monotile);
 
-impl DndGrabHandler for Monotile {}
+impl DndGrabHandler for Monotile {
+    fn dropped(
+        &mut self,
+        _target: Option<DndTarget<'_, Self>>,
+        _validated: bool,
+        _seat: Seat<Self>,
+        _location: Point<f64, Logical>,
+    ) {
+        self.state.cursor.clear_dnd_icon();
+        self.backend.schedule_render(&self.state.mon().output);
+    }
+}
+
 impl WaylandDndGrabHandler for Monotile {
     fn dnd_requested<S: Source>(
         &mut self,
         source: S,
-        _icon: Option<WlSurface>,
+        icon: Option<WlSurface>,
         seat: Seat<Self>,
         serial: Serial,
         type_: GrabType,
     ) {
+        self.state.cursor.set_dnd_icon(icon);
         match type_ {
             GrabType::Pointer => {
                 let ptr = seat.get_pointer().unwrap();
