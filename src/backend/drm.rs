@@ -209,7 +209,9 @@ impl DrmState {
             Ok(result) => result,
             Err(err) => {
                 warn!(?err, "failed to render frame");
+                surface.compositor.reset_buffers();
                 state.screencopy.fail_pending_for_output(&surface.output);
+                reschedule_render(&self.loop_handle, crtc, refresh);
                 return;
             }
         };
@@ -253,6 +255,7 @@ impl DrmState {
 
         if let Err(err) = surface.compositor.queue_frame(()) {
             warn!(?err, "failed to queue frame");
+            reschedule_render(&self.loop_handle, crtc, refresh);
             return;
         }
         surface.render = RenderState::WaitingForVBlank;
@@ -626,6 +629,17 @@ pub fn init(
     })?;
 
     Ok(())
+}
+
+fn reschedule_render(
+    loop_handle: &LoopHandle<'static, Monotile>,
+    crtc: crtc::Handle,
+    after: Duration,
+) {
+    let _ = loop_handle.insert_source(Timer::from_duration(after), move |_, _, mt| {
+        mt.backend.drm().schedule_render_crtc(crtc);
+        TimeoutAction::Drop
+    });
 }
 
 fn find_gpu(seat: &str) -> Result<(DrmNode, DrmNode), Box<dyn std::error::Error>> {
