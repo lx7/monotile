@@ -36,37 +36,39 @@ impl CompositorHandler for Monotile {
             return;
         }
 
-        self.state.popups.commit(surface);
-        self.state.cursor.on_dnd_commit(surface);
-
-        if let Some(mon) = self
-            .on_window_commit(surface)
-            .or_else(|| self.on_popup_commit(surface))
-            .or_else(|| self.on_unmapped_commit(surface))
-            .or_else(|| self.on_layer_commit(surface))
-        {
-            self.recompute_layout(mon);
-        }
-
-        // TODO: use the output the surface is mapped on when
-        // multi-monitor is implemented
-        self.backend.schedule_render(&self.state.mon().output);
-    }
-}
-
-impl Monotile {
-    fn on_window_commit(&mut self, surface: &WlSurface) -> Option<usize> {
         let mut root = surface.clone();
         while let Some(parent) = get_parent(&root) {
             root = parent;
         }
-        let id = self.state.windows.find_by_surface(&root)?;
+
+        match self
+            .on_window_commit(&root)
+            .or_else(|| self.on_popup_commit(surface, &root))
+            .or_else(|| self.on_unmapped_commit(&root))
+            .or_else(|| self.on_layer_commit(&root))
+            .or_else(|| self.on_lock_commit(&root))
+            .or_else(|| self.on_cursor_commit(&root))
+        {
+            Some((mon, true)) => self.recompute_layout(mon),
+            Some((mon, false)) => {
+                let output = &self.state.monitors[mon].output;
+                self.backend.schedule_render(output);
+            }
+            None => {}
+        }
+    }
+}
+
+impl Monotile {
+    fn on_window_commit(&mut self, root: &WlSurface) -> Option<(usize, bool)> {
+        let id = self.state.windows.find_by_surface(root)?;
         self.state.windows[id].on_commit();
-        None
+        Some((self.state.windows[id].monitor, false))
     }
 
-    fn on_popup_commit(&mut self, surface: &WlSurface) -> Option<usize> {
-        let popup = self.state.popups.find_popup(surface)?;
+    fn on_popup_commit(&mut self, surface: &WlSurface, root: &WlSurface) -> Option<(usize, bool)> {
+        self.state.popups.commit(surface);
+        let popup = self.state.popups.find_popup(root)?;
 
         if let PopupKind::Xdg(ref xdg) = popup
             && !xdg.is_initial_configure_sent()
@@ -74,18 +76,22 @@ impl Monotile {
             xdg.send_configure().expect("initial configure");
         }
 
+        // window popup
         if let Ok(popup_root) = find_popup_root_surface(&popup)
             && let Some(id) = self.state.windows.find_by_surface(&popup_root)
         {
             self.state.windows[id].buffer_committed = true;
+            return Some((self.state.windows[id].monitor, false));
         }
 
-        None
+        // layer-shell popup
+        // TODO for multi-monitor: resolve the layer surface's monitor
+        Some((self.state.active_monitor, false))
     }
 
     /// Unmapped toplevel: two-phase configure/map state machine.
-    fn on_unmapped_commit(&mut self, surface: &WlSurface) -> Option<usize> {
-        let unmapped = self.state.unmapped.get_mut(&surface.id())?;
+    fn on_unmapped_commit(&mut self, root: &WlSurface) -> Option<(usize, bool)> {
+        let unmapped = self.state.unmapped.get_mut(&root.id())?;
 
         if unmapped.placement.is_none() {
             // phase 1: first commit - send configure with tiled size
@@ -113,12 +119,12 @@ impl Monotile {
         }
         // phase 2: configure acked, check for buffer
         let has_buffer =
-            with_renderer_surface_state(surface, |s| s.buffer().is_some()).unwrap_or(false);
+            with_renderer_surface_state(root, |s| s.buffer().is_some()).unwrap_or(false);
         if !has_buffer {
             return None;
         }
 
-        let mut unmapped = self.state.unmapped.remove(&surface.id()).unwrap();
+        let mut unmapped = self.state.unmapped.remove(&root.id()).unwrap();
         // process the buffer commit before mapping
         unmapped.window.on_commit();
         let floating = unmapped.should_float();
@@ -126,18 +132,16 @@ impl Monotile {
             p.floating |= floating;
         }
         let id = self.state.map(unmapped);
-        let mon = self.state.windows[id].monitor;
-        self.recompute_layout(mon);
-        None
+        Some((self.state.windows[id].monitor, true))
     }
 
-    fn on_layer_commit(&mut self, surface: &WlSurface) -> Option<usize> {
+    fn on_layer_commit(&mut self, root: &WlSurface) -> Option<(usize, bool)> {
         for (i, mon) in self.state.monitors.iter().enumerate() {
             let mut map = layer_map_for_output(&mon.output);
-            let Some(layer) = map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL) else {
+            let Some(layer) = map.layer_for_surface(root, WindowSurfaceType::TOPLEVEL) else {
                 continue;
             };
-            let initial = with_states(surface, |s| {
+            let initial = with_states(root, |s| {
                 !s.data_map
                     .get::<LayerSurfaceData>()
                     .unwrap()
@@ -150,7 +154,7 @@ impl Monotile {
                 // Workaround for clients that batch the initial (empty) commit
                 // and a buffer commit in the same socket write. Pre-set
                 // last_acked so the pre_commit_hook accepts the buffer.
-                with_states(surface, |s| {
+                with_states(root, |s| {
                     s.data_map
                         .get::<LayerSurfaceData>()
                         .unwrap()
@@ -165,9 +169,27 @@ impl Monotile {
             let changed = map.arrange();
             drop(map);
             self.state.monitors[i].update_exclusive_layer();
-            return if changed { Some(i) } else { None };
+            return Some((i, changed));
         }
         None
+    }
+
+    fn on_lock_commit(&mut self, root: &WlSurface) -> Option<(usize, bool)> {
+        let i = self.state.monitors.iter().position(|m| {
+            m.lock_surface
+                .as_ref()
+                .is_some_and(|ls| ls.wl_surface() == root)
+        })?;
+        Some((i, false))
+    }
+
+    fn on_cursor_commit(&mut self, root: &WlSurface) -> Option<(usize, bool)> {
+        if self.state.cursor.on_commit(root) {
+            // TODO for multi-seat: get the monitor for the seat's pointer position
+            Some((self.state.active_monitor, false))
+        } else {
+            None
+        }
     }
 }
 

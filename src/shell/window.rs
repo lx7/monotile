@@ -88,7 +88,7 @@ impl Unmapped {
         };
         if tiled {
             tl.with_pending_state(|s| s.size = Some(size));
-            set_tiled(&tl, true);
+            set_tiled(tl, true);
         }
         tl.send_configure();
     }
@@ -330,7 +330,7 @@ impl WindowElement {
                     s.states.unset(xdg_toplevel::State::Fullscreen);
                 }
             });
-            set_tiled(&tl, !fullscreen && !self.floating);
+            set_tiled(tl, !fullscreen && !self.floating);
         }
     }
 
@@ -342,7 +342,7 @@ impl WindowElement {
             tl.with_pending_state(|s| {
                 s.states.unset(xdg_toplevel::State::Fullscreen);
             });
-            set_tiled(&tl, !floating);
+            set_tiled(tl, !floating);
         }
     }
 

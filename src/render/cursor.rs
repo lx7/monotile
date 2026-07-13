@@ -37,6 +37,25 @@ struct DndIcon {
     offset: Point<i32, Logical>,
 }
 
+impl DndIcon {
+    fn on_commit(&mut self, surface: &WlSurface) -> bool {
+        if &self.surface == surface {
+            let delta = compositor::with_states(surface, |states| {
+                states
+                    .cached_state
+                    .get::<compositor::SurfaceAttributes>()
+                    .current()
+                    .buffer_delta
+                    .take()
+            });
+            self.offset += delta.unwrap_or_default();
+            true
+        } else {
+            false
+        }
+    }
+}
+
 pub struct CursorManager {
     pub status: CursorImageStatus,
     pub override_icon: Option<CursorIcon>,
@@ -121,23 +140,20 @@ impl CursorManager {
         self.dnd_icon.as_ref().map(|icon| &icon.surface)
     }
 
-    pub fn on_dnd_commit(&mut self, surface: &WlSurface) {
-        let Some(icon) = &mut self.dnd_icon else {
-            return;
-        };
-        if &icon.surface != surface {
-            return;
+    fn cursor_surface(&self) -> Option<&WlSurface> {
+        match &self.status {
+            CursorImageStatus::Surface(s) => Some(s),
+            _ => None,
         }
-        let delta = compositor::with_states(surface, |states| {
-            states
-                .cached_state
-                .get::<compositor::SurfaceAttributes>()
-                .current()
-                .buffer_delta
-                .take()
-        });
-        if let Some(delta) = delta {
-            icon.offset += delta;
+    }
+
+    pub fn on_commit(&mut self, surface: &WlSurface) -> bool {
+        if self.cursor_surface() == Some(surface) {
+            true
+        } else if let Some(icon) = &mut self.dnd_icon {
+            icon.on_commit(surface)
+        } else {
+            false
         }
     }
 
