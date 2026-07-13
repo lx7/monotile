@@ -75,7 +75,7 @@ impl XdgShellHandler for Monotile {
             && surface.parent().is_some()
         {
             self.state.windows[id].set_floating(true);
-            self.recompute_layout(self.state.active_monitor);
+            self.recompute_layout(self.state.windows[id].monitor);
         }
     }
 
