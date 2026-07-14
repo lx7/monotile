@@ -75,29 +75,26 @@ impl TilingLayout {
         self.tiles.iter().map(|t| t.id)
     }
 
-    pub fn target(&self, from: WindowId, to: Rel) -> Option<WindowId> {
-        let cur = self.tiles.iter().position(|t| t.id == from)?;
+    fn resolve_index(&self, cur: usize, to: Rel) -> usize {
         let n = self.tiles.len();
-        let idx = match to {
+        match to {
             Rel::Next => (cur + 1) % n,
             Rel::Prev => (cur + n - 1) % n,
             Rel::First => 0,
             Rel::Last => n - 1,
-        };
-        Some(self.tiles[idx].id)
+        }
+    }
+
+    pub fn target(&self, from: WindowId, to: Rel) -> Option<WindowId> {
+        let cur = self.tiles.iter().position(|t| t.id == from)?;
+        Some(self.tiles[self.resolve_index(cur, to)].id)
     }
 
     pub fn swap(&mut self, from: WindowId, to: Rel) {
         let Some(cur) = self.tiles.iter().position(|t| t.id == from) else {
             return;
         };
-        let n = self.tiles.len();
-        let target = match to {
-            Rel::Next => (cur + 1) % n,
-            Rel::Prev => (cur + n - 1) % n,
-            Rel::First => 0,
-            Rel::Last => n - 1,
-        };
+        let target = self.resolve_index(cur, to);
         if cur != target {
             self.tiles.swap(cur, target);
         }
