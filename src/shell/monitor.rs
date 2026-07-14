@@ -202,14 +202,7 @@ impl Monitor {
     }
 
     pub fn window_rect(&self, ws: &Windows, id: WindowId) -> Option<Rectangle<i32, Logical>> {
-        let we = ws.get(id)?;
-        if we.fullscreen {
-            Some(self.geometry())
-        } else if we.floating {
-            Some(we.float_geo)
-        } else {
-            self.tag().layout.position_of(id)
-        }
+        self.tag().window_rect(ws.get(id)?, self.geometry())
     }
 
     pub fn recompute_layout(&mut self, ws: &mut Windows) {

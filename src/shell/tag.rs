@@ -5,7 +5,7 @@ use smithay::{
     utils::{Logical, Rectangle, Serial},
 };
 
-use super::{TilingLayout, WindowId, Windows};
+use super::{TilingLayout, WindowElement, WindowId, Windows};
 
 #[derive(Debug, Default, Clone)]
 pub struct Tag {
@@ -60,6 +60,20 @@ impl Tag {
         self.focus_stack.first().copied()
     }
 
+    pub fn window_rect(
+        &self,
+        we: &WindowElement,
+        fs_geo: Rectangle<i32, Logical>,
+    ) -> Option<Rectangle<i32, Logical>> {
+        if we.fullscreen {
+            Some(fs_geo)
+        } else if we.floating {
+            Some(we.float_geo)
+        } else {
+            self.layout.position_of(we.id)
+        }
+    }
+
     pub fn raise(&mut self, id: WindowId) {
         if let Some(pos) = self.floating.iter().position(|&wid| wid == id) {
             let id = self.floating.remove(pos);
@@ -98,15 +112,8 @@ impl Tag {
         let mut configured = Vec::new();
         for &id in &self.focus_stack {
             let Some(we) = ws.get_mut(id) else { continue };
-            let target = if we.fullscreen {
-                fs_geo
-            } else if we.floating {
-                we.float_geo
-            } else {
-                let Some(rect) = self.layout.position_of(id) else {
-                    continue;
-                };
-                rect
+            let Some(target) = self.window_rect(we, fs_geo) else {
+                continue;
             };
             if let Some(serial) = we.configure(target.size)
                 && let Some(tl) = we.window.toplevel()
