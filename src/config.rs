@@ -60,17 +60,6 @@ thread_local! {
     static PALETTE: RefCell<HashMap<String, Color>> = RefCell::new(HashMap::new());
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct Palette;
-
-impl<'de> Deserialize<'de> for Palette {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let map = HashMap::<String, Color>::deserialize(d)?;
-        PALETTE.with(|p| *p.borrow_mut() = map);
-        Ok(Palette)
-    }
-}
-
 // --- Rules and pattern matching ---
 
 #[derive(Debug, Clone)]
@@ -343,7 +332,6 @@ impl Keyboard {
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(default)]
 pub struct Config {
-    pub colors: Palette,
     pub outputs: Vec<OutputRule>,
     pub layout: Layout,
     pub windows: Vec<WindowRule>,
@@ -359,7 +347,19 @@ impl Config {
     }
 
     pub fn parse(text: &str) -> Result<Self, String> {
-        ron::from_str::<Config>(text).map_err(|e| e.to_string())
+        #[derive(Default, Deserialize)]
+        #[serde(default)]
+        struct Colors {
+            colors: HashMap<String, Color>,
+        }
+
+        let palette = ron::from_str::<Colors>(text)
+            .map_err(|e| e.to_string())?
+            .colors;
+        PALETTE.with(|p| *p.borrow_mut() = palette);
+        let result = ron::from_str::<Config>(text).map_err(|e| e.to_string());
+        PALETTE.with(|p| p.borrow_mut().clear());
+        result
     }
 
     pub fn load(explicit: Option<PathBuf>) -> Result<Self, String> {
@@ -669,6 +669,12 @@ mod tests {
     fn color_palette_invalid_hex_errors() {
         let ron = r##"(colors: {"bad": "#not-hex"})"##;
         assert!(Config::parse(ron).is_err());
+    }
+
+    #[test]
+    fn color_palette_does_not_leak_between_parses() {
+        Config::parse(r##"(colors: {"red": "#ff0000"})"##).unwrap();
+        assert!(Config::parse(r##"(colors: {"accent": "red"})"##).is_err());
     }
 
     #[test]
