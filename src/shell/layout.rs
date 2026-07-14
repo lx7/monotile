@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use smithay::utils::{Logical, Rectangle};
+use smithay::utils::{Logical, Rectangle, Size};
 
 use crate::config::{self, Rel};
 
@@ -121,6 +121,13 @@ impl TilingLayout {
         for (tile, rect) in self.tiles.iter_mut().zip(rects) {
             tile.rect = rect;
         }
+    }
+
+    pub fn next_size(&self, area: Rectangle<i32, Logical>) -> Size<i32, Logical> {
+        self.compute_rects(self.tiles.len() + 1, area)
+            .last()
+            .map(|r| r.size)
+            .unwrap_or(area.size)
     }
 
     pub fn compute_rects(

@@ -205,6 +205,11 @@ impl Monitor {
         self.tag().window_rect(ws.get(id)?, self.geometry())
     }
 
+    pub fn next_tiled_size(&self) -> Size<i32, Logical> {
+        let area = layer_map_for_output(&self.output).non_exclusive_zone();
+        self.tag().layout.next_size(area)
+    }
+
     pub fn recompute_layout(&mut self, ws: &mut Windows) {
         self.refresh_geometry();
         let area = layer_map_for_output(&self.output).non_exclusive_zone();
