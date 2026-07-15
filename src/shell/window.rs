@@ -21,7 +21,7 @@ use smithay::{
 
 use crate::{config, render::RenderStep};
 
-use super::WindowId;
+use super::{Monitors, WindowId};
 
 fn set_tiled(tl: &ToplevelSurface, tiled: bool) {
     tl.with_pending_state(|s| {
@@ -196,24 +196,36 @@ impl WindowElement {
             && m.urgent.is_none_or(|v| v == self.urgent)
     }
 
-    pub fn resolve_init(&mut self) -> (Option<String>, Option<Vec<usize>>) {
-        let mut output = None;
-        let mut tags = None;
+    pub fn resolve_init(&mut self, monitors: &Monitors) -> Option<Vec<usize>> {
+        let mut init = config::WindowInit::default();
         for rule in &self.rules {
             if self.matches(rule) {
-                let Some(init) = &rule.init else { continue };
-                self.floating = init.floating.unwrap_or(self.floating);
-                if let Some((w, h)) = init.size {
-                    self.float_geo.size = (w, h).into();
-                }
-                if let Some((x, y)) = init.position {
-                    self.float_geo.loc = (x, y).into();
-                }
-                output = init.output.clone().or(output);
-                tags = init.tags.clone().or(tags);
+                let Some(ri) = &rule.init else { continue };
+                init.floating = ri.floating.or(init.floating);
+                init.size = ri.size.or(init.size);
+                init.position = ri.position.or(init.position);
+                init.output = ri.output.clone().or(init.output);
+                init.tags = ri.tags.clone().or(init.tags);
             }
         }
-        (output, tags)
+
+        self.floating = init.floating.unwrap_or(self.floating);
+        if let Some((w, h)) = init.size {
+            self.float_geo.size = (w, h).into();
+        }
+        if let Some(name) = &init.output {
+            self.monitor = monitors.idx_by_name(name);
+        }
+
+        let area = monitors[self.monitor].usable_area();
+        let Size { w, h, .. } = self.float_geo.size;
+        let centered = (
+            area.loc.x + (area.size.w - w) / 2,
+            area.loc.y + (area.size.h - h) / 2,
+        );
+        self.float_geo.loc = init.position.map(Point::from).unwrap_or(centered.into());
+
+        init.tags
     }
 
     pub fn build_render_steps(&mut self) {

@@ -120,16 +120,7 @@ impl Monitor {
         &mut self.tags[self.active_tag]
     }
 
-    pub fn map(&mut self, ws: &mut Windows, id: WindowId, tags: Option<Vec<usize>>) {
-        let area = layer_map_for_output(&self.output).non_exclusive_zone();
-        let we = &mut ws[id];
-
-        let has_pos = we.float_geo.loc != Point::default();
-        let Size { w, h, .. } = we.float_geo.size;
-        let x = if has_pos { we.float_geo.loc.x } else { area.loc.x + (area.size.w - w) / 2 };
-        let y = if has_pos { we.float_geo.loc.y } else { area.loc.y + (area.size.h - h) / 2 };
-        we.float_geo.loc = (x, y).into();
-
+    pub fn map(&mut self, id: WindowId, tags: Option<Vec<usize>>) {
         if let Some(tags) = tags {
             for t in tags {
                 if t < self.tags.len() {
@@ -205,14 +196,17 @@ impl Monitor {
         self.tag().window_rect(ws.get(id)?, self.geometry())
     }
 
+    pub fn usable_area(&self) -> Rectangle<i32, Logical> {
+        layer_map_for_output(&self.output).non_exclusive_zone()
+    }
+
     pub fn next_tiled_size(&self) -> Size<i32, Logical> {
-        let area = layer_map_for_output(&self.output).non_exclusive_zone();
-        self.tag().layout.next_size(area)
+        self.tag().layout.next_size(self.usable_area())
     }
 
     pub fn recompute_layout(&mut self, ws: &mut Windows) {
         self.refresh_geometry();
-        let area = layer_map_for_output(&self.output).non_exclusive_zone();
+        let area = self.usable_area();
         let fs_geo = self.geometry();
         let configured = self.tag_mut().recompute_layout(ws, area, fs_geo);
         let view = View::project(self.tag(), configured);
@@ -287,6 +281,12 @@ impl Monitors {
 
     pub fn by_output(&self, output: &Output) -> Option<(usize, &Monitor)> {
         self.iter().enumerate().find(|(_, m)| m.output == *output)
+    }
+
+    pub fn idx_by_name(&self, name: &str) -> usize {
+        self.iter()
+            .position(|m| m.output.name() == name)
+            .unwrap_or(self.seat_idx())
     }
 
     pub fn contains_window(&self, id: WindowId) -> bool {

@@ -1,5 +1,5 @@
 use super::Fixture;
-use crate::config::{Action, Rel};
+use crate::config::{Action, Config, Rel, WindowInit, WindowRule};
 use smithay::{reexports::wayland_server::Resource, utils::Rectangle};
 use wayland_protocols::xdg::shell::client::xdg_toplevel::State as ToplevelState;
 
@@ -342,5 +342,30 @@ fn fullscreen_configure_has_state_and_output_size() {
         (last.width, last.height),
         (1000, 800),
         "fullscreen size should match output",
+    );
+}
+
+#[test]
+fn rule_position_zero_is_respected() {
+    let mut config = Config::new();
+    config.windows.push(WindowRule {
+        init: Some(WindowInit {
+            floating: Some(true),
+            position: Some((0, 0)),
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let mut f = Fixture::with_config(config);
+    let c = f.add_client();
+    open_window(&mut f, c);
+
+    let id = f.mt.state.mon().tag().focused_id().unwrap();
+    let we = &f.mt.state.windows[id];
+    assert!(we.floating, "rule should make the window floating");
+    assert_eq!(
+        we.float_geo.loc,
+        (0, 0).into(),
+        "explicit (0,0) position must not be re-centered",
     );
 }

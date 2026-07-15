@@ -448,28 +448,18 @@ impl State {
         self.ipc.dirty = true;
     }
 
-    pub fn monitor_idx(&self, name: &str) -> usize {
-        self.monitors
-            .iter()
-            .position(|m| m.output.name() == name)
-            .unwrap_or(self.monitors.seat_idx())
-    }
-
     pub fn map(&mut self, unmapped: Unmapped) -> WindowId {
         let id = self
             .windows
             .insert_with_key(|id| WindowElement::new(id, unmapped));
-        let (output, tags) = self.windows[id].resolve_init();
+        let tags = self.windows[id].resolve_init(&self.monitors);
         self.windows[id].build_render_steps();
 
-        if let Some(name) = output {
-            self.windows[id].monitor = self.monitor_idx(&name);
-        }
         self.foreign_toplevel
             .add(id, &self.windows[id].title, &self.windows[id].app_id);
 
         let idx = self.windows[id].monitor;
-        self.monitors[idx].map(&mut self.windows, id, tags);
+        self.monitors[idx].map(id, tags);
         id
     }
 
