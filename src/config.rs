@@ -679,7 +679,7 @@ mod tests {
 
     #[test]
     fn keysym_unknown() {
-        let ron = r#"(binds: [([Super], Key("NonExistentKey_XYZ"), Quit)])"#;
+        let ron = r#"(binds: [([Super], Key("NonExistentKey_XYZ"), Exit)])"#;
         let r = ron::from_str::<Config>(ron);
         assert!(r.is_err());
     }
