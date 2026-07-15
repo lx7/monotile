@@ -162,8 +162,12 @@ impl DrmState {
     }
 
     fn refresh_duration(output: &Output) -> Duration {
-        let refresh = output.current_mode().map(|m| m.refresh).unwrap_or(60_000);
-        Duration::from_micros(1_000_000 / (refresh as u64 / 1000))
+        let refresh = output
+            .current_mode()
+            .map(|m| m.refresh)
+            .unwrap_or(60_000)
+            .max(1);
+        Duration::from_micros(1_000_000_000 / refresh as u64)
     }
 
     pub fn render(&mut self, crtc: crtc::Handle, state: &mut State) {
@@ -487,8 +491,8 @@ fn connector_disconnected(drm: &mut DrmState, state: &mut State, crtc: crtc::Han
     };
     info!("{}: disconnected", surface.output.name());
     state.remove_monitor(&surface.output);
-    if !state.monitors.is_empty() {
-        drm.schedule_render(&state.monitors.seat_mon().output);
+    if let Some(mon) = state.monitors.first() {
+        drm.schedule_render(&mon.output);
     }
 }
 
@@ -692,4 +696,41 @@ fn drm_mode_for_config(
     }
     let preferred = preferred.or(modes.first().copied())?;
     Some((preferred, matching.unwrap_or(preferred)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use smithay::output::{Mode, PhysicalProperties, Subpixel};
+
+    fn output_with_refresh(refresh: i32) -> Output {
+        let output = Output::new(
+            "test".into(),
+            PhysicalProperties {
+                size: (0, 0).into(),
+                subpixel: Subpixel::Unknown,
+                make: "test".into(),
+                model: "test".into(),
+                serial_number: "test".into(),
+            },
+        );
+        let mode = Mode {
+            size: (1920, 1080).into(),
+            refresh,
+        };
+        output.change_current_state(Some(mode), None, None, None);
+        output
+    }
+
+    #[test]
+    fn refresh_duration_60hz() {
+        let d = DrmState::refresh_duration(&output_with_refresh(60_000));
+        assert_eq!(d, Duration::from_micros(16_666));
+    }
+
+    #[test]
+    fn refresh_duration_survives_low_and_zero_refresh() {
+        assert!(DrmState::refresh_duration(&output_with_refresh(500)) > Duration::from_secs(1));
+        assert!(DrmState::refresh_duration(&output_with_refresh(0)) > Duration::from_secs(1));
+    }
 }
