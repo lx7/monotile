@@ -488,7 +488,7 @@ fn connector_disconnected(drm: &mut DrmState, state: &mut State, crtc: crtc::Han
     info!("{}: disconnected", surface.output.name());
     state.remove_monitor(&surface.output);
     if !state.monitors.is_empty() {
-        drm.schedule_render(&state.monitors[state.active_monitor].output);
+        drm.schedule_render(&state.monitors.seat_mon().output);
     }
 }
 

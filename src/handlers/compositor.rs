@@ -86,7 +86,7 @@ impl Monotile {
 
         // layer-shell popup
         // TODO for multi-monitor: resolve the layer surface's monitor
-        Some((self.state.active_monitor, false))
+        Some((self.state.monitors.seat_idx(), false))
     }
 
     /// Unmapped toplevel: two-phase configure/map state machine.
@@ -99,12 +99,12 @@ impl Monotile {
             let configured_size = if floating {
                 (0, 0).into()
             } else {
-                self.state.monitors[self.state.active_monitor].next_tiled_size()
+                self.state.monitors.seat_mon().next_tiled_size()
             };
             unmapped.configure_initial(configured_size, !floating);
             unmapped.placement = Some(Placement {
                 floating,
-                monitor: self.state.active_monitor,
+                monitor: self.state.monitors.seat_idx(),
                 configured_size,
             });
             return None;
@@ -177,8 +177,7 @@ impl Monotile {
 
     fn on_cursor_commit(&mut self, root: &WlSurface) -> Option<(usize, bool)> {
         if self.state.cursor.on_commit(root) {
-            // TODO for multi-seat: get the monitor for the seat's pointer position
-            Some((self.state.active_monitor, false))
+            Some((self.state.monitors.pointer_idx(), false))
         } else {
             None
         }

@@ -20,7 +20,7 @@ use smithay::{
         pointer::*,
     },
     reexports::input::{Device, DragLockState},
-    utils::{Logical, Point, SERIAL_COUNTER},
+    utils::{Logical, Point, SERIAL_COUNTER, Serial},
 };
 
 impl Monotile {
@@ -81,7 +81,7 @@ impl Monotile {
                         }
 
                         // exclusive layer
-                        if monotile.state.mon().exclusive_layer.is_some() {
+                        if monotile.state.monitors.seat_mon().exclusive_layer.is_some() {
                             return FilterResult::Forward;
                         }
 
@@ -105,13 +105,13 @@ impl Monotile {
                 }
             }
             InputEvent::PointerMotion { event, .. } => {
-                let geo = self.state.mon().geometry();
+                let geo = self.state.monitors.pointer_mon().geometry();
                 let pos = pointer.current_location() + event.delta();
                 let pos = pos.constrain(geo.to_f64());
                 self.handle_pointer_motion(pos, event.time_msec(), serial);
             }
             InputEvent::PointerMotionAbsolute { event, .. } => {
-                let geo = self.state.mon().geometry();
+                let geo = self.state.monitors.pointer_mon().geometry();
                 let pos = event.position_transformed(geo.size) + geo.loc.to_f64();
                 self.handle_pointer_motion(pos, event.time_msec(), serial);
             }
@@ -122,7 +122,7 @@ impl Monotile {
                 if button_state == ButtonState::Pressed
                     && !pointer.is_grabbed()
                     && !self.state.locked
-                    && self.state.mon().exclusive_layer.is_none()
+                    && self.state.monitors.pointer_mon().exclusive_layer.is_none()
                 {
                     let mods = Mods::from(&keyboard.modifier_state());
                     if let Some(action) =
@@ -140,7 +140,7 @@ impl Monotile {
                     // raise window and focus
                     let id = self.state.surface_under(pointer.current_location()).window;
                     if let Some(id) = id {
-                        self.state.mon_mut().tag_mut().raise(id);
+                        self.state.monitors.pointer_mon_mut().tag_mut().raise(id);
                         self.set_focus(Some(id));
                     }
                 }
@@ -194,7 +194,8 @@ impl Monotile {
 
                 pointer.axis(self, frame);
                 pointer.frame(self);
-                self.backend.schedule_render(&self.state.mon().output);
+                self.backend
+                    .schedule_render(&self.state.monitors.pointer_mon().output);
             }
             InputEvent::GesturePinchBegin { event, .. } => {
                 pointer.gesture_pinch_begin(
@@ -254,12 +255,7 @@ impl Monotile {
         }
     }
 
-    fn handle_pointer_motion(
-        &mut self,
-        pos: Point<f64, Logical>,
-        time: u32,
-        serial: smithay::utils::Serial,
-    ) {
+    fn handle_pointer_motion(&mut self, pos: Point<f64, Logical>, time: u32, serial: Serial) {
         let pointer = self.state.seat.get_pointer().unwrap();
 
         let under = self.state.surface_under(pos);
@@ -267,7 +263,7 @@ impl Monotile {
         if !pointer.is_grabbed()
             && self.state.config.seats["seat0"].focus_follows_cursor
             && under.window.is_some()
-            && under.window != self.state.mon().tag().focused_id()
+            && under.window != self.state.focused_window()
         {
             self.set_focus(under.window);
         }
@@ -298,107 +294,104 @@ impl Monotile {
         use Action::*;
 
         match action {
-            Noop => return,
-            Exit => {
-                self.state.loop_signal.stop();
-                return;
-            }
+            // mouse actions
+            Noop | Move | Resize => {}
+
+            // keyboard actions
+            Exit => self.state.loop_signal.stop(),
             Spawn(ref args) => {
                 if let Some((cmd, args)) = args.split_first() {
                     spawn(cmd, args, false);
                 }
-                return;
             }
-            Focus(pos) => {
-                let tag = self.state.mon().tag();
-                if let Some(cur) = tag.focused_id()
-                    && let Some(id) = tag.layout.target(cur, pos)
-                {
-                    self.set_focus(Some(id));
-                }
-                self.backend.schedule_render(&self.state.mon().output);
-                return;
-            }
-            Swap(pos) => {
-                if let Some(cur) = self.state.mon().tag().focused_id() {
-                    self.state.mon_mut().tag_mut().layout.swap(cur, pos);
-                }
-            }
+            ReloadConfig => self.reload_config(),
+            ChangeVt(vt) => self.backend.change_vt(vt),
+            PowerOff => self.backend.set_all_outputs_power(false),
+            PowerOn => self.backend.set_all_outputs_power(true),
+
+            // TODO: implement multi-monitor
+            FocusOutput(_) | SendToOutput(_) => {}
+
+            // focused-window actions
             Close => {
-                if let Some(id) = self.state.mon().tag().focused_id()
+                if let Some(id) = self.state.focused_window()
                     && let Some(tl) = self.state.windows[id].window.toplevel()
                 {
-                    tl.send_close();
+                    tl.send_close(); // recompute happens in toplevel_destroyed
                 }
-                return;
             }
             ToggleFloat => {
-                if let Some(id) = self.state.mon().tag().focused_id() {
+                if let Some(id) = self.state.focused_window() {
                     let floating = !self.state.windows[id].floating;
                     self.state.windows[id].set_floating(floating);
+                    self.recompute_layout(self.state.windows[id].monitor);
                 }
             }
             ToggleFullscreen => {
-                if let Some(id) = self.state.mon().tag().focused_id() {
+                if let Some(id) = self.state.focused_window() {
                     let on = !self.state.windows[id].fullscreen;
                     self.state.windows[id].set_fullscreen(on);
+                    self.recompute_layout(self.state.windows[id].monitor);
+                }
+            }
+
+            // seat-monitor actions
+            Focus(pos) => {
+                let tag = self.state.monitors.seat_mon().tag();
+                let target = tag.focused_id().and_then(|cur| tag.layout.target(cur, pos));
+                if let Some(id) = target {
+                    self.set_focus(Some(id));
+                }
+                self.backend
+                    .schedule_render(&self.state.monitors.seat_mon().output);
+            }
+            Swap(pos) => {
+                let mon = self.state.monitors.seat_mon_mut();
+                if let Some(cur) = mon.tag().focused_id() {
+                    mon.tag_mut().layout.swap(cur, pos);
+                    self.recompute_seat_layout();
                 }
             }
             FocusTag(tag) => {
-                self.state.mon_mut().set_active_tag(tag);
+                self.state.monitors.seat_mon_mut().set_active_tag(tag);
+                self.recompute_seat_layout();
             }
             FocusPrevTag => {
-                self.state.mon_mut().toggle_prev_tag();
+                self.state.monitors.seat_mon_mut().toggle_prev_tag();
+                self.recompute_seat_layout();
             }
             SetTag(tag) => {
-                let mon = &mut self.state.monitors[self.state.active_monitor];
-                mon.move_to_tag(&mut self.state.windows, tag);
+                self.state
+                    .monitors
+                    .seat_mon_mut()
+                    .move_to_tag(&mut self.state.windows, tag);
+                self.recompute_seat_layout();
             }
             ToggleTag(tag) => {
-                self.state.mon_mut().toggle_tag(tag);
+                self.state.monitors.seat_mon_mut().toggle_tag(tag);
+                self.recompute_seat_layout();
             }
             AdjustMainCount(delta) => {
-                self.state
-                    .mon_mut()
-                    .tag_mut()
-                    .layout
-                    .adjust_main_count(delta);
+                let layout = &mut self.state.monitors.seat_mon_mut().tag_mut().layout;
+                layout.adjust_main_count(delta);
+                self.recompute_seat_layout();
             }
             SetMainCount(count) => {
-                self.state.mon_mut().tag_mut().layout.set_main_count(count);
+                let layout = &mut self.state.monitors.seat_mon_mut().tag_mut().layout;
+                layout.set_main_count(count);
+                self.recompute_seat_layout();
             }
             AdjustMainRatio(delta) => {
-                self.state
-                    .mon_mut()
-                    .tag_mut()
-                    .layout
-                    .adjust_main_factor(delta);
+                let layout = &mut self.state.monitors.seat_mon_mut().tag_mut().layout;
+                layout.adjust_main_factor(delta);
+                self.recompute_seat_layout();
             }
             SetMainRatio(ratio) => {
-                self.state.mon_mut().tag_mut().layout.set_main_factor(ratio);
+                let layout = &mut self.state.monitors.seat_mon_mut().tag_mut().layout;
+                layout.set_main_factor(ratio);
+                self.recompute_seat_layout();
             }
-            ReloadConfig => {
-                self.reload_config();
-                return;
-            }
-            ChangeVt(vt) => {
-                self.backend.change_vt(vt);
-                return; // no recompute needed
-            }
-            PowerOff => {
-                self.backend.set_all_outputs_power(false);
-                return;
-            }
-            PowerOn => {
-                self.backend.set_all_outputs_power(true);
-                return;
-            }
-            // TODO: implement multi-monitor
-            FocusOutput(_) | SendToOutput(_) => return,
-            // mouse-only actions - no-op for keyboard
-            Move | Resize => return,
         }
-        self.recompute_layout(self.state.active_monitor);
     }
 
     fn handle_mouse_action(
@@ -406,16 +399,40 @@ impl Monotile {
         action: Action,
         btn: u32,
         pos: Point<f64, Logical>,
-        serial: smithay::utils::Serial,
+        serial: Serial,
     ) {
         match action {
-            Action::Move | Action::Resize => {}
-            other => {
-                self.handle_action(other);
-                return;
-            }
+            Action::Move => self.start_move_grab(btn, pos, serial),
+            Action::Resize => self.start_resize_grab(btn, pos, serial),
+            other => self.handle_action(other),
         }
+    }
 
+    fn start_move_grab(&mut self, btn: u32, pos: Point<f64, Logical>, serial: Serial) {
+        let under = self.state.surface_under(pos);
+        let Some(id) = under.window else {
+            return;
+        };
+        if !self.state.windows[id].floating {
+            return;
+        }
+        let geo = self.state.windows[id].float_geo;
+        self.state.cursor.override_icon = Some(CursorIcon::AllScroll);
+        let start = GrabStartData {
+            focus: under.surface,
+            button: btn,
+            location: pos,
+        };
+        let ptr = self.state.seat.get_pointer().unwrap();
+        ptr.set_grab(
+            self,
+            MoveSurfaceGrab::start(start, id, geo),
+            serial,
+            Focus::Clear,
+        );
+    }
+
+    fn start_resize_grab(&mut self, btn: u32, pos: Point<f64, Logical>, serial: Serial) {
         let Some(id) = self.state.surface_under(pos).window else {
             return;
         };
@@ -423,32 +440,21 @@ impl Monotile {
             return;
         }
         let geo = self.state.windows[id].float_geo;
+        self.state.cursor.override_icon = Some(CursorIcon::SeResize);
+        let corner = (geo.loc + geo.size - Point::new(2, 2)).to_f64();
         let ptr = self.state.seat.get_pointer().unwrap();
-        match action {
-            Action::Move => {
-                self.state.cursor.override_icon = Some(CursorIcon::AllScroll);
-                let start = GrabStartData {
-                    focus: self.state.surface_under(pos).surface,
-                    button: btn,
-                    location: pos,
-                };
-                let grab = MoveSurfaceGrab::start(start, id, geo);
-                ptr.set_grab(self, grab, serial, Focus::Clear);
-            }
-            Action::Resize => {
-                self.state.cursor.override_icon = Some(CursorIcon::SeResize);
-                let corner = (geo.loc + geo.size - Point::new(2, 2)).to_f64();
-                ptr.set_location(corner);
-                let start = GrabStartData {
-                    focus: self.state.surface_under(corner).surface,
-                    button: btn,
-                    location: corner,
-                };
-                let grab = ResizeSurfaceGrab::start(start, id, geo);
-                ptr.set_grab(self, grab, serial, Focus::Clear);
-            }
-            _ => unreachable!(),
-        }
+        ptr.set_location(corner);
+        let start = GrabStartData {
+            focus: self.state.surface_under(corner).surface,
+            button: btn,
+            location: corner,
+        };
+        ptr.set_grab(
+            self,
+            ResizeSurfaceGrab::start(start, id, geo),
+            serial,
+            Focus::Clear,
+        );
     }
 
     pub fn device_added(&mut self, dev: &mut Device) {

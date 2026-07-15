@@ -127,6 +127,10 @@ impl Monotile {
         self.state.monitors[idx].recompute_layout(&mut self.state.windows);
     }
 
+    pub fn recompute_seat_layout(&mut self) {
+        self.recompute_layout(self.state.monitors.seat_idx());
+    }
+
     pub fn advance_view_queues(&mut self) {
         self.unblock_ready_views();
         // the render path also pops, this handles the timeout
@@ -280,11 +284,6 @@ pub struct State {
     pub windows: Windows,
     pub unmapped: HashMap<ObjectId, Unmapped>,
     pub monitors: Monitors,
-    // TODO: active_monitor should be derived, not stored.
-    // Every lookup (render, map, unmap, focus, layout) really needs
-    // "monitor for this output/window/pointer location", not "active".
-    // Remove this index when multi-monitor is implemented.
-    pub active_monitor: usize,
     pub locked: bool,
     pub pending_lock: Option<(SessionLocker, HashSet<Output>)>,
     pub session_lock_state: SessionLockManagerState,
@@ -381,7 +380,6 @@ impl State {
             cursor,
             windows: Windows::default(),
             monitors: Monitors::default(),
-            active_monitor: 0,
             unmapped: HashMap::new(),
             locked: false,
             pending_lock: None,
@@ -394,11 +392,15 @@ impl State {
     }
 
     pub fn mon(&self) -> &Monitor {
-        &self.monitors[self.active_monitor]
+        self.monitors.seat_mon()
     }
 
     pub fn mon_mut(&mut self) -> &mut Monitor {
-        &mut self.monitors[self.active_monitor]
+        self.monitors.seat_mon_mut()
+    }
+
+    pub fn focused_window(&self) -> Option<WindowId> {
+        self.monitors.seat_mon().tag().focused_id()
     }
 
     pub fn add_monitor(&mut self, output: Output, settings: MonitorSettings) {
@@ -428,22 +430,16 @@ impl State {
 
         self.confirm_lock(output);
 
-        // TODO: replace active_monitor with per-seat focused monitor
-        if !self.monitors.is_empty() {
-            self.active_monitor = self.active_monitor.min(self.monitors.len() - 1);
-        }
-
-        // migrate windows to active monitor / active tag
+        // migrate windows to monitor 0
         if !ids.is_empty() && !self.monitors.is_empty() {
             for &id in &ids {
                 if let Some(we) = self.windows.get_mut(id) {
                     we.set_fullscreen(false);
-                    we.monitor = self.active_monitor;
+                    we.monitor = 0;
                 }
             }
 
-            // TODO: replace active_monitor with per-seat focused monitor
-            let mon = &mut self.monitors[self.active_monitor];
+            let mon = &mut self.monitors[0];
             for id in ids {
                 mon.tag_mut().add(id);
             }
@@ -456,7 +452,7 @@ impl State {
         self.monitors
             .iter()
             .position(|m| m.output.name() == name)
-            .unwrap_or(self.active_monitor)
+            .unwrap_or(self.monitors.seat_idx())
     }
 
     pub fn map(&mut self, unmapped: Unmapped) -> WindowId {
@@ -488,10 +484,10 @@ impl State {
     }
 
     pub fn surface_under(&self, pos: Point<f64, Logical>) -> SurfaceUnder {
-        let monitor = self.active_monitor;
+        let monitor = self.monitors.pointer_idx();
+        let mon = self.monitors.pointer_mon();
         if self.locked {
-            let surface = self
-                .mon()
+            let surface = mon
                 .lock_surface
                 .as_ref()
                 .map(|ls| (ls.wl_surface().clone(), pos));
@@ -502,7 +498,6 @@ impl State {
             };
         }
 
-        let mon = self.mon();
         let map = layer_map_for_output(&mon.output);
         let layer_hit = |layer| {
             let layer = map.layer_under(layer, pos)?;

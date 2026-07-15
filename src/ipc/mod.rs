@@ -104,10 +104,12 @@ impl State {
         for (i, mon) in self.monitors.iter().enumerate() {
             let snap = mon.snapshot(&self.windows, &self.screencopy);
             self.ipc.monotile.notify_output(&mon.output, &snap);
-            if i == self.active_monitor {
+            if i == self.monitors.seat_idx() {
                 self.ipc.monotile.notify_seat(&snap, &mon.output);
             }
-            self.ipc.dwl.notify(mon, &snap, i == self.active_monitor);
+            self.ipc
+                .dwl
+                .notify(mon, &snap, i == self.monitors.seat_idx());
         }
     }
 }

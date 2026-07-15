@@ -60,7 +60,7 @@ fn floating_window_lands_in_floating_group() {
     let a = open_window(&mut f, c);
     let id = f.mt.state.mon().tag().focused_id().unwrap();
     f.mt.state.windows[id].set_floating(true);
-    f.mt.recompute_layout(f.mt.state.active_monitor);
+    f.mt.recompute_seat_layout();
     settle(&mut f, c, a);
 
     let v = project(&f);
@@ -75,7 +75,7 @@ fn fullscreen_window_projects_to_fullscreen() {
     let a = open_window(&mut f, c);
     let id = f.mt.state.mon().tag().focused_id().unwrap();
     f.mt.state.windows[id].set_fullscreen(true);
-    f.mt.recompute_layout(f.mt.state.active_monitor);
+    f.mt.recompute_seat_layout();
     settle(&mut f, c, a);
 
     let v = project(&f);

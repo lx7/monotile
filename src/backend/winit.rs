@@ -26,7 +26,7 @@ impl WinitState {
     pub fn render(&mut self, state: &mut State) -> Result<(), Box<dyn std::error::Error>> {
         let age = self.backend.buffer_age().unwrap_or(0);
         let (renderer, mut fb) = self.backend.bind()?;
-        let mon = &mut state.monitors[state.active_monitor];
+        let mon = state.monitors.seat_mon_mut();
         mon.views.pop_ready();
         let elems = crate::render::output_elements(
             renderer,
@@ -116,7 +116,7 @@ pub fn init(
                         None,
                     );
                     layer_map_for_output(&monotile.backend.winit().output).arrange();
-                    monotile.recompute_layout(monotile.state.active_monitor);
+                    monotile.recompute_seat_layout();
                 }
                 WinitEvent::Input(event) => monotile.process_input_event(event),
                 WinitEvent::Redraw => {

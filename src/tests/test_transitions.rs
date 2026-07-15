@@ -108,7 +108,7 @@ fn closing_lone_window_settles_immediately() {
 fn tag_switch_holds_outgoing_until_incoming_commits() {
     let mut f = Fixture::new();
     let c = f.add_client();
-    let idx = f.mt.state.active_monitor;
+    let idx = f.mt.state.monitors.seat_idx();
 
     open_window(&mut f, c); // a (client 0)
     open_window(&mut f, c); // b (client 1), focused
@@ -148,7 +148,7 @@ fn tag_switch_holds_outgoing_until_incoming_commits() {
 fn tag_switch_without_resize_settles_immediately() {
     let mut f = Fixture::new();
     let c = f.add_client();
-    let idx = f.mt.state.active_monitor;
+    let idx = f.mt.state.monitors.seat_idx();
 
     open_window(&mut f, c);
     settle(&mut f, c, 0);
@@ -170,7 +170,7 @@ fn tag_switch_without_resize_settles_immediately() {
 fn idle_inhibit_follows_visibility() {
     let mut f = Fixture::new();
     let c = f.add_client();
-    let idx = f.mt.state.active_monitor;
+    let idx = f.mt.state.monitors.seat_idx();
 
     open_window(&mut f, c);
     settle(&mut f, c, 0);
