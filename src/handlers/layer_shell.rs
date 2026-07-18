@@ -34,8 +34,6 @@ impl WlrLayerShellHandler for Monotile {
         let layer = LayerSurface::new(surface, namespace);
         map.map_layer(&layer).unwrap();
         drop(map);
-        let (i, _) = self.state.monitors.by_output(&output).unwrap();
-        self.state.monitors[i].update_exclusive_layer();
         self.update_focus();
     }
 
@@ -45,7 +43,7 @@ impl WlrLayerShellHandler for Monotile {
     }
 
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
-        for (i, mon) in self.state.monitors.iter().enumerate() {
+        for mon in self.state.monitors.iter() {
             let mut map = layer_map_for_output(&mon.output);
             let layer = map
                 .layers()
@@ -55,7 +53,6 @@ impl WlrLayerShellHandler for Monotile {
                 map.unmap_layer(&layer);
                 drop(map);
                 let output = mon.output.clone();
-                self.state.monitors[i].update_exclusive_layer();
                 self.recompute_layout(&output);
                 return;
             }

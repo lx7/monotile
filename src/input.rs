@@ -7,6 +7,7 @@ use crate::{
     config::{Action, Config, Mods, Trigger},
     grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
     handlers::Devices,
+    shell::OutputExt,
     spawn::spawn,
 };
 use smithay::{
@@ -81,7 +82,14 @@ impl Monotile {
                         }
 
                         // exclusive layer
-                        if monotile.state.monitors.seat_mon().exclusive_layer.is_some() {
+                        if monotile
+                            .state
+                            .monitors
+                            .seat_mon()
+                            .output
+                            .exclusive_layer()
+                            .is_some()
+                        {
                             return FilterResult::Forward;
                         }
 
@@ -122,7 +130,13 @@ impl Monotile {
                 if button_state == ButtonState::Pressed
                     && !pointer.is_grabbed()
                     && !self.state.locked
-                    && self.state.monitors.pointer_mon().exclusive_layer.is_none()
+                    && self
+                        .state
+                        .monitors
+                        .pointer_mon()
+                        .output
+                        .exclusive_layer()
+                        .is_none()
                 {
                     let mods = Mods::from(&keyboard.modifier_state());
                     if let Some(action) =

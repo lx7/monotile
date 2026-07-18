@@ -63,7 +63,9 @@ use crate::{
     },
     ipc::IpcState,
     render::cursor::CursorManager,
-    shell::{Monitor, MonitorSettings, Monitors, Unmapped, WindowElement, WindowId, Windows},
+    shell::{
+        Monitor, MonitorSettings, Monitors, OutputExt, Unmapped, WindowElement, WindowId, Windows,
+    },
     spawn::notify,
 };
 
@@ -230,7 +232,7 @@ impl Monotile {
         }
 
         // if exclusive layer exists, focus it
-        if let Some(surface) = self.state.mon().exclusive_layer.clone() {
+        if let Some(surface) = self.state.mon().output.exclusive_layer() {
             if let Some(kb) = self.state.seat.get_keyboard() {
                 kb.set_focus(self, Some(surface), SERIAL_COUNTER.next_serial());
             }

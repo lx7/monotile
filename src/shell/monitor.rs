@@ -18,11 +18,24 @@ use super::{Tag, View, Views, WindowId, Windows};
 
 pub trait OutputExt {
     fn usable_area(&self) -> Rectangle<i32, Logical>;
+    fn exclusive_layer(&self) -> Option<WlSurface>;
 }
 
 impl OutputExt for Output {
     fn usable_area(&self) -> Rectangle<i32, Logical> {
         layer_map_for_output(self).non_exclusive_zone()
+    }
+
+    fn exclusive_layer(&self) -> Option<WlSurface> {
+        let map = layer_map_for_output(self);
+        [Layer::Overlay, Layer::Top].iter().find_map(|&l| {
+            map.layers_on(l)
+                .rev()
+                .find(|s| {
+                    s.cached_state().keyboard_interactivity == KeyboardInteractivity::Exclusive
+                })
+                .map(|s| s.wl_surface().clone())
+        })
     }
 }
 
@@ -88,7 +101,6 @@ pub struct Monitor {
     pub tags: Vec<Tag>,
     pub active_tag: usize,
     pub prev_tag: usize,
-    pub exclusive_layer: Option<WlSurface>,
     pub lock_surface: Option<LockSurface>,
     pub views: Views,
     pub output_geo: Rectangle<i32, Logical>,
@@ -113,7 +125,6 @@ impl Monitor {
             tags,
             active_tag: 0,
             prev_tag: 0,
-            exclusive_layer: None,
             lock_surface: None,
             views: Views::default(),
             output_geo: Rectangle::default(),
@@ -225,19 +236,6 @@ impl Monitor {
             .flat_map(|t| &t.focus_stack)
             .copied()
             .collect()
-    }
-
-    pub fn update_exclusive_layer(&mut self) {
-        let map = layer_map_for_output(&self.output);
-        self.exclusive_layer = None;
-        for l in [Layer::Overlay, Layer::Top] {
-            for s in map.layers_on(l).rev() {
-                if s.cached_state().keyboard_interactivity == KeyboardInteractivity::Exclusive {
-                    self.exclusive_layer = Some(s.wl_surface().clone());
-                    return;
-                }
-            }
-        }
     }
 }
 

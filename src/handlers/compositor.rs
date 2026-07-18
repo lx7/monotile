@@ -126,7 +126,7 @@ impl Monotile {
     }
 
     fn on_layer_commit(&mut self, root: &WlSurface) -> Option<(Output, bool)> {
-        for (i, mon) in self.state.monitors.iter().enumerate() {
+        for mon in self.state.monitors.iter() {
             let mut map = layer_map_for_output(&mon.output);
             let Some(layer) = map.layer_for_surface(root, WindowSurfaceType::TOPLEVEL) else {
                 continue;
@@ -158,9 +158,7 @@ impl Monotile {
             }
             let changed = map.arrange();
             drop(map);
-            let output = mon.output.clone();
-            self.state.monitors[i].update_exclusive_layer();
-            return Some((output, changed));
+            return Some((mon.output.clone(), changed));
         }
         None
     }
