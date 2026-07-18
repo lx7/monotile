@@ -183,11 +183,10 @@ impl DrmState {
             state.screencopy.fail_pending_for_output(&surface.output);
             return;
         }
-        let Some((idx, _)) = state.monitors.by_output(&surface.output) else {
+        let Some(mon) = state.monitors.by_output_mut(&surface.output) else {
             state.screencopy.fail_pending_for_output(&surface.output);
             return;
         };
-        let mon = &mut state.monitors[idx];
         mon.views.pop_ready();
 
         let refresh = Self::refresh_duration(&surface.output);
