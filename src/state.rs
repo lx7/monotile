@@ -418,7 +418,7 @@ impl State {
     pub fn remove_monitor(&mut self, output: &Output) {
         self.screencopy.remove_output(output);
 
-        let Some((idx, _)) = self.monitors.by_output(output) else {
+        let Some(dead) = self.monitors.remove(output) else {
             return;
         };
         // clean up layer surfaces on this output
@@ -430,7 +430,6 @@ impl State {
         }
         drop(map);
 
-        let dead = self.monitors.remove(idx);
         let ids = dead.window_ids();
         self.display_handle.remove_global::<Monotile>(dead.global);
 

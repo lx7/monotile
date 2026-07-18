@@ -275,12 +275,13 @@ impl Monitors {
         self.active
     }
 
-    pub fn remove(&mut self, idx: usize) -> Monitor {
+    pub fn remove(&mut self, output: &Output) -> Option<Monitor> {
+        let idx = self.inner.iter().position(|m| m.output == *output)?;
         let mon = self.inner.remove(idx);
         if !self.inner.is_empty() {
             self.active = self.active.min(self.inner.len() - 1);
         }
-        mon
+        Some(mon)
     }
 
     pub fn by_output(&self, output: &Output) -> Option<(usize, &Monitor)> {
