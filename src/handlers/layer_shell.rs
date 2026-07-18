@@ -54,8 +54,9 @@ impl WlrLayerShellHandler for Monotile {
             if let Some(layer) = layer {
                 map.unmap_layer(&layer);
                 drop(map);
+                let output = mon.output.clone();
                 self.state.monitors[i].update_exclusive_layer();
-                self.recompute_layout(i);
+                self.recompute_layout(&output);
                 return;
             }
         }

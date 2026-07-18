@@ -18,6 +18,11 @@ fn settle(f: &mut Fixture, c: usize, win: usize) {
     f.mt.advance_view_queues();
 }
 
+fn recompute_seat(f: &mut Fixture) {
+    let output = f.mt.state.monitors.seat_mon().output.clone();
+    f.mt.recompute_layout(&output);
+}
+
 fn views_len(f: &Fixture) -> usize {
     f.mt.state.mon().views.len()
 }
@@ -116,7 +121,7 @@ fn tag_switch_holds_outgoing_until_incoming_commits() {
 
     // move b to tag 1, leaving a alone on tag 0; a grows
     f.mt.state.monitors[idx].move_to_tag(&mut f.mt.state.windows, 1);
-    f.mt.recompute_layout(idx);
+    recompute_seat(&mut f);
     f.roundtrip(c);
     settle(&mut f, c, 0);
 
@@ -125,7 +130,7 @@ fn tag_switch_holds_outgoing_until_incoming_commits() {
 
     // switch to tag 1: b must grow split->full, so its view is held
     f.mt.state.monitors[idx].set_active_tag(1);
-    f.mt.recompute_layout(idx);
+    recompute_seat(&mut f);
     f.roundtrip(c);
 
     assert_eq!(views_len(&f), 2, "the incoming resize is held");
@@ -155,7 +160,7 @@ fn tag_switch_without_resize_settles_immediately() {
 
     // switch to an empty tag - nothing to resize, nothing to hold
     f.mt.state.monitors[idx].set_active_tag(1);
-    f.mt.recompute_layout(idx);
+    recompute_seat(&mut f);
     f.roundtrip(c);
     f.mt.advance_view_queues();
 
@@ -193,7 +198,7 @@ fn idle_inhibit_follows_visibility() {
 
     // hide it on another tag
     f.mt.state.monitors[idx].set_active_tag(1);
-    f.mt.recompute_layout(idx);
+    recompute_seat(&mut f);
     f.roundtrip(c);
     f.mt.advance_view_queues();
     f.mt.state.refresh_idle_inhibit();
@@ -204,7 +209,7 @@ fn idle_inhibit_follows_visibility() {
 
     // bring it back
     f.mt.state.monitors[idx].set_active_tag(0);
-    f.mt.recompute_layout(idx);
+    recompute_seat(&mut f);
     f.roundtrip(c);
     f.mt.advance_view_queues();
     f.mt.state.refresh_idle_inhibit();

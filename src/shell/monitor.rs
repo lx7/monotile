@@ -16,6 +16,16 @@ use crate::config::{self, ModeConfig};
 
 use super::{Tag, View, Views, WindowId, Windows};
 
+pub trait OutputExt {
+    fn usable_area(&self) -> Rectangle<i32, Logical>;
+}
+
+impl OutputExt for Output {
+    fn usable_area(&self) -> Rectangle<i32, Logical> {
+        layer_map_for_output(self).non_exclusive_zone()
+    }
+}
+
 #[derive(Debug)]
 pub struct MonitorSettings {
     pub tags: Vec<String>,
@@ -196,17 +206,13 @@ impl Monitor {
         self.tag().window_rect(ws.get(id)?, self.geometry())
     }
 
-    pub fn usable_area(&self) -> Rectangle<i32, Logical> {
-        layer_map_for_output(&self.output).non_exclusive_zone()
-    }
-
     pub fn next_tiled_size(&self) -> Size<i32, Logical> {
-        self.tag().layout.next_size(self.usable_area())
+        self.tag().layout.next_size(self.output.usable_area())
     }
 
     pub fn recompute_layout(&mut self, ws: &mut Windows) {
         self.refresh_geometry();
-        let area = self.usable_area();
+        let area = self.output.usable_area();
         let fs_geo = self.geometry();
         let configured = self.tag_mut().recompute_layout(ws, area, fs_geo);
         let view = View::project(self.tag(), configured);
@@ -283,10 +289,19 @@ impl Monitors {
         self.iter().enumerate().find(|(_, m)| m.output == *output)
     }
 
-    pub fn idx_by_name(&self, name: &str) -> usize {
-        self.iter()
-            .position(|m| m.output.name() == name)
-            .unwrap_or(self.seat_idx())
+    pub fn by_output_mut(&mut self, output: &Output) -> Option<&mut Monitor> {
+        self.inner.iter_mut().find(|m| m.output == *output)
+    }
+
+    pub fn output_named(&self, name: &str) -> Option<&Output> {
+        self.iter().map(|m| &m.output).find(|o| o.name() == name)
+    }
+
+    // TODO: use view geometry instead (also for surface_under and screencopy)
+    pub fn window_rect(&self, ws: &Windows, id: WindowId) -> Option<Rectangle<i32, Logical>> {
+        let we = ws.get(id)?;
+        let (_, mon) = self.by_output(&we.output)?;
+        mon.tag().window_rect(we, mon.geometry())
     }
 
     pub fn contains_window(&self, id: WindowId) -> bool {

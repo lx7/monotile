@@ -29,7 +29,7 @@ use tracing::warn;
 use crate::{
     Monotile,
     render::MonotileElement,
-    shell::{Monitors, WindowId, Windows},
+    shell::{WindowId, Windows},
     state::State,
 };
 
@@ -92,18 +92,15 @@ fn matches_toplevel(sref: &SessionRef, id: WindowId) -> bool {
 
 const SHM_FORMATS: [wl_shm::Format; 2] = [wl_shm::Format::Argb8888, wl_shm::Format::Xrgb8888];
 
-// TODO: reconsider when multi-monitor and the output hashmap are implemented
 fn toplevel_capture_info(
     windows: &Windows,
-    monitors: &Monitors,
     id: WindowId,
 ) -> Option<(Output, Size<i32, BufferCoords>, Scale<f64>)> {
     let we = windows.get(id)?;
-    let mon = &monitors[we.monitor];
-    let scale = mon.output.current_scale().fractional_scale();
+    let scale = we.output.current_scale().fractional_scale();
     let size = we.window.geometry().size.to_f64().to_physical(scale);
     Some((
-        mon.output.clone(),
+        we.output.clone(),
         (size.w as i32, size.h as i32).into(),
         Scale::from(scale),
     ))
@@ -228,7 +225,7 @@ impl ImageCopyCaptureHandler for Monotile {
             let mode = output.current_mode()?;
             (mode.size.w, mode.size.h).into()
         } else if let Some(id) = source_toplevel(source) {
-            toplevel_capture_info(&self.state.windows, &self.state.monitors, id)?.1
+            toplevel_capture_info(&self.state.windows, id)?.1
         } else {
             return None;
         };
@@ -245,8 +242,7 @@ impl ImageCopyCaptureHandler for Monotile {
         let (output, tracker) = if let Some(output) = source_output(&source) {
             (output.clone(), OutputDamageTracker::from_output(&output))
         } else if let Some(id) = target {
-            let Some((output, buf_size, scale)) =
-                toplevel_capture_info(&self.state.windows, &self.state.monitors, id)
+            let Some((output, buf_size, scale)) = toplevel_capture_info(&self.state.windows, id)
             else {
                 return;
             };
@@ -290,9 +286,7 @@ impl ImageCopyCaptureHandler for Monotile {
                 size: (mode.size.w, mode.size.h).into(),
             }
         } else if let Some(id) = source_toplevel(&source) {
-            let Some((_, size, scale)) =
-                toplevel_capture_info(&self.state.windows, &self.state.monitors, id)
-            else {
+            let Some((_, size, scale)) = toplevel_capture_info(&self.state.windows, id) else {
                 frame.fail(CaptureFailureReason::Unknown);
                 return;
             };
@@ -466,7 +460,8 @@ pub fn capture_frame(
                 let mut elems =
                     we.render_content(renderer, (0, 0).into(), scale, Kind::Unspecified);
                 if s.session.draw_cursor() {
-                    let window_loc = state.monitors[we.monitor]
+                    let window_loc = state
+                        .monitors
                         .window_rect(&state.windows, id)
                         .map(|r| r.loc)
                         .unwrap_or_default();

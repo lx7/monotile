@@ -115,8 +115,9 @@ pub fn init(
                         None,
                         None,
                     );
-                    layer_map_for_output(&monotile.backend.winit().output).arrange();
-                    monotile.recompute_seat_layout();
+                    let output = monotile.backend.winit().output.clone();
+                    layer_map_for_output(&output).arrange();
+                    monotile.recompute_layout(&output);
                 }
                 WinitEvent::Input(event) => monotile.process_input_event(event),
                 WinitEvent::Redraw => {

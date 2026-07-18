@@ -22,6 +22,11 @@ fn project(f: &Fixture) -> View {
     View::project(f.mt.state.mon().tag(), Vec::new())
 }
 
+fn recompute_seat(f: &mut Fixture) {
+    let output = f.mt.state.monitors.seat_mon().output.clone();
+    f.mt.recompute_layout(&output);
+}
+
 #[test]
 fn single_tiled_window_projects_one_tile() {
     let mut f = Fixture::new();
@@ -60,7 +65,7 @@ fn floating_window_lands_in_floating_group() {
     let a = open_window(&mut f, c);
     let id = f.mt.state.mon().tag().focused_id().unwrap();
     f.mt.state.windows[id].set_floating(true);
-    f.mt.recompute_seat_layout();
+    recompute_seat(&mut f);
     settle(&mut f, c, a);
 
     let v = project(&f);
@@ -75,7 +80,7 @@ fn fullscreen_window_projects_to_fullscreen() {
     let a = open_window(&mut f, c);
     let id = f.mt.state.mon().tag().focused_id().unwrap();
     f.mt.state.windows[id].set_fullscreen(true);
-    f.mt.recompute_seat_layout();
+    recompute_seat(&mut f);
     settle(&mut f, c, a);
 
     let v = project(&f);

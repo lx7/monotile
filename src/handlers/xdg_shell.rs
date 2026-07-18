@@ -42,10 +42,10 @@ impl XdgShellHandler for Monotile {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
-        let Some(mon) = self.state.destroy_window(&surface.wl_surface().id()) else {
+        let Some(output) = self.state.destroy_window(&surface.wl_surface().id()) else {
             return;
         };
-        self.recompute_layout(mon);
+        self.recompute_layout(&output);
     }
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
@@ -75,7 +75,8 @@ impl XdgShellHandler for Monotile {
             && surface.parent().is_some()
         {
             self.state.windows[id].set_floating(true);
-            self.recompute_layout(self.state.windows[id].monitor);
+            let output = self.state.windows[id].output.clone();
+            self.recompute_layout(&output);
         }
     }
 
@@ -100,17 +101,17 @@ impl XdgShellHandler for Monotile {
         _output: Option<wl_output::WlOutput>,
     ) {
         if let Some(id) = self.state.windows.find_by_surface(surface.wl_surface()) {
-            let mon = self.state.windows[id].monitor;
+            let output = self.state.windows[id].output.clone();
             self.state.windows[id].set_fullscreen(true);
-            self.recompute_layout(mon);
+            self.recompute_layout(&output);
         }
     }
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
         if let Some(id) = self.state.windows.find_by_surface(surface.wl_surface()) {
-            let monitor = self.state.windows[id].monitor;
+            let output = self.state.windows[id].output.clone();
             self.state.windows[id].set_fullscreen(false);
-            self.recompute_layout(monitor);
+            self.recompute_layout(&output);
         }
     }
 

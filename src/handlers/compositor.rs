@@ -5,6 +5,7 @@ use smithay::{
     backend::renderer::utils::{on_commit_buffer_handler, with_renderer_surface_state},
     delegate_compositor, delegate_shm,
     desktop::{PopupKind, WindowSurfaceType, find_popup_root_surface, layer_map_for_output},
+    output::Output,
     reexports::wayland_server::{
         Client, Resource,
         protocol::{wl_buffer, wl_surface::WlSurface},
@@ -49,24 +50,21 @@ impl CompositorHandler for Monotile {
             .or_else(|| self.on_lock_commit(&root))
             .or_else(|| self.on_cursor_commit(&root))
         {
-            Some((mon, true)) => self.recompute_layout(mon),
-            Some((mon, false)) => {
-                let output = &self.state.monitors[mon].output;
-                self.backend.schedule_render(output);
-            }
+            Some((output, true)) => self.recompute_layout(&output),
+            Some((output, false)) => self.backend.schedule_render(&output),
             None => {}
         }
     }
 }
 
 impl Monotile {
-    fn on_window_commit(&mut self, root: &WlSurface) -> Option<(usize, bool)> {
+    fn on_window_commit(&mut self, root: &WlSurface) -> Option<(Output, bool)> {
         let id = self.state.windows.find_by_surface(root)?;
         self.state.windows[id].on_commit();
-        Some((self.state.windows[id].monitor, false))
+        Some((self.state.windows[id].output.clone(), false))
     }
 
-    fn on_popup_commit(&mut self, surface: &WlSurface, root: &WlSurface) -> Option<(usize, bool)> {
+    fn on_popup_commit(&mut self, surface: &WlSurface, root: &WlSurface) -> Option<(Output, bool)> {
         self.state.popups.commit(surface);
         let popup = self.state.popups.find_popup(root)?;
 
@@ -81,16 +79,16 @@ impl Monotile {
             && let Some(id) = self.state.windows.find_by_surface(&popup_root)
         {
             self.state.windows[id].buffer_committed = true;
-            return Some((self.state.windows[id].monitor, false));
+            return Some((self.state.windows[id].output.clone(), false));
         }
 
         // layer-shell popup
         // TODO for multi-monitor: resolve the layer surface's monitor
-        Some((self.state.monitors.seat_idx(), false))
+        Some((self.state.monitors.seat_mon().output.clone(), false))
     }
 
     /// Unmapped toplevel: two-phase configure/map state machine.
-    fn on_unmapped_commit(&mut self, root: &WlSurface) -> Option<(usize, bool)> {
+    fn on_unmapped_commit(&mut self, root: &WlSurface) -> Option<(Output, bool)> {
         let unmapped = self.state.unmapped.get_mut(&root.id())?;
 
         if unmapped.placement.is_none() {
@@ -104,7 +102,7 @@ impl Monotile {
             unmapped.configure_initial(configured_size, !floating);
             unmapped.placement = Some(Placement {
                 floating,
-                monitor: self.state.monitors.seat_idx(),
+                output: self.state.monitors.seat_mon().output.clone(),
                 configured_size,
             });
             return None;
@@ -124,10 +122,10 @@ impl Monotile {
             p.floating |= floating;
         }
         let id = self.state.map(unmapped);
-        Some((self.state.windows[id].monitor, true))
+        Some((self.state.windows[id].output.clone(), true))
     }
 
-    fn on_layer_commit(&mut self, root: &WlSurface) -> Option<(usize, bool)> {
+    fn on_layer_commit(&mut self, root: &WlSurface) -> Option<(Output, bool)> {
         for (i, mon) in self.state.monitors.iter().enumerate() {
             let mut map = layer_map_for_output(&mon.output);
             let Some(layer) = map.layer_for_surface(root, WindowSurfaceType::TOPLEVEL) else {
@@ -160,24 +158,25 @@ impl Monotile {
             }
             let changed = map.arrange();
             drop(map);
+            let output = mon.output.clone();
             self.state.monitors[i].update_exclusive_layer();
-            return Some((i, changed));
+            return Some((output, changed));
         }
         None
     }
 
-    fn on_lock_commit(&mut self, root: &WlSurface) -> Option<(usize, bool)> {
-        let i = self.state.monitors.iter().position(|m| {
+    fn on_lock_commit(&mut self, root: &WlSurface) -> Option<(Output, bool)> {
+        let mon = self.state.monitors.iter().find(|m| {
             m.lock_surface
                 .as_ref()
                 .is_some_and(|ls| ls.wl_surface() == root)
         })?;
-        Some((i, false))
+        Some((mon.output.clone(), false))
     }
 
-    fn on_cursor_commit(&mut self, root: &WlSurface) -> Option<(usize, bool)> {
+    fn on_cursor_commit(&mut self, root: &WlSurface) -> Option<(Output, bool)> {
         if self.state.cursor.on_commit(root) {
-            Some((self.state.monitors.pointer_idx(), false))
+            Some((self.state.monitors.pointer_mon().output.clone(), false))
         } else {
             None
         }

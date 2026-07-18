@@ -8,6 +8,7 @@ use slotmap::SlotMap;
 use smithay::{
     backend::renderer::{element::texture::TextureBuffer, gles::GlesTexture},
     desktop::Window,
+    output::Output,
     reexports::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::{Resource, backend::ObjectId, protocol::wl_surface::WlSurface},
@@ -21,7 +22,7 @@ use smithay::{
 
 use crate::{config, render::RenderStep};
 
-use super::{Monitors, WindowId};
+use super::{Monitors, OutputExt, WindowId};
 
 fn set_tiled(tl: &ToplevelSurface, tiled: bool) {
     tl.with_pending_state(|s| {
@@ -69,7 +70,7 @@ pub struct Unmapped {
 
 pub struct Placement {
     pub floating: bool,
-    pub monitor: usize,
+    pub output: Output,
     pub configured_size: Size<i32, Logical>,
 }
 
@@ -125,7 +126,7 @@ pub struct WindowElement {
     pub window: Window,
 
     // state
-    pub monitor: usize,
+    pub output: Output,
     pub app_id: String,
     pub title: String,
     pub floating: bool,
@@ -164,7 +165,7 @@ impl WindowElement {
         Self {
             id,
             window,
-            monitor: placement.monitor,
+            output: placement.output,
             app_id,
             title,
             floating: placement.floating,
@@ -213,11 +214,13 @@ impl WindowElement {
         if let Some((w, h)) = init.size {
             self.float_geo.size = (w, h).into();
         }
-        if let Some(name) = &init.output {
-            self.monitor = monitors.idx_by_name(name);
+        if let Some(name) = &init.output
+            && let Some(output) = monitors.output_named(name)
+        {
+            self.output = output.clone();
         }
 
-        let area = monitors[self.monitor].usable_area();
+        let area = self.output.usable_area();
         let Size { w, h, .. } = self.float_geo.size;
         let centered = (
             area.loc.x + (area.size.w - w) / 2,

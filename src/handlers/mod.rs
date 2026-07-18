@@ -191,8 +191,7 @@ impl XdgActivationHandler for Monotile {
         self.state.windows[id].urgent = true;
         self.state.windows[id].resolve_render();
         self.state.ipc.dirty = true;
-        self.backend
-            .schedule_render(&self.state.monitors[self.state.windows[id].monitor].output);
+        self.backend.schedule_render(&self.state.windows[id].output);
     }
 }
 delegate_xdg_activation!(Monotile);

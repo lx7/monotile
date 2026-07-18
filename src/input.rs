@@ -280,7 +280,7 @@ impl Monotile {
         pointer.frame(self);
 
         // TODO: get cursor from seat when multi-seat is implemented
-        let output = &self.state.monitors[under.monitor].output;
+        let output = &under.output;
         if !self.state.locked {
             let hotspot = self.state.cursor.hotspot;
             self.state
@@ -324,14 +324,16 @@ impl Monotile {
                 if let Some(id) = self.state.focused_window() {
                     let floating = !self.state.windows[id].floating;
                     self.state.windows[id].set_floating(floating);
-                    self.recompute_layout(self.state.windows[id].monitor);
+                    let output = self.state.windows[id].output.clone();
+                    self.recompute_layout(&output);
                 }
             }
             ToggleFullscreen => {
                 if let Some(id) = self.state.focused_window() {
                     let on = !self.state.windows[id].fullscreen;
                     self.state.windows[id].set_fullscreen(on);
-                    self.recompute_layout(self.state.windows[id].monitor);
+                    let output = self.state.windows[id].output.clone();
+                    self.recompute_layout(&output);
                 }
             }
 
@@ -345,51 +347,26 @@ impl Monotile {
                 self.backend
                     .schedule_render(&self.state.monitors.seat_mon().output);
             }
-            Swap(pos) => {
-                let mon = self.state.monitors.seat_mon_mut();
+            Swap(pos) => self.with_seat_mon(|mon, _| {
                 if let Some(cur) = mon.tag().focused_id() {
                     mon.tag_mut().layout.swap(cur, pos);
-                    self.recompute_seat_layout();
                 }
-            }
-            FocusTag(tag) => {
-                self.state.monitors.seat_mon_mut().set_active_tag(tag);
-                self.recompute_seat_layout();
-            }
-            FocusPrevTag => {
-                self.state.monitors.seat_mon_mut().toggle_prev_tag();
-                self.recompute_seat_layout();
-            }
-            SetTag(tag) => {
-                self.state
-                    .monitors
-                    .seat_mon_mut()
-                    .move_to_tag(&mut self.state.windows, tag);
-                self.recompute_seat_layout();
-            }
-            ToggleTag(tag) => {
-                self.state.monitors.seat_mon_mut().toggle_tag(tag);
-                self.recompute_seat_layout();
-            }
+            }),
+            FocusTag(tag) => self.with_seat_mon(|mon, _| mon.set_active_tag(tag)),
+            FocusPrevTag => self.with_seat_mon(|mon, _| mon.toggle_prev_tag()),
+            SetTag(tag) => self.with_seat_mon(|mon, ws| mon.move_to_tag(ws, tag)),
+            ToggleTag(tag) => self.with_seat_mon(|mon, _| mon.toggle_tag(tag)),
             AdjustMainCount(delta) => {
-                let layout = &mut self.state.monitors.seat_mon_mut().tag_mut().layout;
-                layout.adjust_main_count(delta);
-                self.recompute_seat_layout();
+                self.with_seat_mon(|mon, _| mon.tag_mut().layout.adjust_main_count(delta))
             }
             SetMainCount(count) => {
-                let layout = &mut self.state.monitors.seat_mon_mut().tag_mut().layout;
-                layout.set_main_count(count);
-                self.recompute_seat_layout();
+                self.with_seat_mon(|mon, _| mon.tag_mut().layout.set_main_count(count))
             }
             AdjustMainRatio(delta) => {
-                let layout = &mut self.state.monitors.seat_mon_mut().tag_mut().layout;
-                layout.adjust_main_factor(delta);
-                self.recompute_seat_layout();
+                self.with_seat_mon(|mon, _| mon.tag_mut().layout.adjust_main_factor(delta))
             }
             SetMainRatio(ratio) => {
-                let layout = &mut self.state.monitors.seat_mon_mut().tag_mut().layout;
-                layout.set_main_factor(ratio);
-                self.recompute_seat_layout();
+                self.with_seat_mon(|mon, _| mon.tag_mut().layout.set_main_factor(ratio))
             }
         }
     }

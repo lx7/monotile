@@ -75,7 +75,7 @@ pub struct Monotile {
 pub struct SurfaceUnder {
     pub surface: Option<(WlSurface, Point<f64, Logical>)>,
     pub window: Option<WindowId>,
-    pub monitor: usize,
+    pub output: Output,
 }
 
 impl Monotile {
@@ -120,15 +120,19 @@ impl Monotile {
         )
     }
 
-    pub fn recompute_layout(&mut self, idx: usize) {
+    pub fn recompute_layout(&mut self, output: &Output) {
         self.update_focus();
-        self.backend
-            .schedule_render(&self.state.monitors[idx].output);
-        self.state.monitors[idx].recompute_layout(&mut self.state.windows);
+        self.backend.schedule_render(output);
+        if let Some(mon) = self.state.monitors.by_output_mut(output) {
+            mon.recompute_layout(&mut self.state.windows);
+        }
     }
 
-    pub fn recompute_seat_layout(&mut self) {
-        self.recompute_layout(self.state.monitors.seat_idx());
+    pub fn with_seat_mon(&mut self, f: impl FnOnce(&mut Monitor, &mut Windows)) {
+        let mon = self.state.monitors.seat_mon_mut();
+        let output = mon.output.clone();
+        f(mon, &mut self.state.windows);
+        self.recompute_layout(&output);
     }
 
     pub fn advance_view_queues(&mut self) {
@@ -431,14 +435,23 @@ impl State {
         self.confirm_lock(output);
 
         // migrate windows to monitor 0
-        if !ids.is_empty() && !self.monitors.is_empty() {
+        if !self.monitors.is_empty() {
+            let dest = self.monitors[0].output.clone();
+            for p in self
+                .unmapped
+                .values_mut()
+                .filter_map(|u| u.placement.as_mut())
+            {
+                if p.output == dead.output {
+                    p.output = dest.clone();
+                }
+            }
             for &id in &ids {
                 if let Some(we) = self.windows.get_mut(id) {
                     we.set_fullscreen(false);
-                    we.monitor = 0;
+                    we.output = dest.clone();
                 }
             }
-
             let mon = &mut self.monitors[0];
             for id in ids {
                 mon.tag_mut().add(id);
@@ -458,24 +471,29 @@ impl State {
         self.foreign_toplevel
             .add(id, &self.windows[id].title, &self.windows[id].app_id);
 
-        let idx = self.windows[id].monitor;
-        self.monitors[idx].map(id, tags);
+        let output = self.windows[id].output.clone();
+        self.monitors
+            .by_output_mut(&output)
+            .expect("window monitor resolved at init")
+            .map(id, tags);
         id
     }
 
-    pub fn destroy_window(&mut self, surface: &ObjectId) -> Option<usize> {
+    pub fn destroy_window(&mut self, surface: &ObjectId) -> Option<Output> {
         self.unmapped.remove(surface);
         let id = self.windows.detach(surface)?;
         self.screencopy.remove_toplevel(id);
         self.foreign_toplevel.remove(id);
-        let mon = self.windows[id].monitor;
-        self.monitors[mon].unmap(id);
-        Some(mon)
+        let output = self.windows[id].output.clone();
+        if let Some(mon) = self.monitors.by_output_mut(&output) {
+            mon.unmap(id);
+        }
+        Some(output)
     }
 
     pub fn surface_under(&self, pos: Point<f64, Logical>) -> SurfaceUnder {
-        let monitor = self.monitors.pointer_idx();
         let mon = self.monitors.pointer_mon();
+        let output = mon.output.clone();
         if self.locked {
             let surface = mon
                 .lock_surface
@@ -484,7 +502,7 @@ impl State {
             return SurfaceUnder {
                 surface,
                 window: None,
-                monitor,
+                output,
             };
         }
 
@@ -502,7 +520,7 @@ impl State {
             return SurfaceUnder {
                 surface: Some(hit),
                 window: None,
-                monitor,
+                output,
             };
         }
 
@@ -520,14 +538,14 @@ impl State {
                 return SurfaceUnder {
                     surface: Some((s, (point + loc).to_f64())),
                     window: Some(id),
-                    monitor,
+                    output: output.clone(),
                 };
             }
             if rect.to_f64().contains(pos) {
                 return SurfaceUnder {
                     surface: None,
                     window: Some(id),
-                    monitor,
+                    output: output.clone(),
                 };
             }
         }
@@ -537,7 +555,7 @@ impl State {
         SurfaceUnder {
             surface,
             window: None,
-            monitor,
+            output,
         }
     }
 
