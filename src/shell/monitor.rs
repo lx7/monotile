@@ -259,20 +259,12 @@ impl Monitors {
         &mut self.inner[self.active]
     }
 
-    pub fn seat_idx(&self) -> usize {
-        self.active
-    }
-
     pub fn pointer_mon(&self) -> &Monitor {
         &self.inner[self.active]
     }
 
     pub fn pointer_mon_mut(&mut self) -> &mut Monitor {
         &mut self.inner[self.active]
-    }
-
-    pub fn pointer_idx(&self) -> usize {
-        self.active
     }
 
     pub fn remove(&mut self, output: &Output) -> Option<Monitor> {

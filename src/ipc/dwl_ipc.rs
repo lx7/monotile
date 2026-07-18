@@ -125,8 +125,8 @@ impl Dispatch<ZdwlIpcManagerV2, ()> for Monotile {
                 monotile.state.ipc.dwl.add_output(&output, &handle);
 
                 // send initial state
-                if let Some((i, mon)) = monotile.state.monitors.by_output(&output) {
-                    let active = i == monotile.state.monitors.seat_idx();
+                if let Some((_, mon)) = monotile.state.monitors.by_output(&output) {
+                    let active = mon.output == monotile.state.monitors.seat_mon().output;
                     let snap = mon.snapshot(&monotile.state.windows, &monotile.state.screencopy);
                     send_snapshot(&handle, &snap, mon, active);
                 }

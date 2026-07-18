@@ -101,15 +101,15 @@ impl State {
             return;
         }
         self.ipc.dirty = false;
-        for (i, mon) in self.monitors.iter().enumerate() {
+        let seat_output = self.monitors.seat_mon().output.clone();
+        for mon in self.monitors.iter() {
             let snap = mon.snapshot(&self.windows, &self.screencopy);
             self.ipc.monotile.notify_output(&mon.output, &snap);
-            if i == self.monitors.seat_idx() {
+            let active = mon.output == seat_output;
+            if active {
                 self.ipc.monotile.notify_seat(&snap, &mon.output);
             }
-            self.ipc
-                .dwl
-                .notify(mon, &snap, i == self.monitors.seat_idx());
+            self.ipc.dwl.notify(mon, &snap, active);
         }
     }
 }
