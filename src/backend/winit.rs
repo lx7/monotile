@@ -26,8 +26,12 @@ impl WinitState {
     pub fn render(&mut self, state: &mut State) -> Result<(), Box<dyn std::error::Error>> {
         let age = self.backend.buffer_age().unwrap_or(0);
         let (renderer, mut fb) = self.backend.bind()?;
-        let mon = state.monitors.seat_mon_mut();
+        let mon = state
+            .monitors
+            .by_output_mut(&self.output)
+            .expect("winit always has one output");
         mon.views.pop_ready();
+        let background = mon.settings.background;
         let elems = crate::render::output_elements(
             renderer,
             mon,
@@ -36,13 +40,9 @@ impl WinitState {
             &state.config,
             state.locked,
         );
-        let rendered = self.damage_tracker.render_output(
-            renderer,
-            &mut fb,
-            age,
-            &elems,
-            state.mon().settings.background,
-        )?;
+        let rendered = self
+            .damage_tracker
+            .render_output(renderer, &mut fb, age, &elems, background)?;
 
         std::mem::drop(fb);
         self.backend.submit(rendered.damage.map(|x| x.as_slice()))?;
