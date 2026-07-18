@@ -240,11 +240,11 @@ pub fn output_elements(
 
 impl State {
     pub fn send_frame_callbacks(&mut self, output: &Output, throttle: Option<Duration>) {
-        let Some((idx, _)) = self.monitors.by_output(output) else {
+        let Some((_, mon)) = self.monitors.by_output(output) else {
             return;
         };
         let elapsed = self.start_time.elapsed();
-        if let Some(ls) = &self.monitors[idx].lock_surface {
+        if let Some(ls) = &mon.lock_surface {
             send_frames_surface_tree(ls.wl_surface(), output, elapsed, None, |_, _| {
                 Some(output.clone())
             });
@@ -254,7 +254,7 @@ impl State {
                 Some(output.clone())
             });
         }
-        for id in self.monitors[idx].tag().window_ids() {
+        for id in mon.tag().window_ids() {
             if let Some(we) = self.windows.get_mut(id)
                 && we.buffer_committed
             {
