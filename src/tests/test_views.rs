@@ -1,7 +1,10 @@
 use smithay::utils::Rectangle;
 
 use super::Fixture;
-use crate::{config::Config, shell::View};
+use crate::{
+    config::Config,
+    shell::{SeatExt, View},
+};
 
 fn open_window(f: &mut Fixture, c: usize) -> usize {
     let w = f.client_mut(c).create_window();
@@ -23,7 +26,7 @@ fn project(f: &Fixture) -> View {
 }
 
 fn recompute_seat(f: &mut Fixture) {
-    let output = f.mt.state.monitors.seat_mon().output.clone();
+    let output = f.mt.state.seat.active_output();
     f.mt.recompute_layout(&output);
 }
 

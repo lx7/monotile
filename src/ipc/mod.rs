@@ -7,7 +7,7 @@ mod monotile_ipc_protocol;
 use wayland_server::DisplayHandle;
 
 use crate::handlers::screencopy::ScreencopyState;
-use crate::shell::{Monitor, Windows};
+use crate::shell::{Monitor, SeatExt, Windows};
 use crate::state::State;
 pub use dwl_ipc::DwlIpcState;
 pub use monotile_ipc::MonotileIpcState;
@@ -101,7 +101,7 @@ impl State {
             return;
         }
         self.ipc.dirty = false;
-        let seat_output = self.monitors.seat_mon().output.clone();
+        let seat_output = self.seat.active_output();
         for mon in self.monitors.iter() {
             let snap = mon.snapshot(&self.windows, &self.screencopy);
             self.ipc.monotile.notify_output(&mon.output, &snap);

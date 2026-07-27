@@ -244,36 +244,12 @@ pub struct Monitors {
     #[deref]
     #[deref_mut]
     inner: Vec<Monitor>,
-    active: usize,
 }
 
 impl Monitors {
-    // TODO for multi-seat: seat_* resolve via the seat's active output,
-    // pointer_* via the monitor containing the seat's pointer position.
-
-    pub fn seat_mon(&self) -> &Monitor {
-        &self.inner[self.active]
-    }
-
-    pub fn seat_mon_mut(&mut self) -> &mut Monitor {
-        &mut self.inner[self.active]
-    }
-
-    pub fn pointer_mon(&self) -> &Monitor {
-        &self.inner[self.active]
-    }
-
-    pub fn pointer_mon_mut(&mut self) -> &mut Monitor {
-        &mut self.inner[self.active]
-    }
-
     pub fn remove(&mut self, output: &Output) -> Option<Monitor> {
         let idx = self.inner.iter().position(|m| m.output == *output)?;
-        let mon = self.inner.remove(idx);
-        if !self.inner.is_empty() {
-            self.active = self.active.min(self.inner.len() - 1);
-        }
-        Some(mon)
+        Some(self.inner.remove(idx))
     }
 
     pub fn by_output(&self, output: &Output) -> Option<(usize, &Monitor)> {

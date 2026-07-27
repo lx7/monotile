@@ -107,7 +107,7 @@ fn tag_switch() {
     let w = open_window(&mut f, c);
     f.client_mut(c).take_configures(w); // drain
 
-    let mon = f.mt.state.monitors.seat_mon_mut();
+    let mon = f.mt.state.mon_mut();
     mon.set_active_tag(1);
     f.roundtrip(c);
 
@@ -126,7 +126,7 @@ fn tag_switch() {
     );
 
     // switch back - window should be visible again
-    let mon = f.mt.state.monitors.seat_mon_mut();
+    let mon = f.mt.state.mon_mut();
     mon.set_active_tag(0);
     assert_eq!(windows_on_tag(&f), 1, "tag 0 should have 1 visible window",);
 }

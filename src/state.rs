@@ -64,7 +64,8 @@ use crate::{
     ipc::IpcState,
     render::cursor::CursorManager,
     shell::{
-        Monitor, MonitorSettings, Monitors, OutputExt, Unmapped, WindowElement, WindowId, Windows,
+        Monitor, MonitorSettings, Monitors, OutputExt, SeatExt, Unmapped, WindowElement, WindowId,
+        Windows,
     },
     spawn::notify,
 };
@@ -131,8 +132,12 @@ impl Monotile {
     }
 
     pub fn with_seat_mon(&mut self, f: impl FnOnce(&mut Monitor, &mut Windows)) {
-        let mon = self.state.monitors.seat_mon_mut();
-        let output = mon.output.clone();
+        let output = self.state.seat.active_output();
+        let mon = self
+            .state
+            .monitors
+            .by_output_mut(&output)
+            .expect("the seat's active output is attached to a monitor");
         f(mon, &mut self.state.windows);
         self.recompute_layout(&output);
     }
@@ -398,20 +403,30 @@ impl State {
     }
 
     pub fn mon(&self) -> &Monitor {
-        self.monitors.seat_mon()
+        let output = self.seat.active_output();
+        self.monitors
+            .by_output(&output)
+            .map(|(_, m)| m)
+            .expect("the seat's active output is attached to a monitor")
     }
 
     pub fn mon_mut(&mut self) -> &mut Monitor {
-        self.monitors.seat_mon_mut()
+        let output = self.seat.active_output();
+        self.monitors
+            .by_output_mut(&output)
+            .expect("the seat's active output is attached to a monitor")
     }
 
     pub fn focused_window(&self) -> Option<WindowId> {
-        self.monitors.seat_mon().tag().focused_id()
+        self.mon().tag().focused_id()
     }
 
     pub fn add_monitor(&mut self, output: Output, settings: MonitorSettings) {
         let global = output.create_global::<Monotile>(&self.display_handle);
         let mon = Monitor::new(output, global, settings, &self.config.layout);
+        if self.monitors.is_empty() {
+            self.seat.set_active_output(&mon.output);
+        }
         self.monitors.push(mon);
     }
 
@@ -434,6 +449,12 @@ impl State {
         self.display_handle.remove_global::<Monotile>(dead.global);
 
         self.confirm_lock(output);
+
+        if self.seat.active_output() == *output
+            && let Some(first) = self.monitors.first()
+        {
+            self.seat.set_active_output(&first.output.clone());
+        }
 
         // migrate windows to monitor 0
         if !self.monitors.is_empty() {
@@ -493,8 +514,12 @@ impl State {
     }
 
     pub fn surface_under(&self, pos: Point<f64, Logical>) -> SurfaceUnder {
-        let mon = self.monitors.pointer_mon();
-        let output = mon.output.clone();
+        let output = self.seat.pointer_output();
+        let mon = self
+            .monitors
+            .by_output(&output)
+            .map(|(_, m)| m)
+            .expect("the seat's pointer output is attached to a monitor");
         if self.locked {
             let surface = mon
                 .lock_surface

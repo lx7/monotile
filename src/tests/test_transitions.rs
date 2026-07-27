@@ -1,7 +1,7 @@
 use smithay::utils::{Logical, Rectangle};
 
 use super::Fixture;
-use crate::shell::WindowId;
+use crate::shell::{SeatExt, WindowId};
 
 fn open_window(f: &mut Fixture, c: usize) -> usize {
     let w = f.client_mut(c).create_window();
@@ -19,7 +19,7 @@ fn settle(f: &mut Fixture, c: usize, win: usize) {
 }
 
 fn recompute_seat(f: &mut Fixture) {
-    let output = f.mt.state.monitors.seat_mon().output.clone();
+    let output = f.mt.state.seat.active_output();
     f.mt.recompute_layout(&output);
 }
 
@@ -119,19 +119,21 @@ fn tag_switch_holds_outgoing_until_incoming_commits() {
     settle(&mut f, c, 0);
 
     // move b to tag 1, leaving a alone on tag 0; a grows
+    let output = f.mt.state.seat.active_output();
     f.mt.state
         .monitors
-        .seat_mon_mut()
+        .by_output_mut(&output)
+        .unwrap()
         .move_to_tag(&mut f.mt.state.windows, 1);
     recompute_seat(&mut f);
     f.roundtrip(c);
     settle(&mut f, c, 0);
 
-    let a_id = f.mt.state.monitors.seat_mon().tags[0].focus_stack[0];
-    let b_id = f.mt.state.monitors.seat_mon().tags[1].focus_stack[0];
+    let a_id = f.mt.state.mon().tags[0].focus_stack[0];
+    let b_id = f.mt.state.mon().tags[1].focus_stack[0];
 
     // switch to tag 1: b must grow split->full, so its view is held
-    f.mt.state.monitors.seat_mon_mut().set_active_tag(1);
+    f.mt.state.mon_mut().set_active_tag(1);
     recompute_seat(&mut f);
     f.roundtrip(c);
 
@@ -139,7 +141,7 @@ fn tag_switch_holds_outgoing_until_incoming_commits() {
     assert!(front_shows(&f, a_id), "outgoing tag still displayed");
     assert!(!front_shows(&f, b_id), "incoming tag not shown yet");
     assert_eq!(
-        f.mt.state.monitors.seat_mon().active_tag,
+        f.mt.state.mon().active_tag,
         1,
         "the model flips immediately",
     );
@@ -161,7 +163,7 @@ fn tag_switch_without_resize_settles_immediately() {
     settle(&mut f, c, 0);
 
     // switch to an empty tag - nothing to resize, nothing to hold
-    f.mt.state.monitors.seat_mon_mut().set_active_tag(1);
+    f.mt.state.mon_mut().set_active_tag(1);
     recompute_seat(&mut f);
     f.roundtrip(c);
     f.mt.advance_view_queues();
@@ -180,7 +182,7 @@ fn idle_inhibit_follows_visibility() {
 
     open_window(&mut f, c);
     settle(&mut f, c, 0);
-    let id = f.mt.state.monitors.seat_mon().tags[0].focus_stack[0];
+    let id = f.mt.state.mon().tags[0].focus_stack[0];
 
     // simulate an idle inhibitor on the window's surface
     let surface = f.mt.state.windows[id]
@@ -198,7 +200,7 @@ fn idle_inhibit_follows_visibility() {
     );
 
     // hide it on another tag
-    f.mt.state.monitors.seat_mon_mut().set_active_tag(1);
+    f.mt.state.mon_mut().set_active_tag(1);
     recompute_seat(&mut f);
     f.roundtrip(c);
     f.mt.advance_view_queues();
@@ -209,7 +211,7 @@ fn idle_inhibit_follows_visibility() {
     );
 
     // bring it back
-    f.mt.state.monitors.seat_mon_mut().set_active_tag(0);
+    f.mt.state.mon_mut().set_active_tag(0);
     recompute_seat(&mut f);
     f.roundtrip(c);
     f.mt.advance_view_queues();

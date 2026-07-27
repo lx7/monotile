@@ -17,7 +17,7 @@ use super::dwl_ipc_protocol::{
 use crate::{
     Monotile,
     config::{self, Action},
-    shell::Monitor,
+    shell::{Monitor, SeatExt},
 };
 
 #[derive(Default)]
@@ -126,7 +126,7 @@ impl Dispatch<ZdwlIpcManagerV2, ()> for Monotile {
 
                 // send initial state
                 if let Some((_, mon)) = monotile.state.monitors.by_output(&output) {
-                    let active = mon.output == monotile.state.monitors.seat_mon().output;
+                    let active = mon.output == monotile.state.seat.active_output();
                     let snap = mon.snapshot(&monotile.state.windows, &monotile.state.screencopy);
                     send_snapshot(&handle, &snap, mon, active);
                 }

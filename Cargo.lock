@@ -981,6 +981,7 @@ dependencies = [
  "calloop 0.14.4",
  "derive_more",
  "dirs",
+ "indexmap",
  "inline_default",
  "regex",
  "ron",

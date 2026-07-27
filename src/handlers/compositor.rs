@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use crate::{Monotile, shell::Placement, state::ClientState};
+use crate::{
+    Monotile,
+    shell::{Placement, SeatExt},
+    state::ClientState,
+};
 use smithay::{
     backend::renderer::utils::{on_commit_buffer_handler, with_renderer_surface_state},
     delegate_compositor, delegate_shm,
@@ -84,7 +88,7 @@ impl Monotile {
 
         // layer-shell popup
         // TODO for multi-monitor: resolve the layer surface's monitor
-        Some((self.state.monitors.seat_mon().output.clone(), false))
+        Some((self.state.seat.active_output(), false))
     }
 
     /// Unmapped toplevel: two-phase configure/map state machine.
@@ -94,15 +98,21 @@ impl Monotile {
         if unmapped.placement.is_none() {
             // phase 1: first commit - send configure with tiled size
             let floating = unmapped.should_float();
+            let output = self.state.seat.active_output();
             let configured_size = if floating {
                 (0, 0).into()
             } else {
-                self.state.monitors.seat_mon().next_tiled_size()
+                self.state
+                    .monitors
+                    .by_output(&output)
+                    .map(|(_, m)| m)
+                    .expect("the seat's active output is attached to a monitor")
+                    .next_tiled_size()
             };
             unmapped.configure_initial(configured_size, !floating);
             unmapped.placement = Some(Placement {
                 floating,
-                output: self.state.monitors.seat_mon().output.clone(),
+                output,
                 configured_size,
             });
             return None;
@@ -174,7 +184,7 @@ impl Monotile {
 
     fn on_cursor_commit(&mut self, root: &WlSurface) -> Option<(Output, bool)> {
         if self.state.cursor.on_commit(root) {
-            Some((self.state.monitors.pointer_mon().output.clone(), false))
+            Some((self.state.seat.pointer_output(), false))
         } else {
             None
         }

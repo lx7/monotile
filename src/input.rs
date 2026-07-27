@@ -7,7 +7,7 @@ use crate::{
     config::{Action, Config, Mods, Trigger},
     grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
     handlers::Devices,
-    shell::OutputExt,
+    shell::{OutputExt, SeatExt},
     spawn::spawn,
 };
 use smithay::{
@@ -84,9 +84,8 @@ impl Monotile {
                         // exclusive layer
                         if monotile
                             .state
-                            .monitors
-                            .seat_mon()
-                            .output
+                            .seat
+                            .active_output()
                             .exclusive_layer()
                             .is_some()
                         {
@@ -113,13 +112,27 @@ impl Monotile {
                 }
             }
             InputEvent::PointerMotion { event, .. } => {
-                let geo = self.state.monitors.pointer_mon().geometry();
+                let output = self.state.seat.pointer_output();
+                let geo = self
+                    .state
+                    .monitors
+                    .by_output(&output)
+                    .map(|(_, m)| m)
+                    .expect("the seat's pointer output is attached to a monitor")
+                    .geometry();
                 let pos = pointer.current_location() + event.delta();
                 let pos = pos.constrain(geo.to_f64());
                 self.handle_pointer_motion(pos, event.time_msec(), serial);
             }
             InputEvent::PointerMotionAbsolute { event, .. } => {
-                let geo = self.state.monitors.pointer_mon().geometry();
+                let output = self.state.seat.pointer_output();
+                let geo = self
+                    .state
+                    .monitors
+                    .by_output(&output)
+                    .map(|(_, m)| m)
+                    .expect("the seat's pointer output is attached to a monitor")
+                    .geometry();
                 let pos = event.position_transformed(geo.size) + geo.loc.to_f64();
                 self.handle_pointer_motion(pos, event.time_msec(), serial);
             }
@@ -130,13 +143,7 @@ impl Monotile {
                 if button_state == ButtonState::Pressed
                     && !pointer.is_grabbed()
                     && !self.state.locked
-                    && self
-                        .state
-                        .monitors
-                        .pointer_mon()
-                        .output
-                        .exclusive_layer()
-                        .is_none()
+                    && self.state.seat.pointer_output().exclusive_layer().is_none()
                 {
                     let mods = Mods::from(&keyboard.modifier_state());
                     if let Some(action) =
@@ -152,9 +159,11 @@ impl Monotile {
                     }
 
                     // raise window and focus
-                    let id = self.state.surface_under(pointer.current_location()).window;
-                    if let Some(id) = id {
-                        self.state.monitors.pointer_mon_mut().tag_mut().raise(id);
+                    let under = self.state.surface_under(pointer.current_location());
+                    if let Some(id) = under.window {
+                        if let Some(mon) = self.state.monitors.by_output_mut(&under.output) {
+                            mon.tag_mut().raise(id);
+                        }
                         self.set_focus(Some(id));
                     }
                 }
@@ -209,7 +218,7 @@ impl Monotile {
                 pointer.axis(self, frame);
                 pointer.frame(self);
                 self.backend
-                    .schedule_render(&self.state.monitors.pointer_mon().output);
+                    .schedule_render(&self.state.seat.pointer_output());
             }
             InputEvent::GesturePinchBegin { event, .. } => {
                 pointer.gesture_pinch_begin(
@@ -353,13 +362,13 @@ impl Monotile {
 
             // seat-monitor actions
             Focus(pos) => {
-                let tag = self.state.monitors.seat_mon().tag();
+                let tag = self.state.mon().tag();
                 let target = tag.focused_id().and_then(|cur| tag.layout.target(cur, pos));
                 if let Some(id) = target {
                     self.set_focus(Some(id));
                 }
                 self.backend
-                    .schedule_render(&self.state.monitors.seat_mon().output);
+                    .schedule_render(&self.state.seat.active_output());
             }
             Swap(pos) => self.with_seat_mon(|mon, _| {
                 if let Some(cur) = mon.tag().focused_id() {

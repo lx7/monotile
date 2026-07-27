@@ -12,6 +12,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 anyhow = "1"
 calloop = "0.14"
+indexmap = "2"
 slotmap = "1.1"
 xcursor = "0.3"
 serde = { version = "1", features = ["derive"] }
