@@ -51,7 +51,7 @@ use crate::{
     Monotile,
     handlers::screencopy,
     render::Shaders,
-    shell::{MonitorSettings, Monitors},
+    shell::{MonitorSettings, Monitors, MonitorsExt},
     state::State,
 };
 
@@ -183,7 +183,7 @@ impl DrmState {
             state.screencopy.fail_pending_for_output(&surface.output);
             return;
         }
-        let Some(mon) = state.monitors.by_output_mut(&surface.output) else {
+        let Some(mon) = state.monitors.get_mut(&surface.output) else {
             state.screencopy.fail_pending_for_output(&surface.output);
             return;
         };
@@ -325,7 +325,7 @@ impl DrmState {
     pub fn apply_output_settings(&mut self, monitors: &Monitors) {
         let DrmState { surfaces, drm, .. } = self;
         for surface in surfaces.values_mut() {
-            let Some((_, mon)) = monitors.by_output(&surface.output) else {
+            let Some(mon) = monitors.get(&surface.output) else {
                 continue;
             };
             let settings = &mon.settings;
@@ -490,8 +490,8 @@ fn connector_disconnected(drm: &mut DrmState, state: &mut State, crtc: crtc::Han
     };
     info!("{}: disconnected", surface.output.name());
     state.remove_monitor(&surface.output);
-    if let Some(mon) = state.monitors.first() {
-        drm.schedule_render(&mon.output);
+    if let Some(output) = state.monitors.fallback_output() {
+        drm.schedule_render(&output.clone());
     }
 }
 

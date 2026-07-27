@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use derive_more::{Deref, DerefMut};
+use indexmap::IndexMap;
 use smithay::{
     desktop::layer_map_for_output,
     output::{Output, Scale},
@@ -239,52 +239,53 @@ impl Monitor {
     }
 }
 
-#[derive(Debug, Default, Deref, DerefMut)]
-pub struct Monitors {
-    #[deref]
-    #[deref_mut]
-    inner: Vec<Monitor>,
+pub type Monitors = IndexMap<Output, Monitor>;
+
+pub trait MonitorsExt {
+    fn add(&mut self, mon: Monitor);
+    fn fallback_output(&self) -> Option<&Output>;
+    fn output_named(&self, name: &str) -> Option<&Output>;
+    fn window_rect(&self, ws: &Windows, id: WindowId) -> Option<Rectangle<i32, Logical>>;
+    fn contains_window(&self, id: WindowId) -> bool;
+    fn shows_window(&self, id: WindowId) -> bool;
+    fn update_rules(&mut self, config: &config::Config);
 }
 
-impl Monitors {
-    pub fn remove(&mut self, output: &Output) -> Option<Monitor> {
-        let idx = self.inner.iter().position(|m| m.output == *output)?;
-        Some(self.inner.remove(idx))
+impl MonitorsExt for Monitors {
+    fn add(&mut self, mon: Monitor) {
+        self.insert(mon.output.clone(), mon);
     }
 
-    pub fn by_output(&self, output: &Output) -> Option<(usize, &Monitor)> {
-        self.iter().enumerate().find(|(_, m)| m.output == *output)
+    fn fallback_output(&self) -> Option<&Output> {
+        self.keys().next()
     }
 
-    pub fn by_output_mut(&mut self, output: &Output) -> Option<&mut Monitor> {
-        self.inner.iter_mut().find(|m| m.output == *output)
-    }
-
-    pub fn output_named(&self, name: &str) -> Option<&Output> {
-        self.iter().map(|m| &m.output).find(|o| o.name() == name)
+    fn output_named(&self, name: &str) -> Option<&Output> {
+        self.keys().find(|o| o.name() == name)
     }
 
     // TODO: use view geometry instead (also for surface_under and screencopy)
-    pub fn window_rect(&self, ws: &Windows, id: WindowId) -> Option<Rectangle<i32, Logical>> {
+    fn window_rect(&self, ws: &Windows, id: WindowId) -> Option<Rectangle<i32, Logical>> {
         let we = ws.get(id)?;
-        let (_, mon) = self.by_output(&we.output)?;
+        let mon = self.get(&we.output)?;
         mon.tag().window_rect(we, mon.geometry())
     }
 
-    pub fn contains_window(&self, id: WindowId) -> bool {
-        self.iter().any(|m| m.views.iter().any(|v| v.contains(id)))
+    fn contains_window(&self, id: WindowId) -> bool {
+        self.values()
+            .any(|m| m.views.iter().any(|v| v.contains(id)))
     }
 
-    pub fn shows_window(&self, id: WindowId) -> bool {
-        self.iter()
+    fn shows_window(&self, id: WindowId) -> bool {
+        self.values()
             .any(|m| m.views.front().is_some_and(|v| v.contains(id)))
     }
 
-    pub fn update_rules(&mut self, rules: &[config::OutputRule]) {
-        for mon in self.iter_mut() {
+    fn update_rules(&mut self, config: &config::Config) {
+        for mon in self.values_mut() {
             let props = mon.output.physical_properties();
             let s = MonitorSettings::resolve(
-                rules,
+                &config.outputs,
                 &mon.output.name(),
                 &props.make,
                 &props.model,
@@ -307,6 +308,9 @@ impl Monitors {
             mon.active_tag = mon.active_tag.min(new_len - 1);
             mon.prev_tag = mon.prev_tag.min(new_len - 1);
             mon.settings = s;
+            for tag in &mut mon.tags {
+                tag.layout.config = config.layout.clone();
+            }
         }
     }
 }

@@ -22,7 +22,7 @@ use smithay::{
 
 use crate::{config, render::RenderStep};
 
-use super::{Monitors, OutputExt, WindowId};
+use super::{Monitors, MonitorsExt, OutputExt, WindowId};
 
 fn set_tiled(tl: &ToplevelSurface, tiled: bool) {
     tl.with_pending_state(|s| {

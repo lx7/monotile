@@ -104,8 +104,7 @@ impl Monotile {
             } else {
                 self.state
                     .monitors
-                    .by_output(&output)
-                    .map(|(_, m)| m)
+                    .get(&output)
                     .expect("the seat's active output is attached to a monitor")
                     .next_tiled_size()
             };
@@ -136,7 +135,7 @@ impl Monotile {
     }
 
     fn on_layer_commit(&mut self, root: &WlSurface) -> Option<(Output, bool)> {
-        for mon in self.state.monitors.iter() {
+        for mon in self.state.monitors.values() {
             let mut map = layer_map_for_output(&mon.output);
             let Some(layer) = map.layer_for_surface(root, WindowSurfaceType::TOPLEVEL) else {
                 continue;
@@ -174,7 +173,7 @@ impl Monotile {
     }
 
     fn on_lock_commit(&mut self, root: &WlSurface) -> Option<(Output, bool)> {
-        let mon = self.state.monitors.iter().find(|m| {
+        let mon = self.state.monitors.values().find(|m| {
             m.lock_surface
                 .as_ref()
                 .is_some_and(|ls| ls.wl_surface() == root)

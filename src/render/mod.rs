@@ -240,7 +240,7 @@ pub fn output_elements(
 
 impl State {
     pub fn send_frame_callbacks(&mut self, output: &Output, throttle: Option<Duration>) {
-        let Some((_, mon)) = self.monitors.by_output(output) else {
+        let Some(mon) = self.monitors.get(output) else {
             return;
         };
         let elapsed = self.start_time.elapsed();

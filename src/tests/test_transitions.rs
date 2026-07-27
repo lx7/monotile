@@ -122,7 +122,7 @@ fn tag_switch_holds_outgoing_until_incoming_commits() {
     let output = f.mt.state.seat.active_output();
     f.mt.state
         .monitors
-        .by_output_mut(&output)
+        .get_mut(&output)
         .unwrap()
         .move_to_tag(&mut f.mt.state.windows, 1);
     recompute_seat(&mut f);

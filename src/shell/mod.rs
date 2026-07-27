@@ -10,7 +10,7 @@ mod window;
 
 pub use blocker::LayoutBlocker;
 pub use layout::TilingLayout;
-pub use monitor::{Monitor, MonitorSettings, Monitors, OutputExt};
+pub use monitor::{Monitor, MonitorSettings, Monitors, MonitorsExt, OutputExt};
 pub use seat::SeatExt;
 pub use tag::Tag;
 pub use view::{Tile, View, Views};

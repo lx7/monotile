@@ -126,7 +126,7 @@ impl Dispatch<ZmonotileStatusManagerV1, ()> for Monotile {
                 let handle = data_init.init(id, ());
                 monotile.state.ipc.monotile.add_output(&output, &handle);
 
-                if let Some((_, mon)) = monotile.state.monitors.by_output(&output) {
+                if let Some(mon) = monotile.state.monitors.get(&output) {
                     // send tag metadata
                     handle.tag_count(mon.settings.tags.len() as u32);
                     for (i, name) in mon.settings.tags.iter().enumerate() {

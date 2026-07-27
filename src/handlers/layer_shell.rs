@@ -43,7 +43,7 @@ impl WlrLayerShellHandler for Monotile {
     }
 
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
-        for mon in self.state.monitors.iter() {
+        for mon in self.state.monitors.values() {
             let mut map = layer_map_for_output(&mon.output);
             let layer = map
                 .layers()

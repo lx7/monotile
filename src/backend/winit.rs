@@ -28,7 +28,7 @@ impl WinitState {
         let (renderer, mut fb) = self.backend.bind()?;
         let mon = state
             .monitors
-            .by_output_mut(&self.output)
+            .get_mut(&self.output)
             .expect("winit always has one output");
         mon.views.pop_ready();
         let background = mon.settings.background;

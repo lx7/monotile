@@ -29,7 +29,7 @@ use tracing::warn;
 use crate::{
     Monotile,
     render::MonotileElement,
-    shell::{WindowId, Windows},
+    shell::{MonitorsExt, WindowId, Windows},
     state::State,
 };
 

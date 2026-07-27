@@ -64,8 +64,8 @@ use crate::{
     ipc::IpcState,
     render::cursor::CursorManager,
     shell::{
-        Monitor, MonitorSettings, Monitors, OutputExt, SeatExt, Unmapped, WindowElement, WindowId,
-        Windows,
+        Monitor, MonitorSettings, Monitors, MonitorsExt, OutputExt, SeatExt, Unmapped,
+        WindowElement, WindowId, Windows,
     },
     spawn::notify,
 };
@@ -126,7 +126,7 @@ impl Monotile {
     pub fn recompute_layout(&mut self, output: &Output) {
         self.update_focus();
         self.backend.schedule_render(output);
-        if let Some(mon) = self.state.monitors.by_output_mut(output) {
+        if let Some(mon) = self.state.monitors.get_mut(output) {
             mon.recompute_layout(&mut self.state.windows);
         }
     }
@@ -136,7 +136,7 @@ impl Monotile {
         let mon = self
             .state
             .monitors
-            .by_output_mut(&output)
+            .get_mut(&output)
             .expect("the seat's active output is attached to a monitor");
         f(mon, &mut self.state.windows);
         self.recompute_layout(&output);
@@ -145,9 +145,9 @@ impl Monotile {
     pub fn advance_view_queues(&mut self) {
         self.unblock_ready_views();
         // the render path also pops, this handles the timeout
-        for i in 0..self.state.monitors.len() {
-            if self.state.monitors[i].views.pop_ready() {
-                self.backend.schedule_render(&self.state.monitors[i].output);
+        for mon in self.state.monitors.values_mut() {
+            if mon.views.pop_ready() {
+                self.backend.schedule_render(&mon.output);
             }
         }
         let monitors = &self.state.monitors;
@@ -158,7 +158,7 @@ impl Monotile {
         let clients: Vec<Client> = self
             .state
             .monitors
-            .iter()
+            .values()
             .filter_map(|m| m.views.get(1))
             .flat_map(|v| v.blocker.ready_clients())
             .collect();
@@ -199,13 +199,10 @@ impl Monotile {
 
         self.state.config = config;
         self.state.windows.update_rules(&self.state.config.windows);
-        self.state.monitors.update_rules(&self.state.config.outputs);
+        self.state.monitors.update_rules(&self.state.config);
         self.backend.apply_output_settings(&self.state.monitors);
         self.reconfigure_devices();
-        for mon in self.state.monitors.iter_mut() {
-            for tag in &mut mon.tags {
-                tag.layout.config = self.state.config.layout.clone();
-            }
+        for mon in self.state.monitors.values_mut() {
             mon.recompute_layout(&mut self.state.windows);
         }
         self.update_focus();
@@ -403,17 +400,14 @@ impl State {
     }
 
     pub fn mon(&self) -> &Monitor {
-        let output = self.seat.active_output();
         self.monitors
-            .by_output(&output)
-            .map(|(_, m)| m)
+            .get(&self.seat.active_output())
             .expect("the seat's active output is attached to a monitor")
     }
 
     pub fn mon_mut(&mut self) -> &mut Monitor {
-        let output = self.seat.active_output();
         self.monitors
-            .by_output_mut(&output)
+            .get_mut(&self.seat.active_output())
             .expect("the seat's active output is attached to a monitor")
     }
 
@@ -427,13 +421,13 @@ impl State {
         if self.monitors.is_empty() {
             self.seat.set_active_output(&mon.output);
         }
-        self.monitors.push(mon);
+        self.monitors.add(mon);
     }
 
     pub fn remove_monitor(&mut self, output: &Output) {
         self.screencopy.remove_output(output);
 
-        let Some(dead) = self.monitors.remove(output) else {
+        let Some(dead) = self.monitors.shift_remove(output) else {
             return;
         };
         // clean up layer surfaces on this output
@@ -451,14 +445,13 @@ impl State {
         self.confirm_lock(output);
 
         if self.seat.active_output() == *output
-            && let Some(first) = self.monitors.first()
+            && let Some(fallback) = self.monitors.fallback_output()
         {
-            self.seat.set_active_output(&first.output.clone());
+            self.seat.set_active_output(&fallback.clone());
         }
 
-        // migrate windows to monitor 0
-        if !self.monitors.is_empty() {
-            let dest = self.monitors[0].output.clone();
+        // migrate windows to the fallback monitor
+        if let Some(dest) = self.monitors.fallback_output().cloned() {
             for p in self
                 .unmapped
                 .values_mut()
@@ -474,7 +467,7 @@ impl State {
                     we.output = dest.clone();
                 }
             }
-            let mon = &mut self.monitors[0];
+            let mon = self.monitors.get_mut(&dest).unwrap();
             for id in ids {
                 mon.tag_mut().add(id);
             }
@@ -495,7 +488,7 @@ impl State {
 
         let output = self.windows[id].output.clone();
         self.monitors
-            .by_output_mut(&output)
+            .get_mut(&output)
             .expect("window monitor resolved at init")
             .map(id, tags);
         id
@@ -507,7 +500,7 @@ impl State {
         self.screencopy.remove_toplevel(id);
         self.foreign_toplevel.remove(id);
         let output = self.windows[id].output.clone();
-        if let Some(mon) = self.monitors.by_output_mut(&output) {
+        if let Some(mon) = self.monitors.get_mut(&output) {
             mon.unmap(id);
         }
         Some(output)
@@ -517,8 +510,7 @@ impl State {
         let output = self.seat.pointer_output();
         let mon = self
             .monitors
-            .by_output(&output)
-            .map(|(_, m)| m)
+            .get(&output)
             .expect("the seat's pointer output is attached to a monitor");
         if self.locked {
             let surface = mon

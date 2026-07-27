@@ -102,7 +102,7 @@ impl State {
         }
         self.ipc.dirty = false;
         let seat_output = self.seat.active_output();
-        for mon in self.monitors.iter() {
+        for mon in self.monitors.values() {
             let snap = mon.snapshot(&self.windows, &self.screencopy);
             self.ipc.monotile.notify_output(&mon.output, &snap);
             let active = mon.output == seat_output;

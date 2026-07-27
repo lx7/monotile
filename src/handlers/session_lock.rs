@@ -24,10 +24,9 @@ impl SessionLockHandler for Monotile {
 
         self.state.locked = true;
         self.set_focus(None);
-        let mons = &self.state.monitors;
         // Output is hashed by identity, the clippy warning is not relevant here.
         #[allow(clippy::mutable_key_type)]
-        let outputs: HashSet<_> = mons.iter().map(|m| m.output.clone()).collect();
+        let outputs: HashSet<_> = self.state.monitors.keys().cloned().collect();
         if outputs.is_empty() {
             locker.lock();
             info!("session locked (no outputs)");
@@ -40,7 +39,7 @@ impl SessionLockHandler for Monotile {
 
     fn unlock(&mut self) {
         self.state.locked = false;
-        for mon in self.state.monitors.iter_mut() {
+        for mon in self.state.monitors.values_mut() {
             mon.lock_surface = None;
         }
         self.update_focus();
@@ -50,9 +49,7 @@ impl SessionLockHandler for Monotile {
 
     fn new_surface(&mut self, surface: LockSurface, wl_output: WlOutput) {
         let output = Output::from_resource(&wl_output);
-        let mon = output
-            .as_ref()
-            .and_then(|o| self.state.monitors.iter_mut().find(|m| m.output == *o));
+        let mon = output.as_ref().and_then(|o| self.state.monitors.get_mut(o));
         let Some(mon) = mon else { return };
 
         let size = mon.output.current_mode().unwrap().size.to_logical(1);
