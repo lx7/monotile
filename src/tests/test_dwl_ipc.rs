@@ -146,7 +146,7 @@ fn tag_switch_updates_state() {
     f.roundtrip(c);
     f.client_mut(c).take_dwl_events();
 
-    f.mt.state.mon_mut().set_active_tag(3);
+    f.mt.state.seat_mon_mut().set_active_tag(3);
     f.mt.state.ipc.dirty = true;
     f.mt.state.flush_clients();
     f.roundtrip(c);
@@ -325,7 +325,7 @@ fn set_tags_same_tag_is_noop() {
     f.roundtrip(c);
 
     // switch to tag 2
-    f.mt.state.mon_mut().set_active_tag(2);
+    f.mt.state.seat_mon_mut().set_active_tag(2);
     f.mt.state.ipc.dirty = true;
     f.mt.state.flush_clients();
     f.roundtrip(c);
@@ -426,7 +426,7 @@ fn release_stops_events() {
     f.client_mut(c).destroy_dwl_output();
     f.roundtrip(c);
 
-    f.mt.state.mon_mut().set_active_tag(5);
+    f.mt.state.seat_mon_mut().set_active_tag(5);
     f.mt.state.ipc.dirty = true;
     f.mt.state.flush_clients();
     f.roundtrip(c);
@@ -460,7 +460,7 @@ fn two_clients_both_receive() {
     f.client_mut(c1).take_dwl_events();
     f.client_mut(c2).take_dwl_events();
 
-    f.mt.state.mon_mut().set_active_tag(4);
+    f.mt.state.seat_mon_mut().set_active_tag(4);
     f.mt.state.ipc.dirty = true;
     f.mt.state.flush_clients();
     f.roundtrip(c1);
@@ -497,7 +497,7 @@ fn frame_terminates_every_batch() {
     assert_eq!(events.last(), Some(&DwlEvent::Frame));
 
     // state update should also end with frame
-    f.mt.state.mon_mut().set_active_tag(1);
+    f.mt.state.seat_mon_mut().set_active_tag(1);
     f.mt.state.ipc.dirty = true;
     f.mt.state.flush_clients();
     f.roundtrip(c);

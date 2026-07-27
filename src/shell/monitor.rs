@@ -17,11 +17,17 @@ use crate::config::{self, ModeConfig};
 use super::{Tag, View, Views, WindowId, Windows};
 
 pub trait OutputExt {
+    fn geometry(&self) -> Rectangle<i32, Logical>;
     fn usable_area(&self) -> Rectangle<i32, Logical>;
     fn exclusive_layer(&self) -> Option<WlSurface>;
 }
 
 impl OutputExt for Output {
+    fn geometry(&self) -> Rectangle<i32, Logical> {
+        let size = self.current_mode().expect("output has a mode").size;
+        Rectangle::from_size(size.to_logical(1))
+    }
+
     fn usable_area(&self) -> Rectangle<i32, Logical> {
         layer_map_for_output(self).non_exclusive_zone()
     }
@@ -103,7 +109,6 @@ pub struct Monitor {
     pub prev_tag: usize,
     pub lock_surface: Option<LockSurface>,
     pub views: Views,
-    pub output_geo: Rectangle<i32, Logical>,
 }
 
 impl Monitor {
@@ -118,7 +123,7 @@ impl Monitor {
         for tag in &mut tags {
             tag.layout.config = layout.clone();
         }
-        let mut mon = Self {
+        Self {
             output,
             global,
             settings,
@@ -127,10 +132,7 @@ impl Monitor {
             prev_tag: 0,
             lock_surface: None,
             views: Views::default(),
-            output_geo: Rectangle::default(),
-        };
-        mon.refresh_geometry();
-        mon
+        }
     }
 
     pub fn tag(&self) -> &Tag {
@@ -204,17 +206,8 @@ impl Monitor {
         std::mem::swap(&mut self.active_tag, &mut self.prev_tag);
     }
 
-    pub fn geometry(&self) -> Rectangle<i32, Logical> {
-        self.output_geo
-    }
-
-    fn refresh_geometry(&mut self) {
-        let size = self.output.current_mode().unwrap().size;
-        self.output_geo = Rectangle::new((0, 0).into(), size.to_logical(1));
-    }
-
     pub fn window_rect(&self, ws: &Windows, id: WindowId) -> Option<Rectangle<i32, Logical>> {
-        self.tag().window_rect(ws.get(id)?, self.geometry())
+        self.tag().window_rect(ws.get(id)?, self.output.geometry())
     }
 
     pub fn next_tiled_size(&self) -> Size<i32, Logical> {
@@ -222,9 +215,8 @@ impl Monitor {
     }
 
     pub fn recompute_layout(&mut self, ws: &mut Windows) {
-        self.refresh_geometry();
         let area = self.output.usable_area();
-        let fs_geo = self.geometry();
+        let fs_geo = self.output.geometry();
         let configured = self.tag_mut().recompute_layout(ws, area, fs_geo);
         let view = View::project(self.tag(), configured);
         self.views.push_back(view);
@@ -268,7 +260,7 @@ impl MonitorsExt for Monitors {
     fn window_rect(&self, ws: &Windows, id: WindowId) -> Option<Rectangle<i32, Logical>> {
         let we = ws.get(id)?;
         let mon = self.get(&we.output)?;
-        mon.tag().window_rect(we, mon.geometry())
+        mon.tag().window_rect(we, mon.output.geometry())
     }
 
     fn contains_window(&self, id: WindowId) -> bool {

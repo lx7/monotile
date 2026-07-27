@@ -21,7 +21,7 @@ fn get_token(f: &mut Fixture, c: usize) -> String {
 }
 
 fn all_window_ids(f: &Fixture) -> Vec<WindowId> {
-    f.mt.state.mon().tag().focus_stack.clone()
+    f.mt.state.seat_mon().tag().focus_stack.clone()
 }
 
 // ── Token lifecycle ────────────────────────────────
@@ -70,7 +70,7 @@ fn activation_of_focused_window_does_not_set_urgent() {
     let c = f.add_client();
 
     let w = open_window(&mut f, c);
-    let w_id = f.mt.state.mon().tag().focused_id().unwrap();
+    let w_id = f.mt.state.seat_mon().tag().focused_id().unwrap();
     assert!(f.mt.state.windows[w_id].focused, "w should be focused");
 
     let token = get_token(&mut f, c);

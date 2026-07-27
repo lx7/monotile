@@ -211,7 +211,7 @@ impl Monotile {
     }
 
     pub fn update_focus(&mut self) {
-        self.set_focus(self.state.mon().tag().focused_id());
+        self.set_focus(self.state.seat_mon().tag().focused_id());
     }
 
     pub fn set_focus(&mut self, id: Option<WindowId>) {
@@ -225,7 +225,7 @@ impl Monotile {
         }
 
         // if locked, focus lock surface
-        if let Some(ls) = &self.state.mon().lock_surface {
+        if let Some(ls) = &self.state.seat_mon().lock_surface {
             let surface = ls.wl_surface().clone();
             if let Some(kb) = self.state.seat.get_keyboard() {
                 kb.set_focus(self, Some(surface), SERIAL_COUNTER.next_serial());
@@ -234,7 +234,7 @@ impl Monotile {
         }
 
         // if exclusive layer exists, focus it
-        if let Some(surface) = self.state.mon().output.exclusive_layer() {
+        if let Some(surface) = self.state.seat_mon().output.exclusive_layer() {
             if let Some(kb) = self.state.seat.get_keyboard() {
                 kb.set_focus(self, Some(surface), SERIAL_COUNTER.next_serial());
             }
@@ -243,7 +243,7 @@ impl Monotile {
 
         // if none of the above, focus window
         if let Some(id) = id {
-            self.state.mon_mut().tag_mut().promote(id);
+            self.state.seat_mon_mut().tag_mut().promote(id);
             if let Some(we) = self.state.windows.get_mut(id) {
                 we.set_focused(true);
             }
@@ -399,20 +399,20 @@ impl State {
         }
     }
 
-    pub fn mon(&self) -> &Monitor {
+    pub fn seat_mon(&self) -> &Monitor {
         self.monitors
             .get(&self.seat.active_output())
             .expect("the seat's active output is attached to a monitor")
     }
 
-    pub fn mon_mut(&mut self) -> &mut Monitor {
+    pub fn seat_mon_mut(&mut self) -> &mut Monitor {
         self.monitors
             .get_mut(&self.seat.active_output())
             .expect("the seat's active output is attached to a monitor")
     }
 
     pub fn focused_window(&self) -> Option<WindowId> {
-        self.mon().tag().focused_id()
+        self.seat_mon().tag().focused_id()
     }
 
     pub fn add_monitor(&mut self, output: Output, settings: MonitorSettings) {

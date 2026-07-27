@@ -40,7 +40,7 @@ pub use window::RenderStep;
 
 use crate::{
     config::{Config, Layout},
-    shell::{Monitor, Windows},
+    shell::{Monitor, OutputExt, Windows},
     state::State,
 };
 use clipped_surface::Clipped;
@@ -218,7 +218,7 @@ pub fn output_elements(
         .and_then(|v| v.fullscreen)
         .and_then(|id| windows.get(id))
     {
-        let geo = mon.geometry();
+        let geo = mon.output.geometry();
         ctx.layer_popups(&[Layer::Overlay]);
         ctx.layers(&[Layer::Overlay]);
 

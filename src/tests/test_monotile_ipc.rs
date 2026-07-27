@@ -153,7 +153,7 @@ fn output_status_focused_tags_on_switch() {
     f.roundtrip(c);
     f.client_mut(c).take_ipc_events();
 
-    f.mt.state.mon_mut().set_active_tag(2);
+    f.mt.state.seat_mon_mut().set_active_tag(2);
     f.mt.state.ipc.dirty = true;
     f.mt.state.flush_clients();
     f.roundtrip(c);
@@ -479,12 +479,12 @@ fn seat_control_swap() {
     f.roundtrip(c);
 
     // swap focused window with next
-    let before: Vec<_> = f.mt.state.mon().tag().layout.ids().collect();
+    let before: Vec<_> = f.mt.state.seat_mon().tag().layout.ids().collect();
     f.client(c).seat_control().swap(Position::Next);
     f.client(c).flush();
     f.roundtrip(c);
 
-    let after: Vec<_> = f.mt.state.mon().tag().layout.ids().collect();
+    let after: Vec<_> = f.mt.state.seat_mon().tag().layout.ids().collect();
     assert_ne!(before, after, "tiled order should change after swap");
 }
 
@@ -495,7 +495,7 @@ fn seat_control_close() {
 
     let w = open_window(&mut f, c);
     assert!(
-        f.mt.state.mon().tag().focused_id().is_some(),
+        f.mt.state.seat_mon().tag().focused_id().is_some(),
         "window should be focused"
     );
 
@@ -569,12 +569,12 @@ fn seat_control_adjust_main_count() {
     f.client_mut(c).bind_seat_control();
     f.roundtrip(c);
 
-    let before = f.mt.state.mon().tag().layout.main_count;
+    let before = f.mt.state.seat_mon().tag().layout.main_count;
     f.client(c).seat_control().adjust_main_count(1);
     f.client(c).flush();
     f.roundtrip(c);
 
-    let after = f.mt.state.mon().tag().layout.main_count;
+    let after = f.mt.state.seat_mon().tag().layout.main_count;
     assert_eq!(after, before + 1, "main_count should increase by 1");
 }
 
@@ -589,7 +589,7 @@ fn seat_control_set_main_ratio() {
     f.client(c).flush();
     f.roundtrip(c);
 
-    let ratio = f.mt.state.mon().tag().layout.main_factor;
+    let ratio = f.mt.state.seat_mon().tag().layout.main_factor;
     assert!(
         (ratio - 0.7).abs() < 0.01,
         "main_factor should be ~0.7, got {ratio}"
@@ -624,7 +624,7 @@ fn two_clients_both_get_events() {
     f.client_mut(c1).take_ipc_events();
     f.client_mut(c2).take_ipc_events();
 
-    f.mt.state.mon_mut().set_active_tag(4);
+    f.mt.state.seat_mon_mut().set_active_tag(4);
     f.mt.state.ipc.dirty = true;
     f.mt.state.flush_clients();
     f.roundtrip(c1);
@@ -653,7 +653,7 @@ fn output_status_destroy_stops_events() {
     f.client_mut(c).destroy_output_status();
     f.roundtrip(c);
 
-    f.mt.state.mon_mut().set_active_tag(5);
+    f.mt.state.seat_mon_mut().set_active_tag(5);
     f.mt.state.ipc.dirty = true;
     f.mt.state.flush_clients();
     f.roundtrip(c);

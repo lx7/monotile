@@ -29,7 +29,7 @@ fn new_window_not_deactivated_during_open() {
 }
 
 fn windows_on_tag(f: &Fixture) -> usize {
-    f.mt.state.mon().tag().window_ids().len()
+    f.mt.state.seat_mon().tag().window_ids().len()
 }
 
 fn open_window(f: &mut Fixture, c: usize) -> usize {
@@ -39,7 +39,7 @@ fn open_window(f: &mut Fixture, c: usize) -> usize {
     f.client_mut(c).ack_and_commit(w);
     f.roundtrip(c);
     assert!(
-        f.mt.state.mon().tag().focused_id().is_some(),
+        f.mt.state.seat_mon().tag().focused_id().is_some(),
         "window {w} should be mapped after open_window",
     );
     w
@@ -88,7 +88,7 @@ fn close_window() {
     let w2 = open_window(&mut f, c);
 
     // close the active window (w2) via the server
-    if let Some(id) = f.mt.state.mon().tag().focused_id() {
+    if let Some(id) = f.mt.state.seat_mon().tag().focused_id() {
         if let Some(tl) = f.mt.state.windows[id].window.toplevel() {
             tl.send_close();
         }
@@ -107,7 +107,7 @@ fn tag_switch() {
     let w = open_window(&mut f, c);
     f.client_mut(c).take_configures(w); // drain
 
-    let mon = f.mt.state.mon_mut();
+    let mon = f.mt.state.seat_mon_mut();
     mon.set_active_tag(1);
     f.roundtrip(c);
 
@@ -126,7 +126,7 @@ fn tag_switch() {
     );
 
     // switch back - window should be visible again
-    let mon = f.mt.state.mon_mut();
+    let mon = f.mt.state.seat_mon_mut();
     mon.set_active_tag(0);
     assert_eq!(windows_on_tag(&f), 1, "tag 0 should have 1 visible window",);
 }
@@ -197,7 +197,7 @@ fn focus_cycle() {
     f.client_mut(c).take_configures(w2);
 
     // cycle focus to w1
-    let tag = f.mt.state.mon().tag();
+    let tag = f.mt.state.seat_mon().tag();
     if let Some(cur) = tag.focused_id()
         && let Some(id) = tag.layout.target(cur, Rel::Next)
     {
@@ -225,7 +225,7 @@ fn focus_after_remove() {
     f.client_mut(c).take_configures(w1);
 
     // remove the active window and re-sync focus
-    let active = f.mt.state.mon().tag().focused_id().unwrap();
+    let active = f.mt.state.seat_mon().tag().focused_id().unwrap();
     let tl = f.mt.state.windows[active].window.toplevel().unwrap();
     let surface_id = tl.wl_surface().id();
 
@@ -252,7 +252,7 @@ fn float_geo_preserved_across_toggle() {
     let w = open_window(&mut f, c);
     f.client_mut(c).take_configures(w);
 
-    let id = f.mt.state.mon().tag().focused_id().unwrap();
+    let id = f.mt.state.seat_mon().tag().focused_id().unwrap();
 
     // toggle to floating, should get a centered float_geo
     {
@@ -360,7 +360,7 @@ fn rule_position_zero_is_respected() {
     let c = f.add_client();
     open_window(&mut f, c);
 
-    let id = f.mt.state.mon().tag().focused_id().unwrap();
+    let id = f.mt.state.seat_mon().tag().focused_id().unwrap();
     let we = &f.mt.state.windows[id];
     assert!(we.floating, "rule should make the window floating");
     assert_eq!(

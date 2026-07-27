@@ -2,7 +2,7 @@
 
 use crate::{
     Monotile,
-    shell::{ToplevelSurfaceExt, Unmapped},
+    shell::{OutputExt, ToplevelSurfaceExt, Unmapped},
 };
 use smithay::{
     delegate_kde_decoration, delegate_xdg_decoration, delegate_xdg_shell,
@@ -200,7 +200,7 @@ impl Monotile {
         // constraint rect depends on whether parent is a window or layer surface
         let popup_offset = get_popup_toplevel_coords(&kind);
         let parent_id = self.state.windows.find_by_surface(&root);
-        let mon = self.state.mon();
+        let mon = self.state.seat_mon();
 
         let parent_loc = if let Some(id) = parent_id {
             let rect = mon.window_rect(&self.state.windows, id).unwrap_or_default();
@@ -217,7 +217,7 @@ impl Monotile {
         };
 
         // convert output rect to popup-local coordinates
-        let mut target = mon.geometry();
+        let mut target = mon.output.geometry();
         target.loc -= parent_loc;
         target.loc -= popup_offset;
 

@@ -17,7 +17,7 @@ fn arm_drag(f: &mut Fixture, c: usize) -> (usize, u32) {
     f.roundtrip(c);
 
     let w = open_window(f, c);
-    let id = f.mt.state.mon().tag().focused_id().unwrap();
+    let id = f.mt.state.seat_mon().tag().focused_id().unwrap();
     let surface = f.mt.state.windows[id]
         .window
         .toplevel()

@@ -455,7 +455,12 @@ fn toplevel_capture_sets_screencast_flag() {
     f.roundtrip(c);
 
     open_window_and_get_handle(&mut f, c);
-    let id = f.mt.state.mon().tag().focused_id().expect("focused window");
+    let id =
+        f.mt.state
+            .seat_mon()
+            .tag()
+            .focused_id()
+            .expect("focused window");
     assert!(
         !(f.mt.state.windows[id].screencasts > 0),
         "screencast off initially"
@@ -496,7 +501,12 @@ fn output_capture_does_not_set_screencast_flag() {
     f.roundtrip(c);
 
     open_window_and_get_handle(&mut f, c);
-    let id = f.mt.state.mon().tag().focused_id().expect("focused window");
+    let id =
+        f.mt.state
+            .seat_mon()
+            .tag()
+            .focused_id()
+            .expect("focused window");
 
     let source = f
         .client(c)
@@ -557,7 +567,7 @@ fn cursor_session_enter_and_position() {
     // Simulate pointer motion to trigger cursor enter + position
     let ptr = f.mt.state.seat.get_pointer().unwrap();
     let pos = ptr.current_location();
-    let output = &f.mt.state.mon().output;
+    let output = &f.mt.state.seat_mon().output;
     let hotspot = f.mt.state.cursor.hotspot;
     f.mt.state
         .screencopy
@@ -599,7 +609,7 @@ fn cursor_session_hotspot() {
 
     let ptr = f.mt.state.seat.get_pointer().unwrap();
     let pos = ptr.current_location();
-    let output = &f.mt.state.mon().output;
+    let output = &f.mt.state.seat_mon().output;
     let hotspot = f.mt.state.cursor.hotspot;
     f.mt.state
         .screencopy

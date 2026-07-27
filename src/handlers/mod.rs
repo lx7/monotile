@@ -12,7 +12,7 @@ mod xdg_shell;
 
 use std::cell::RefCell;
 
-use crate::Monotile;
+use crate::{Monotile, shell::SeatExt};
 use smithay::{
     backend::input::DeviceCapability,
     delegate_cursor_shape, delegate_data_control, delegate_data_device, delegate_ext_data_control,
@@ -72,7 +72,8 @@ impl SeatHandler for Monotile {
             return;
         }
         self.state.cursor.status = image;
-        self.backend.schedule_render(&self.state.mon().output);
+        self.backend
+            .schedule_render(&self.state.seat.pointer_output());
     }
 
     fn led_state_changed(&mut self, seat: &Seat<Self>, led_state: LedState) {
@@ -134,7 +135,8 @@ impl DndGrabHandler for Monotile {
         _location: Point<f64, Logical>,
     ) {
         self.state.cursor.clear_dnd_icon();
-        self.backend.schedule_render(&self.state.mon().output);
+        self.backend
+            .schedule_render(&self.state.seat.pointer_output());
     }
 }
 

@@ -143,7 +143,7 @@ impl Dispatch<ZmonotileStatusManagerV1, ()> for Monotile {
 
                 // TODO: get monitor from seat when multiseat is implemented
                 // send initial state
-                let mon = monotile.state.mon();
+                let mon = monotile.state.seat_mon();
                 let snap = mon.snapshot(&monotile.state.windows, &monotile.state.screencopy);
                 send_seat_status(&handle, &snap, &mon.output);
             }

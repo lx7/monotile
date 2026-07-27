@@ -24,12 +24,12 @@ fn recompute_seat(f: &mut Fixture) {
 }
 
 fn views_len(f: &Fixture) -> usize {
-    f.mt.state.mon().views.len()
+    f.mt.state.seat_mon().views.len()
 }
 
 fn front_tiled_rect(f: &Fixture, id: WindowId) -> Option<Rectangle<i32, Logical>> {
     f.mt.state
-        .mon()
+        .seat_mon()
         .views
         .front()?
         .tiled
@@ -40,7 +40,7 @@ fn front_tiled_rect(f: &Fixture, id: WindowId) -> Option<Rectangle<i32, Logical>
 
 fn front_shows(f: &Fixture, id: WindowId) -> bool {
     f.mt.state
-        .mon()
+        .seat_mon()
         .views
         .front()
         .is_some_and(|v| v.contains(id))
@@ -56,7 +56,7 @@ fn closing_stack_window_holds_view_until_main_commits() {
     settle(&mut f, c, 0); // main acks the split
 
     assert_eq!(views_len(&f), 1, "layout settled");
-    let main_id = f.mt.state.mon().views.front().unwrap().tiled[0].id;
+    let main_id = f.mt.state.seat_mon().views.front().unwrap().tiled[0].id;
     let main_before = front_tiled_rect(&f, main_id).unwrap();
 
     // destroy the stack window
@@ -69,7 +69,7 @@ fn closing_stack_window_holds_view_until_main_commits() {
         "closing the stack window queues a held view"
     );
     assert_eq!(
-        f.mt.state.mon().views.front().unwrap().tiled.len(),
+        f.mt.state.seat_mon().views.front().unwrap().tiled.len(),
         2,
         "held view still renders both tiles (destroyed one from its texture)",
     );
@@ -104,7 +104,13 @@ fn closing_lone_window_settles_immediately() {
 
     assert_eq!(views_len(&f), 1, "no survivors to wait on");
     assert!(
-        f.mt.state.mon().views.front().unwrap().tiled.is_empty(),
+        f.mt.state
+            .seat_mon()
+            .views
+            .front()
+            .unwrap()
+            .tiled
+            .is_empty(),
         "nothing left to draw",
     );
 }
@@ -129,11 +135,11 @@ fn tag_switch_holds_outgoing_until_incoming_commits() {
     f.roundtrip(c);
     settle(&mut f, c, 0);
 
-    let a_id = f.mt.state.mon().tags[0].focus_stack[0];
-    let b_id = f.mt.state.mon().tags[1].focus_stack[0];
+    let a_id = f.mt.state.seat_mon().tags[0].focus_stack[0];
+    let b_id = f.mt.state.seat_mon().tags[1].focus_stack[0];
 
     // switch to tag 1: b must grow split->full, so its view is held
-    f.mt.state.mon_mut().set_active_tag(1);
+    f.mt.state.seat_mon_mut().set_active_tag(1);
     recompute_seat(&mut f);
     f.roundtrip(c);
 
@@ -141,7 +147,7 @@ fn tag_switch_holds_outgoing_until_incoming_commits() {
     assert!(front_shows(&f, a_id), "outgoing tag still displayed");
     assert!(!front_shows(&f, b_id), "incoming tag not shown yet");
     assert_eq!(
-        f.mt.state.mon().active_tag,
+        f.mt.state.seat_mon().active_tag,
         1,
         "the model flips immediately",
     );
@@ -163,14 +169,20 @@ fn tag_switch_without_resize_settles_immediately() {
     settle(&mut f, c, 0);
 
     // switch to an empty tag - nothing to resize, nothing to hold
-    f.mt.state.mon_mut().set_active_tag(1);
+    f.mt.state.seat_mon_mut().set_active_tag(1);
     recompute_seat(&mut f);
     f.roundtrip(c);
     f.mt.advance_view_queues();
 
     assert_eq!(views_len(&f), 1, "empty incoming tag needs no hold");
     assert!(
-        f.mt.state.mon().views.front().unwrap().tiled.is_empty(),
+        f.mt.state
+            .seat_mon()
+            .views
+            .front()
+            .unwrap()
+            .tiled
+            .is_empty(),
         "the new tag is presented immediately",
     );
 }
@@ -182,7 +194,7 @@ fn idle_inhibit_follows_visibility() {
 
     open_window(&mut f, c);
     settle(&mut f, c, 0);
-    let id = f.mt.state.mon().tags[0].focus_stack[0];
+    let id = f.mt.state.seat_mon().tags[0].focus_stack[0];
 
     // simulate an idle inhibitor on the window's surface
     let surface = f.mt.state.windows[id]
@@ -200,7 +212,7 @@ fn idle_inhibit_follows_visibility() {
     );
 
     // hide it on another tag
-    f.mt.state.mon_mut().set_active_tag(1);
+    f.mt.state.seat_mon_mut().set_active_tag(1);
     recompute_seat(&mut f);
     f.roundtrip(c);
     f.mt.advance_view_queues();
@@ -211,7 +223,7 @@ fn idle_inhibit_follows_visibility() {
     );
 
     // bring it back
-    f.mt.state.mon_mut().set_active_tag(0);
+    f.mt.state.seat_mon_mut().set_active_tag(0);
     recompute_seat(&mut f);
     f.roundtrip(c);
     f.mt.advance_view_queues();

@@ -22,7 +22,7 @@ fn settle(f: &mut Fixture, c: usize, win: usize) {
 }
 
 fn project(f: &Fixture) -> View {
-    View::project(f.mt.state.mon().tag(), Vec::new())
+    View::project(f.mt.state.seat_mon().tag(), Vec::new())
 }
 
 fn recompute_seat(f: &mut Fixture) {
@@ -51,7 +51,7 @@ fn two_tiled_windows_project_in_layout_order() {
     let _b = open_window(&mut f, c);
     settle(&mut f, c, a);
 
-    let order: Vec<_> = f.mt.state.mon().tag().layout.ids().collect();
+    let order: Vec<_> = f.mt.state.seat_mon().tag().layout.ids().collect();
     let v = project(&f);
     assert_eq!(v.tiled.len(), 2);
     assert_eq!(
@@ -66,7 +66,7 @@ fn floating_window_lands_in_floating_group() {
     let mut f = Fixture::new();
     let c = f.add_client();
     let a = open_window(&mut f, c);
-    let id = f.mt.state.mon().tag().focused_id().unwrap();
+    let id = f.mt.state.seat_mon().tag().focused_id().unwrap();
     f.mt.state.windows[id].set_floating(true);
     recompute_seat(&mut f);
     settle(&mut f, c, a);
@@ -81,7 +81,7 @@ fn fullscreen_window_projects_to_fullscreen() {
     let mut f = Fixture::new();
     let c = f.add_client();
     let a = open_window(&mut f, c);
-    let id = f.mt.state.mon().tag().focused_id().unwrap();
+    let id = f.mt.state.seat_mon().tag().focused_id().unwrap();
     f.mt.state.windows[id].set_fullscreen(true);
     recompute_seat(&mut f);
     settle(&mut f, c, a);
@@ -101,7 +101,7 @@ fn smart_gaps_single_window_fills_area() {
     let a = open_window(&mut f, c);
     settle(&mut f, c, a);
 
-    let tile = f.mt.state.mon().views.front().unwrap().tiled[0].rect;
+    let tile = f.mt.state.seat_mon().views.front().unwrap().tiled[0].rect;
     assert_eq!(
         tile,
         Rectangle::from_size((1000, 800).into()),

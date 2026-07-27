@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use crate::Monotile;
+use crate::{Monotile, shell::SeatExt};
 use smithay::{
     delegate_layer_shell,
     desktop::{LayerSurface, PopupKind, layer_map_for_output},
@@ -29,7 +29,7 @@ impl WlrLayerShellHandler for Monotile {
         let output = wl_output
             .as_ref()
             .and_then(Output::from_resource)
-            .unwrap_or_else(|| self.state.mon().output.clone());
+            .unwrap_or_else(|| self.state.seat.active_output());
         let mut map = layer_map_for_output(&output);
         let layer = LayerSurface::new(surface, namespace);
         map.map_layer(&layer).unwrap();

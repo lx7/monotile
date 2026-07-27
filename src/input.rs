@@ -112,25 +112,13 @@ impl Monotile {
                 }
             }
             InputEvent::PointerMotion { event, .. } => {
-                let output = self.state.seat.pointer_output();
-                let geo = self
-                    .state
-                    .monitors
-                    .get(&output)
-                    .expect("the seat's pointer output is attached to a monitor")
-                    .geometry();
+                let geo = self.state.seat.pointer_output().geometry();
                 let pos = pointer.current_location() + event.delta();
                 let pos = pos.constrain(geo.to_f64());
                 self.handle_pointer_motion(pos, event.time_msec(), serial);
             }
             InputEvent::PointerMotionAbsolute { event, .. } => {
-                let output = self.state.seat.pointer_output();
-                let geo = self
-                    .state
-                    .monitors
-                    .get(&output)
-                    .expect("the seat's pointer output is attached to a monitor")
-                    .geometry();
+                let geo = self.state.seat.pointer_output().geometry();
                 let pos = event.position_transformed(geo.size) + geo.loc.to_f64();
                 self.handle_pointer_motion(pos, event.time_msec(), serial);
             }
@@ -360,7 +348,7 @@ impl Monotile {
 
             // seat-monitor actions
             Focus(pos) => {
-                let tag = self.state.mon().tag();
+                let tag = self.state.seat_mon().tag();
                 let target = tag.focused_id().and_then(|cur| tag.layout.target(cur, pos));
                 if let Some(id) = target {
                     self.set_focus(Some(id));
