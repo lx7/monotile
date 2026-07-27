@@ -135,8 +135,8 @@ impl Monotile {
     }
 
     fn on_layer_commit(&mut self, root: &WlSurface) -> Option<(Output, bool)> {
-        for mon in self.state.monitors.values() {
-            let mut map = layer_map_for_output(&mon.output);
+        for output in self.state.monitors.keys() {
+            let mut map = layer_map_for_output(output);
             let Some(layer) = map.layer_for_surface(root, WindowSurfaceType::TOPLEVEL) else {
                 continue;
             };
@@ -167,18 +167,18 @@ impl Monotile {
             }
             let changed = map.arrange();
             drop(map);
-            return Some((mon.output.clone(), changed));
+            return Some((output.clone(), changed));
         }
         None
     }
 
     fn on_lock_commit(&mut self, root: &WlSurface) -> Option<(Output, bool)> {
-        let mon = self.state.monitors.values().find(|m| {
+        let (output, _) = self.state.monitors.iter().find(|(_, m)| {
             m.lock_surface
                 .as_ref()
                 .is_some_and(|ls| ls.wl_surface() == root)
         })?;
-        Some((mon.output.clone(), false))
+        Some((output.clone(), false))
     }
 
     fn on_cursor_commit(&mut self, root: &WlSurface) -> Option<(Output, bool)> {

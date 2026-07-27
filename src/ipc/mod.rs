@@ -102,12 +102,12 @@ impl State {
         }
         self.ipc.dirty = false;
         let seat_output = self.seat.active_output();
-        for mon in self.monitors.values() {
+        for (output, mon) in self.monitors.iter() {
             let snap = mon.snapshot(&self.windows, &self.screencopy);
-            self.ipc.monotile.notify_output(&mon.output, &snap);
-            let active = mon.output == seat_output;
+            self.ipc.monotile.notify_output(output, &snap);
+            let active = *output == seat_output;
             if active {
-                self.ipc.monotile.notify_seat(&snap, &mon.output);
+                self.ipc.monotile.notify_seat(&snap, output);
             }
             self.ipc.dwl.notify(mon, &snap, active);
         }

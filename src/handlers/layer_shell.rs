@@ -43,8 +43,8 @@ impl WlrLayerShellHandler for Monotile {
     }
 
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
-        for mon in self.state.monitors.values() {
-            let mut map = layer_map_for_output(&mon.output);
+        for output in self.state.monitors.keys() {
+            let mut map = layer_map_for_output(output);
             let layer = map
                 .layers()
                 .find(|l| l.layer_surface() == &surface)
@@ -52,7 +52,7 @@ impl WlrLayerShellHandler for Monotile {
             if let Some(layer) = layer {
                 map.unmap_layer(&layer);
                 drop(map);
-                let output = mon.output.clone();
+                let output = output.clone();
                 self.recompute_layout(&output);
                 return;
             }

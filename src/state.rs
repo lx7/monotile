@@ -145,9 +145,9 @@ impl Monotile {
     pub fn advance_view_queues(&mut self) {
         self.unblock_ready_views();
         // the render path also pops, this handles the timeout
-        for mon in self.state.monitors.values_mut() {
+        for (output, mon) in self.state.monitors.iter_mut() {
             if mon.views.pop_ready() {
-                self.backend.schedule_render(&mon.output);
+                self.backend.schedule_render(output);
             }
         }
         let monitors = &self.state.monitors;
@@ -234,7 +234,7 @@ impl Monotile {
         }
 
         // if exclusive layer exists, focus it
-        if let Some(surface) = self.state.seat_mon().output.exclusive_layer() {
+        if let Some(surface) = self.state.seat.active_output().exclusive_layer() {
             if let Some(kb) = self.state.seat.get_keyboard() {
                 kb.set_focus(self, Some(surface), SERIAL_COUNTER.next_serial());
             }

@@ -258,9 +258,7 @@ impl MonitorsExt for Monitors {
 
     // TODO: use view geometry instead (also for surface_under and screencopy)
     fn window_rect(&self, ws: &Windows, id: WindowId) -> Option<Rectangle<i32, Logical>> {
-        let we = ws.get(id)?;
-        let mon = self.get(&we.output)?;
-        mon.tag().window_rect(we, mon.output.geometry())
+        self.get(&ws.get(id)?.output)?.window_rect(ws, id)
     }
 
     fn contains_window(&self, id: WindowId) -> bool {

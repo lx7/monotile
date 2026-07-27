@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use crate::{Monotile, state::State};
+use crate::{Monotile, shell::OutputExt, state::State};
 use smithay::{
     delegate_session_lock,
     output::Output,
@@ -48,17 +48,19 @@ impl SessionLockHandler for Monotile {
     }
 
     fn new_surface(&mut self, surface: LockSurface, wl_output: WlOutput) {
-        let output = Output::from_resource(&wl_output);
-        let mon = output.as_ref().and_then(|o| self.state.monitors.get_mut(o));
-        let Some(mon) = mon else { return };
+        let Some(output) = Output::from_resource(&wl_output) else {
+            return;
+        };
+        let Some(mon) = self.state.monitors.get_mut(&output) else {
+            return;
+        };
 
-        let size = mon.output.current_mode().unwrap().size.to_logical(1);
+        let size = output.geometry().size;
         surface.with_pending_state(|s| {
             s.size = Some((size.w as u32, size.h as u32).into());
         });
         surface.send_configure();
         mon.lock_surface = Some(surface);
-        let output = mon.output.clone();
 
         self.update_focus();
         self.backend.schedule_render(&output);
