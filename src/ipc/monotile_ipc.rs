@@ -23,7 +23,7 @@ use crate::spawn::spawn_shell;
 // -- State --
 
 pub struct MonotileIpcState {
-    outputs: HashMap<Output, Vec<Weak<ZmonotileOutputStatusV1>>>,
+    pub(crate) outputs: HashMap<Output, Vec<Weak<ZmonotileOutputStatusV1>>>,
     seats: Vec<Weak<ZmonotileSeatStatusV1>>,
 }
 
@@ -42,6 +42,10 @@ impl MonotileIpcState {
             .entry(output.clone())
             .or_default()
             .push(handle.downgrade());
+    }
+
+    pub fn remove_output(&mut self, output: &Output) {
+        self.outputs.remove(output);
     }
 
     pub fn notify_output(&mut self, output: &Output, snap: &TagSnapshot) {

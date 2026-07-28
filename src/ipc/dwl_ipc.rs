@@ -22,7 +22,7 @@ use crate::{
 
 #[derive(Default)]
 pub struct DwlIpcState {
-    outputs: HashMap<Output, Vec<Weak<ZdwlIpcOutputV2>>>,
+    pub(crate) outputs: HashMap<Output, Vec<Weak<ZdwlIpcOutputV2>>>,
 }
 
 fn tag_state(active: bool, urgent: bool) -> zdwl_ipc_output_v2::TagState {
@@ -68,6 +68,10 @@ impl DwlIpcState {
             .entry(output.clone())
             .or_default()
             .push(handle.downgrade());
+    }
+
+    pub fn remove_output(&mut self, output: &Output) {
+        self.outputs.remove(output);
     }
 
     pub fn notify(&mut self, mon: &Monitor, snap: &TagSnapshot, active_mon: bool) {

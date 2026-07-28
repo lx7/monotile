@@ -426,6 +426,7 @@ impl State {
 
     pub fn remove_monitor(&mut self, output: &Output) {
         self.screencopy.remove_output(output);
+        self.ipc.remove_output(output);
 
         let Some(dead) = self.monitors.shift_remove(output) else {
             return;

@@ -1,6 +1,7 @@
 use super::Fixture;
 use super::client::DwlEvent;
 use crate::config::Action;
+use crate::shell::SeatExt;
 
 fn open_window(f: &mut Fixture, c: usize) -> usize {
     let w = f.client_mut(c).create_window();
@@ -509,4 +510,25 @@ fn frame_terminates_every_batch() {
         .count();
     assert_eq!(frame_count, 1, "update: exactly 1 frame");
     assert_eq!(events.last(), Some(&DwlEvent::Frame));
+}
+
+#[test]
+fn removed_output_cleaned_from_registry() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    f.client_mut(c).bind_dwl_output();
+    f.roundtrip(c);
+
+    let dead = f.mt.state.seat.active_output();
+    assert!(
+        f.mt.state.ipc.dwl.outputs.contains_key(&dead),
+        "binding should register the output"
+    );
+
+    f.add_output("test2");
+    f.mt.state.remove_monitor(&dead);
+    assert!(
+        !f.mt.state.ipc.dwl.outputs.contains_key(&dead),
+        "removing the monitor should drop its registry entry"
+    );
 }

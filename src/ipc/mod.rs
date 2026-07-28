@@ -4,6 +4,7 @@ mod dwl_ipc;
 mod dwl_ipc_protocol;
 mod monotile_ipc;
 mod monotile_ipc_protocol;
+use smithay::output::Output;
 use wayland_server::DisplayHandle;
 
 use crate::handlers::screencopy::ScreencopyState;
@@ -25,6 +26,11 @@ impl IpcState {
             monotile: MonotileIpcState::new(dh),
             dirty: false,
         }
+    }
+
+    pub fn remove_output(&mut self, output: &Output) {
+        self.dwl.remove_output(output);
+        self.monotile.remove_output(output);
     }
 }
 

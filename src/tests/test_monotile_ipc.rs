@@ -2,6 +2,7 @@ use super::Fixture;
 use super::client::IpcEvent;
 use super::ipc_client_protocol::monotile::zmonotile_seat_control_v1::Position;
 use crate::config::Action;
+use crate::shell::SeatExt;
 
 fn open_window(f: &mut Fixture, c: usize) -> usize {
     let w = f.client_mut(c).create_window();
@@ -679,4 +680,25 @@ fn seat_status_destroy_stops_events() {
 
     let events = f.client_mut(c).take_ipc_events();
     assert!(events.is_empty(), "no events after destroy, got {events:?}");
+}
+
+#[test]
+fn removed_output_cleaned_from_registry() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    f.client_mut(c).bind_output_status();
+    f.roundtrip(c);
+
+    let dead = f.mt.state.seat.active_output();
+    assert!(
+        f.mt.state.ipc.monotile.outputs.contains_key(&dead),
+        "binding should register the output"
+    );
+
+    f.add_output("test2");
+    f.mt.state.remove_monitor(&dead);
+    assert!(
+        !f.mt.state.ipc.monotile.outputs.contains_key(&dead),
+        "removing the monitor should drop its registry entry"
+    );
 }

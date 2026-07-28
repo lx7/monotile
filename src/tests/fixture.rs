@@ -23,11 +23,19 @@ impl Fixture {
     }
 
     pub fn with_config(config: Config) -> Self {
-        let (event_loop, mut mt) = Monotile::new(config);
+        let (event_loop, mt) = Monotile::new(config);
+        let mut f = Fixture {
+            event_loop,
+            mt,
+            clients: Vec::new(),
+        };
+        f.add_output("test");
+        f
+    }
 
-        // headless output
+    pub fn add_output(&mut self, name: &str) -> Output {
         let output = Output::new(
-            "test".into(),
+            name.into(),
             PhysicalProperties {
                 size: (0, 0).into(),
                 subpixel: Subpixel::Unknown,
@@ -40,16 +48,13 @@ impl Fixture {
             size: (1000, 800).into(),
             refresh: 60_000,
         };
-        output.create_global::<Monotile>(&mt.state.display_handle);
+        output.create_global::<Monotile>(&self.mt.state.display_handle);
         output.change_current_state(Some(mode), None, None, Some((0, 0).into()));
         output.set_preferred(mode);
-        mt.state.add_monitor(output, MonitorSettings::default());
-
-        Fixture {
-            event_loop,
-            mt,
-            clients: Vec::new(),
-        }
+        self.mt
+            .state
+            .add_monitor(output.clone(), MonitorSettings::default());
+        output
     }
 
     pub fn add_client(&mut self) -> usize {
