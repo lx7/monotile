@@ -177,8 +177,10 @@
     },
 
     // Bindings
-    // Keyboard: ([modifiers], Key("name"), Action)
+    // Keyboard: ([modifiers], Key("name"), Action, [flags])
     // Mouse:    ([modifiers], Mouse(Left|Middle|Right), Action)
+    // Optional flags:
+    // - AllowWhenLocked: allows this bind to trigger when the session is locked
     binds: [
     ([Super],              Key("Left"),                  Focus(Prev)),
     ([Super],              Key("Right"),                 Focus(Next)),
@@ -211,15 +213,15 @@
     ([Super, Shift],       Key("l"),                     Spawn(["systemctl", "suspend"])),
     ([Super, Shift],       Key("e"),                     Spawn(["/bin/sh", "-c", "sel=$(printf 'lock\\nsuspend\\nreboot\\nshutdown' | fuzzel -d -p 'Power: ') && case $sel in lock) swaylock;; suspend) systemctl suspend;; reboot) systemctl reboot;; shutdown) systemctl poweroff;; esac"])),
 
-    ([],                   Key("XF86AudioMute"),         Spawn(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])),
-    ([],                   Key("XF86AudioLowerVolume"),  Spawn(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"])),
-    ([],                   Key("XF86AudioRaiseVolume"),  Spawn(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"])),
-    ([],                   Key("XF86AudioMicMute"),      Spawn(["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"])),
-    ([],                   Key("XF86AudioPlay"),         Spawn(["playerctl", "play-pause"])),
-    ([],                   Key("XF86AudioNext"),         Spawn(["playerctl", "next"])),
-    ([],                   Key("XF86AudioPrev"),         Spawn(["playerctl", "previous"])),
-    ([],                   Key("XF86MonBrightnessDown"), Spawn(["brightnessctl", "set", "5%-"])),
-    ([],                   Key("XF86MonBrightnessUp"),   Spawn(["brightnessctl", "set", "5%+"])),
+    ([],                   Key("XF86AudioMute"),         Spawn(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]), [AllowWhenLocked]),
+    ([],                   Key("XF86AudioLowerVolume"),  Spawn(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"]), [AllowWhenLocked]),
+    ([],                   Key("XF86AudioRaiseVolume"),  Spawn(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"]), [AllowWhenLocked]),
+    ([],                   Key("XF86AudioMicMute"),      Spawn(["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"]), [AllowWhenLocked]),
+    ([],                   Key("XF86AudioPlay"),         Spawn(["playerctl", "play-pause"]), [AllowWhenLocked]),
+    ([],                   Key("XF86AudioNext"),         Spawn(["playerctl", "next"]), [AllowWhenLocked]),
+    ([],                   Key("XF86AudioPrev"),         Spawn(["playerctl", "previous"]), [AllowWhenLocked]),
+    ([],                   Key("XF86MonBrightnessDown"), Spawn(["brightnessctl", "set", "5%-"]), [AllowWhenLocked]),
+    ([],                   Key("XF86MonBrightnessUp"),   Spawn(["brightnessctl", "set", "5%+"]), [AllowWhenLocked]),
     ([],                   Key("XF86Display"),           Noop),
     ([],                   Key("XF86WLAN"),              Noop),
     ([],                   Key("XF86Tools"),             Noop),

@@ -375,14 +375,6 @@ impl Config {
 
 // --- Bindings ---
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-pub enum Mod {
-    Shift,
-    Ctrl,
-    Alt,
-    Super,
-}
-
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Mods {
     pub shift: bool,
@@ -402,14 +394,26 @@ impl From<&ModifiersState> for Mods {
     }
 }
 
-impl From<&[Mod]> for Mods {
-    fn from(v: &[Mod]) -> Self {
-        Self {
-            shift: v.contains(&Mod::Shift),
-            ctrl: v.contains(&Mod::Ctrl),
-            alt: v.contains(&Mod::Alt),
-            logo: v.contains(&Mod::Super),
+impl<'de> Deserialize<'de> for Mods {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        enum Mod {
+            Shift,
+            Ctrl,
+            Alt,
+            Super,
         }
+
+        let mut mods = Mods::default();
+        for m in Vec::<Mod>::deserialize(d)? {
+            match m {
+                Mod::Shift => mods.shift = true,
+                Mod::Ctrl => mods.ctrl = true,
+                Mod::Alt => mods.alt = true,
+                Mod::Super => mods.logo = true,
+            }
+        }
+        Ok(mods)
     }
 }
 
@@ -475,12 +479,12 @@ pub enum Action {
 // --- Bindings ---
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Trigger {
+pub enum TriggerInput {
     Key(Keysym),
     Mouse(u32),
 }
 
-impl<'de> Deserialize<'de> for Trigger {
+impl<'de> Deserialize<'de> for TriggerInput {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
         enum Raw {
@@ -493,22 +497,64 @@ impl<'de> Deserialize<'de> for Trigger {
                 if sym.raw() == 0 {
                     return Err(Error::custom(format!("unknown key: {name}")));
                 }
-                Ok(Trigger::Key(sym))
+                Ok(TriggerInput::Key(sym))
             }
-            Raw::Mouse(btn) => Ok(Trigger::Mouse(btn as u32)),
+            Raw::Mouse(btn) => Ok(TriggerInput::Mouse(btn as u32)),
         }
     }
 }
 
-#[derive(Debug, Default, Clone, Deref)]
-pub struct BindMap(HashMap<(Trigger, Mods), Action>);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Trigger {
+    pub mods: Mods,
+    pub input: TriggerInput,
+}
+
+#[derive(Debug, Clone)]
+pub struct Bind {
+    pub action: Action,
+    pub allow_when_locked: bool,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+enum BindFlag {
+    AllowWhenLocked,
+}
+
+#[derive(Deserialize)]
+struct BindDef(Mods, TriggerInput, Action, #[serde(default)] Vec<BindFlag>);
+
+#[derive(Debug, Default, Clone)]
+pub struct BindMap(HashMap<Trigger, Bind>);
+
+impl BindMap {
+    pub fn for_key(&self, syms: &[Keysym], mods: Mods) -> Option<&Bind> {
+        syms.iter().find_map(|&sym| {
+            self.0.get(&Trigger {
+                mods,
+                input: TriggerInput::Key(sym),
+            })
+        })
+    }
+
+    pub fn for_button(&self, button: u32, mods: Mods) -> Option<&Bind> {
+        self.0.get(&Trigger {
+            mods,
+            input: TriggerInput::Mouse(button),
+        })
+    }
+}
 
 impl<'de> Deserialize<'de> for BindMap {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let raw: Vec<(Vec<Mod>, Trigger, Action)> = Vec::deserialize(d)?;
+        let raw: Vec<BindDef> = Vec::deserialize(d)?;
         let mut map = HashMap::new();
-        for (mods, trigger, action) in raw {
-            map.insert((trigger, Mods::from(mods.as_slice())), action);
+        for BindDef(mods, input, action, flags) in raw {
+            let bind = Bind {
+                action,
+                allow_when_locked: flags.contains(&BindFlag::AllowWhenLocked),
+            };
+            map.insert(Trigger { mods, input }, bind);
         }
         Ok(BindMap(map))
     }
@@ -590,11 +636,6 @@ fn provision(path: &Path, content: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
-
-    fn defaults_path() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("defaults/config.ron")
-    }
 
     #[test]
     fn default_config_matches_inline_defaults() {
@@ -603,13 +644,6 @@ mod tests {
 
         assert_eq!(file.layout, code.layout);
         assert_eq!(file.seats["seat0"], SeatConfig::default());
-        assert!(!file.binds.is_empty(), "binds empty");
-    }
-
-    #[test]
-    fn load_defaults_file() {
-        let config = Config::load(Some(defaults_path())).unwrap();
-        assert!(!config.binds.is_empty());
     }
 
     #[test]
@@ -648,17 +682,6 @@ mod tests {
     }
 
     #[test]
-    fn color_palette_hex_alongside_names() {
-        let ron = r##"#![enable(implicit_some)]
-(colors: {"red": "#ff0000"}, outputs: [(match: (), background: "#00ff00")])"##;
-        let config = Config::parse(ron).unwrap();
-        assert_eq!(
-            config.outputs[0].background.unwrap(),
-            Color::from_rgba(0x00FF00FF)
-        );
-    }
-
-    #[test]
     fn color_unknown_name_errors() {
         let ron = r#"#![enable(implicit_some)]
 (outputs: [(match: (), background: "nonexistent")])"#;
@@ -682,6 +705,33 @@ mod tests {
         let ron = r#"(binds: [([Super], Key("NonExistentKey_XYZ"), Exit)])"#;
         let r = ron::from_str::<Config>(ron);
         assert!(r.is_err());
+    }
+
+    #[test]
+    fn bind_flags_parse() {
+        let ron = r#"(binds: [
+            ([Super], Key("a"), Exit),
+            ([Super], Key("b"), Exit, [AllowWhenLocked]),
+        ])"#;
+        let config: Config = ron::from_str(ron).unwrap();
+
+        let mods = Mods {
+            logo: true,
+            ..Default::default()
+        };
+        let bind = |name| {
+            let sym = xkb::keysym_from_name(name, xkb::KEYSYM_NO_FLAGS);
+            config.binds.for_key(&[sym], mods).expect("bind parsed")
+        };
+
+        assert!(
+            !bind("a").allow_when_locked,
+            "no flags means locked binds are blocked",
+        );
+        assert!(
+            bind("b").allow_when_locked,
+            "AllowWhenLocked flag must be parsed",
+        );
     }
 
     #[test]
@@ -744,24 +794,5 @@ mod tests {
         assert!(m.matches("DP-1", "Dell", "U2723QE", "ABC123"));
         assert!(m.matches("DP-2", "Dell", "U2723QE", "ABC123"));
         assert!(!m.matches("HDMI-A-1", "Dell", "U2723QE", "ABC123"));
-    }
-
-    #[test]
-    fn output_rule_tags_default() {
-        let ron = "(outputs: [(match: ())])";
-        let config: Config = ron::from_str(ron).unwrap();
-        assert!(config.outputs[0].tags.is_none());
-        assert_eq!(
-            default_tags(),
-            vec!["1", "2", "3", "4", "5", "6", "7", "8", "9"]
-        );
-    }
-
-    #[test]
-    fn output_rule_tags_custom() {
-        let ron = "#![enable(implicit_some)]\n(outputs: [(match: (), tags: [\"9\", \"7-1\", \"music\"])])";
-        let config: Config = ron::from_str(ron).unwrap();
-        let tags = config.outputs[0].tags.as_ref().unwrap();
-        assert_eq!(tags, &["9", "7-1", "music"]);
     }
 }

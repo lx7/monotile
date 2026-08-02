@@ -4,7 +4,7 @@ use tracing::info;
 
 use crate::{
     Monotile,
-    config::{Action, Config, Mods, Trigger},
+    config::{Action, Config, Mods},
     grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
     handlers::Devices,
     shell::{OutputExt, SeatExt},
@@ -76,34 +76,29 @@ impl Monotile {
                             return FilterResult::Intercept(Some(Action::ChangeVt(vt)));
                         }
 
-                        // locked
-                        if monotile.state.locked {
-                            return FilterResult::Forward;
-                        }
-
-                        // exclusive layer
-                        if monotile
-                            .state
-                            .seat
-                            .active_output()
-                            .exclusive_layer()
-                            .is_some()
-                        {
-                            return FilterResult::Forward;
-                        }
-
-                        // key binds
                         let mods = Mods::from(modifiers);
-                        for sym in handle.raw_syms() {
-                            if let Some(action) =
-                                monotile.state.config.binds.get(&(Trigger::Key(sym), mods))
-                            {
-                                return FilterResult::Intercept(Some(action.clone()));
-                            }
-                        }
+                        let bind = monotile
+                            .state
+                            .config
+                            .binds
+                            .for_key(&handle.raw_syms(), mods)
+                            .filter(|b| {
+                                if monotile.state.locked {
+                                    b.allow_when_locked
+                                } else {
+                                    monotile
+                                        .state
+                                        .seat
+                                        .active_output()
+                                        .exclusive_layer()
+                                        .is_none()
+                                }
+                            });
 
-                        // forward to client
-                        FilterResult::Forward
+                        match bind {
+                            Some(b) => FilterResult::Intercept(Some(b.action.clone())),
+                            None => FilterResult::Forward,
+                        }
                     },
                 );
 
@@ -132,11 +127,9 @@ impl Monotile {
                     && self.state.seat.pointer_output().exclusive_layer().is_none()
                 {
                     let mods = Mods::from(&keyboard.modifier_state());
-                    if let Some(action) =
-                        self.state.config.binds.get(&(Trigger::Mouse(button), mods))
-                    {
+                    if let Some(bind) = self.state.config.binds.for_button(button, mods) {
                         self.handle_mouse_action(
-                            action.clone(),
+                            bind.action.clone(),
                             button,
                             pointer.current_location(),
                             serial,
