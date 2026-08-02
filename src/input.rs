@@ -86,12 +86,7 @@ impl Monotile {
                                 if monotile.state.locked {
                                     b.allow_when_locked
                                 } else {
-                                    monotile
-                                        .state
-                                        .seat
-                                        .active_output()
-                                        .exclusive_layer()
-                                        .is_none()
+                                    monotile.state.seat.exclusive_layer().is_none()
                                 }
                             });
 
@@ -124,7 +119,6 @@ impl Monotile {
                 if button_state == ButtonState::Pressed
                     && !pointer.is_grabbed()
                     && !self.state.locked
-                    && self.state.seat.pointer_output().exclusive_layer().is_none()
                 {
                     let mods = Mods::from(&keyboard.modifier_state());
                     if let Some(bind) = self.state.config.binds.for_button(button, mods) {

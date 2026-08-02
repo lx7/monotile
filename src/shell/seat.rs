@@ -2,8 +2,11 @@
 
 use std::cell::RefCell;
 
-use smithay::{input::Seat, output::Output};
+use smithay::{
+    input::Seat, output::Output, reexports::wayland_server::protocol::wl_surface::WlSurface,
+};
 
+use super::OutputExt;
 use crate::Monotile;
 
 struct ActiveOutput(RefCell<Output>);
@@ -15,6 +18,10 @@ pub trait SeatExt {
     // TODO multi-seat: resolve via the pointer's position instead
     fn pointer_output(&self) -> Output {
         self.active_output()
+    }
+
+    fn exclusive_layer(&self) -> Option<WlSurface> {
+        self.active_output().exclusive_layer()
     }
 }
 
