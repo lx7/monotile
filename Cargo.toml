@@ -1,6 +1,6 @@
 [package]
 name = "monotile"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 authors = ["Alexander Koeck <alex@echocluster.net>"]
 description = "A small and light tiling Wayland compositor in Rust"
