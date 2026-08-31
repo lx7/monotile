@@ -63,7 +63,7 @@
             ];
 
             buildInputs = with pkgs; [
-              libdisplay-info
+              libdisplay-info_0_3
               libgbm
               libinput
               libxkbcommon
@@ -99,7 +99,7 @@
         let
           pkgs = nixpkgs.legacyPackages.${system};
           deps = with pkgs; [
-            libdisplay-info
+            libdisplay-info_0_3
             libglvnd # libEGL, libGL
             libinput
             libxkbcommon
