@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 
 use smithay::{
-    delegate_foreign_toplevel_list,
     wayland::foreign_toplevel_list::{
         ForeignToplevelHandle, ForeignToplevelListHandler, ForeignToplevelListState,
     },
@@ -65,4 +64,3 @@ impl ForeignToplevelListHandler for Monotile {
         &mut self.state.foreign_toplevel.list
     }
 }
-delegate_foreign_toplevel_list!(Monotile);

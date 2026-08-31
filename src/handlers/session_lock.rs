@@ -2,7 +2,6 @@
 
 use crate::{Monotile, shell::OutputExt, state::State};
 use smithay::{
-    delegate_session_lock,
     output::Output,
     reexports::wayland_server::protocol::wl_output::WlOutput,
     wayland::session_lock::{
@@ -66,8 +65,6 @@ impl SessionLockHandler for Monotile {
         self.backend.schedule_render(&output);
     }
 }
-
-delegate_session_lock!(Monotile);
 
 impl State {
     pub fn confirm_lock(&mut self, output: &Output) {

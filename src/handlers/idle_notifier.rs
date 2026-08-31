@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 use smithay::{
-    delegate_idle_inhibit, delegate_idle_notify,
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     wayland::{
         idle_inhibit::IdleInhibitHandler,
@@ -17,8 +16,6 @@ impl IdleNotifierHandler for Monotile {
     }
 }
 
-delegate_idle_notify!(Monotile);
-
 impl IdleInhibitHandler for Monotile {
     fn inhibit(&mut self, surface: WlSurface) {
         self.state.idle_inhibitors.push(surface);
@@ -30,5 +27,3 @@ impl IdleInhibitHandler for Monotile {
         self.state.refresh_idle_inhibit();
     }
 }
-
-delegate_idle_inhibit!(Monotile);

@@ -15,20 +15,19 @@ use std::cell::RefCell;
 use crate::{Monotile, shell::SeatExt};
 use smithay::{
     backend::input::DeviceCapability,
-    delegate_cursor_shape, delegate_data_control, delegate_data_device, delegate_ext_data_control,
-    delegate_output, delegate_primary_selection, delegate_seat, delegate_single_pixel_buffer,
-    delegate_viewporter, delegate_xdg_activation,
     input::{
         Seat, SeatHandler, SeatState,
         dnd::{DnDGrab, DndGrabHandler, DndTarget, GrabType, Source},
         keyboard::LedState,
         pointer::{CursorImageStatus, Focus},
+        tablet::TabletSeatHandler,
     },
     reexports::input::Device,
     reexports::wayland_server::{Resource, protocol::wl_surface::WlSurface},
     utils::{Logical, Point, Serial},
     wayland::{
         output::OutputHandler,
+        pointer_constraints::PointerConstraintsHandler,
         selection::{
             SelectionHandler,
             data_device::{
@@ -46,7 +45,6 @@ use smithay::{
                 DataControlState as WlrDataControlState,
             },
         },
-        tablet_manager::TabletSeatHandler,
         xdg_activation::{
             XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData,
         },
@@ -92,7 +90,6 @@ impl SeatHandler for Monotile {
         set_primary_focus(dh, seat, client);
     }
 }
-delegate_seat!(Monotile);
 
 impl SelectionHandler for Monotile {
     type SelectionUserData = ();
@@ -103,28 +100,24 @@ impl DataDeviceHandler for Monotile {
         &mut self.state.data_device_state
     }
 }
-delegate_data_device!(Monotile);
 
 impl PrimarySelectionHandler for Monotile {
     fn primary_selection_state(&mut self) -> &mut PrimarySelectionState {
         &mut self.state.primary_selection_state
     }
 }
-delegate_primary_selection!(Monotile);
 
 impl WlrDataControlHandler for Monotile {
     fn data_control_state(&mut self) -> &mut WlrDataControlState {
         &mut self.state.wlr_data_control_state
     }
 }
-delegate_data_control!(Monotile);
 
 impl ExtDataControlHandler for Monotile {
     fn data_control_state(&mut self) -> &mut ExtDataControlState {
         &mut self.state.ext_data_control_state
     }
 }
-delegate_ext_data_control!(Monotile);
 
 impl DndGrabHandler for Monotile {
     fn dropped(
@@ -168,10 +161,6 @@ impl WaylandDndGrabHandler for Monotile {
 }
 
 impl OutputHandler for Monotile {}
-delegate_output!(Monotile);
-
-delegate_viewporter!(Monotile);
-delegate_single_pixel_buffer!(Monotile);
 
 impl XdgActivationHandler for Monotile {
     fn activation_state(&mut self) -> &mut XdgActivationState {
@@ -196,8 +185,9 @@ impl XdgActivationHandler for Monotile {
         self.backend.schedule_render(&self.state.windows[id].output);
     }
 }
-delegate_xdg_activation!(Monotile);
 
-impl TabletSeatHandler for Monotile {}
-delegate_cursor_shape!(Monotile);
-smithay::delegate_pointer_gestures!(Monotile);
+impl TabletSeatHandler for Monotile {
+    type ToolFocus = WlSurface;
+}
+
+impl PointerConstraintsHandler for Monotile {}

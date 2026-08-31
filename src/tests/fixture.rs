@@ -1,7 +1,7 @@
 use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
-use smithay::backend::input::ButtonState;
+use smithay::backend::input::{ButtonState, InputTime};
 use smithay::input::pointer::{ButtonEvent, MotionEvent};
 use smithay::output::{Mode, Output, PhysicalProperties, Subpixel};
 use smithay::reexports::calloop::EventLoop;
@@ -111,14 +111,14 @@ impl Fixture {
             &MotionEvent {
                 location,
                 serial: SERIAL_COUNTER.next_serial(),
-                time: 0,
+                time: InputTime::from_millis(0),
             },
         );
         ptr.button(
             &mut self.mt,
             &ButtonEvent {
                 serial: SERIAL_COUNTER.next_serial(),
-                time: 1,
+                time: InputTime::from_millis(1),
                 button: 0x110,
                 state: ButtonState::Pressed,
             },
@@ -132,7 +132,7 @@ impl Fixture {
             &mut self.mt,
             &ButtonEvent {
                 serial: SERIAL_COUNTER.next_serial(),
-                time: 2,
+                time: InputTime::from_millis(2),
                 button: 0x110,
                 state: ButtonState::Released,
             },

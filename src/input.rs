@@ -14,7 +14,8 @@ use smithay::{
     backend::input::{
         AbsolutePositionEvent, Axis, AxisSource, ButtonState, DeviceCapability, Event,
         GestureBeginEvent, GestureEndEvent, GesturePinchUpdateEvent as _, InputBackend, InputEvent,
-        KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
+        InputTime, KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
+        PointerMotionEvent,
     },
     input::{
         keyboard::{FilterResult, Keysym},
@@ -52,7 +53,7 @@ impl Monotile {
 
         match event {
             InputEvent::Keyboard { event, .. } => {
-                let time = Event::time_msec(&event);
+                let time = Event::time(&event);
                 let key_code = event.key_code();
                 let key_state = event.state();
 
@@ -105,12 +106,12 @@ impl Monotile {
                 let geo = self.state.seat.pointer_output().geometry();
                 let pos = pointer.current_location() + event.delta();
                 let pos = pos.constrain(geo.to_f64());
-                self.handle_pointer_motion(pos, event.time_msec(), serial);
+                self.handle_pointer_motion(pos, event.time(), serial);
             }
             InputEvent::PointerMotionAbsolute { event, .. } => {
                 let geo = self.state.seat.pointer_output().geometry();
                 let pos = event.position_transformed(geo.size) + geo.loc.to_f64();
-                self.handle_pointer_motion(pos, event.time_msec(), serial);
+                self.handle_pointer_motion(pos, event.time(), serial);
             }
             InputEvent::PointerButton { event, .. } => {
                 let button = event.button_code();
@@ -147,7 +148,7 @@ impl Monotile {
                         button,
                         state: button_state,
                         serial,
-                        time: event.time_msec(),
+                        time: event.time(),
                     },
                 );
                 pointer.frame(self);
@@ -165,7 +166,7 @@ impl Monotile {
                 let horizontal_amount_discrete = event.amount_v120(Axis::Horizontal);
                 let vertical_amount_discrete = event.amount_v120(Axis::Vertical);
 
-                let mut frame = AxisFrame::new(event.time_msec()).source(source);
+                let mut frame = AxisFrame::new(event.time()).source(source);
                 if horizontal_amount != 0.0 {
                     frame = frame.value(Axis::Horizontal, horizontal_amount);
                     if let Some(discrete) = horizontal_amount_discrete {
@@ -198,7 +199,7 @@ impl Monotile {
                     self,
                     &GesturePinchBeginEvent {
                         serial,
-                        time: event.time_msec(),
+                        time: event.time(),
                         fingers: event.fingers(),
                     },
                 );
@@ -207,7 +208,7 @@ impl Monotile {
                 pointer.gesture_pinch_update(
                     self,
                     &GesturePinchUpdateEvent {
-                        time: event.time_msec(),
+                        time: event.time(),
                         delta: event.delta(),
                         scale: event.scale(),
                         rotation: event.rotation(),
@@ -219,7 +220,7 @@ impl Monotile {
                     self,
                     &GesturePinchEndEvent {
                         serial,
-                        time: event.time_msec(),
+                        time: event.time(),
                         cancelled: event.cancelled(),
                     },
                 );
@@ -229,7 +230,7 @@ impl Monotile {
                     self,
                     &GestureHoldBeginEvent {
                         serial,
-                        time: event.time_msec(),
+                        time: event.time(),
                         fingers: event.fingers(),
                     },
                 );
@@ -239,7 +240,7 @@ impl Monotile {
                     self,
                     &GestureHoldEndEvent {
                         serial,
-                        time: event.time_msec(),
+                        time: event.time(),
                         cancelled: event.cancelled(),
                     },
                 );
@@ -251,7 +252,7 @@ impl Monotile {
         }
     }
 
-    fn handle_pointer_motion(&mut self, pos: Point<f64, Logical>, time: u32, serial: Serial) {
+    fn handle_pointer_motion(&mut self, pos: Point<f64, Logical>, time: InputTime, serial: Serial) {
         let pointer = self.state.seat.get_pointer().unwrap();
 
         let under = self.state.surface_under(pos);

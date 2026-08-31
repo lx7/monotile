@@ -2,8 +2,6 @@
 
 use smithay::{
     backend::renderer::{Color32F, damage::OutputDamageTracker, element::Kind, glow::GlowRenderer},
-    delegate_image_capture_source, delegate_image_copy_capture, delegate_output_capture_source,
-    delegate_toplevel_capture_source,
     output::{Output, WeakOutput},
     reexports::wayland_server::{
         DisplayHandle,
@@ -179,7 +177,6 @@ impl ScreencopyState {
 }
 
 impl ImageCaptureSourceHandler for Monotile {}
-delegate_image_capture_source!(Monotile);
 
 impl OutputCaptureSourceHandler for Monotile {
     fn output_capture_source_state(&mut self) -> &mut OutputCaptureSourceState {
@@ -190,7 +187,6 @@ impl OutputCaptureSourceHandler for Monotile {
         source.user_data().insert_if_missing(|| output.downgrade());
     }
 }
-delegate_output_capture_source!(Monotile);
 
 impl ToplevelCaptureSourceHandler for Monotile {
     fn toplevel_capture_source_state(&mut self) -> &mut ToplevelCaptureSourceState {
@@ -207,7 +203,6 @@ impl ToplevelCaptureSourceHandler for Monotile {
         }
     }
 }
-delegate_toplevel_capture_source!(Monotile);
 
 impl ImageCopyCaptureHandler for Monotile {
     fn image_copy_capture_state(&mut self) -> &mut ImageCopyCaptureState {
@@ -224,10 +219,9 @@ impl ImageCopyCaptureHandler for Monotile {
         let size = if let Some(output) = source_output(source) {
             let mode = output.current_mode()?;
             (mode.size.w, mode.size.h).into()
-        } else if let Some(id) = source_toplevel(source) {
-            toplevel_capture_info(&self.state.windows, id)?.1
         } else {
-            return None;
+            let id = source_toplevel(source)?;
+            toplevel_capture_info(&self.state.windows, id)?.1
         };
         Some(BufferConstraints {
             size,
@@ -384,7 +378,6 @@ impl ImageCopyCaptureHandler for Monotile {
             .retain(|cs| *cs.session != session);
     }
 }
-delegate_image_copy_capture!(Monotile);
 
 pub fn capture_frame(
     renderer: &mut GlowRenderer,

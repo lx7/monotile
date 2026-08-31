@@ -75,6 +75,8 @@ pub struct Monotile {
     pub state: State,
 }
 
+smithay::delegate_dispatch2!(Monotile);
+
 pub struct SurfaceUnder {
     pub surface: Option<(WlSurface, Point<f64, Logical>)>,
     pub window: Option<WindowId>,

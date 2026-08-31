@@ -7,7 +7,6 @@ use crate::{
 };
 use smithay::{
     backend::renderer::utils::{on_commit_buffer_handler, with_renderer_surface_state},
-    delegate_compositor, delegate_shm,
     desktop::{PopupKind, WindowSurfaceType, find_popup_root_surface, layer_map_for_output},
     output::Output,
     reexports::wayland_server::{
@@ -200,6 +199,3 @@ impl ShmHandler for Monotile {
         &self.state.shm_state
     }
 }
-
-delegate_compositor!(Monotile);
-delegate_shm!(Monotile);

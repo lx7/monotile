@@ -2,7 +2,6 @@
 
 use crate::{Monotile, shell::SeatExt};
 use smithay::{
-    delegate_layer_shell,
     desktop::{LayerSurface, PopupKind, layer_map_for_output},
     output::Output,
     reexports::wayland_server::protocol::wl_output,
@@ -59,5 +58,3 @@ impl WlrLayerShellHandler for Monotile {
         }
     }
 }
-
-delegate_layer_shell!(Monotile);

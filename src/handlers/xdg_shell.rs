@@ -4,8 +4,8 @@ use crate::{
     Monotile,
     shell::{MonitorsExt, OutputExt, SeatExt, ToplevelSurfaceExt, Unmapped},
 };
+
 use smithay::{
-    delegate_kde_decoration, delegate_xdg_decoration, delegate_xdg_shell,
     desktop::{
         PopupKeyboardGrab, PopupKind, PopupPointerGrab, WindowSurfaceType, find_popup_root_surface,
         get_popup_toplevel_coords, layer_map_for_output,
@@ -150,8 +150,6 @@ impl XdgShellHandler for Monotile {
     }
 }
 
-delegate_xdg_shell!(Monotile);
-
 // force server-side decorations
 impl XdgDecorationHandler for Monotile {
     fn new_decoration(&mut self, toplevel: ToplevelSurface) {
@@ -167,8 +165,6 @@ impl XdgDecorationHandler for Monotile {
     }
 }
 
-delegate_xdg_decoration!(Monotile);
-
 // force server-side decorations (for GTK/Qt apps)
 impl KdeDecorationHandler for Monotile {
     fn kde_decoration_state(&self) -> &KdeDecorationState {
@@ -177,8 +173,6 @@ impl KdeDecorationHandler for Monotile {
 
     fn new_decoration(&mut self, _: &WlSurface, _: &OrgKdeKwinServerDecoration) {}
 }
-
-delegate_kde_decoration!(Monotile);
 
 impl Monotile {
     fn set_server_side_decoration(toplevel: &ToplevelSurface, send_configure: bool) {

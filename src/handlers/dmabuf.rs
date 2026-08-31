@@ -3,7 +3,6 @@
 use crate::Monotile;
 use smithay::{
     backend::renderer::ImportDma,
-    delegate_dmabuf,
     wayland::dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
 };
 
@@ -31,4 +30,3 @@ impl DmabufHandler for Monotile {
         }
     }
 }
-delegate_dmabuf!(Monotile);
