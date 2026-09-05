@@ -26,6 +26,7 @@ impl WinitState {
     pub fn render(&mut self, state: &mut State) -> Result<(), Box<dyn std::error::Error>> {
         let age = self.backend.buffer_age().unwrap_or(0);
         let (renderer, mut fb) = self.backend.bind()?;
+        let locked = state.locked();
         let mon = state
             .monitors
             .get_mut(&self.output)
@@ -38,7 +39,7 @@ impl WinitState {
             &mut state.windows,
             &self.shaders,
             &state.config,
-            state.locked,
+            locked,
         );
         let rendered = self
             .damage_tracker

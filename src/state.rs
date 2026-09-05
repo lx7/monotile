@@ -18,7 +18,10 @@ use smithay::{
             EventLoop, Interest, LoopHandle, LoopSignal, Mode as CalloopMode, PostAction,
             generic::Generic,
         },
-        wayland_protocols::xdg::shell::server::xdg_toplevel,
+        wayland_protocols::{
+            ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1,
+            xdg::shell::server::xdg_toplevel,
+        },
         wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration_manager::Mode as KdeMode,
         wayland_server::{
             Client, Display, DisplayHandle, Resource,
@@ -294,7 +297,7 @@ pub struct State {
     pub windows: Windows,
     pub unmapped: HashMap<ObjectId, Unmapped>,
     pub monitors: Monitors,
-    pub locked: bool,
+    pub active_lock: Option<ExtSessionLockV1>,
     pub pending_lock: Option<(SessionLocker, HashSet<Output>)>,
     pub session_lock_state: SessionLockManagerState,
     pub screencopy: ScreencopyState,
@@ -391,7 +394,7 @@ impl State {
             windows: Windows::default(),
             monitors: Monitors::default(),
             unmapped: HashMap::new(),
-            locked: false,
+            active_lock: None,
             pending_lock: None,
             session_lock_state,
             screencopy,
@@ -515,7 +518,7 @@ impl State {
             .monitors
             .get(&output)
             .expect("the seat's pointer output is attached to a monitor");
-        if self.locked {
+        if self.locked() {
             let surface = mon
                 .lock_surface
                 .as_ref()
@@ -594,7 +597,7 @@ impl State {
     }
 
     pub fn refresh_idle_inhibit(&mut self) {
-        let inhibited = !self.locked
+        let inhibited = !self.locked()
             && self.idle_inhibitors.iter().any(|surface| {
                 let mut root = surface.clone();
                 while let Some(parent) = get_parent(&root) {

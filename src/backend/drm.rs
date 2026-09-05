@@ -183,6 +183,7 @@ impl DrmState {
             state.screencopy.fail_pending_for_output(&surface.output);
             return;
         }
+        let locked = state.locked();
         let Some(mon) = state.monitors.get_mut(&surface.output) else {
             state.screencopy.fail_pending_for_output(&surface.output);
             return;
@@ -200,7 +201,7 @@ impl DrmState {
             &mut state.windows,
             &self.shaders,
             &state.config,
-            state.locked,
+            locked,
         ));
 
         let result = match surface.compositor.render_frame(

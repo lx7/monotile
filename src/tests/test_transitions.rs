@@ -234,7 +234,7 @@ fn idle_inhibit_follows_visibility() {
     );
 
     // locked session is never inhibited, even with a visible inhibitor
-    f.mt.state.locked = true;
+    let _lock = super::test_session_lock::lock_session(&mut f);
     f.mt.state.refresh_idle_inhibit();
     assert!(
         !f.mt.state.idle_notifier_state.is_inhibited(),

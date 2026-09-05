@@ -210,7 +210,7 @@ impl ImageCopyCaptureHandler for Monotile {
     }
 
     fn capture_constraints(&mut self, source: &ImageCaptureSource) -> Option<BufferConstraints> {
-        if self.state.locked {
+        if self.state.locked() {
             return None;
         }
 
@@ -264,7 +264,7 @@ impl ImageCopyCaptureHandler for Monotile {
     }
 
     fn frame(&mut self, session: &SessionRef, frame: Frame) {
-        if self.state.locked {
+        if self.state.locked() {
             frame.fail(CaptureFailureReason::Unknown);
             return;
         }
@@ -323,7 +323,7 @@ impl ImageCopyCaptureHandler for Monotile {
         source: &ImageCaptureSource,
         _pointer: &WlPointer,
     ) -> Option<BufferConstraints> {
-        if self.state.locked {
+        if self.state.locked() {
             return None;
         }
         source_output(source)?;
@@ -353,7 +353,7 @@ impl ImageCopyCaptureHandler for Monotile {
     }
 
     fn cursor_frame(&mut self, session: &CursorSessionRef, frame: Frame) {
-        if self.state.locked {
+        if self.state.locked() {
             frame.fail(CaptureFailureReason::Unknown);
             return;
         }
@@ -389,6 +389,7 @@ pub fn capture_frame(
     elapsed: std::time::Duration,
 ) {
     let weak = output.downgrade();
+    let locked = state.locked();
     for s in &mut state.screencopy.sessions {
         if s.output != weak {
             continue;
@@ -396,7 +397,7 @@ pub fn capture_frame(
         let Some((frame, kind)) = s.pending_frame.take() else {
             continue;
         };
-        if state.locked {
+        if locked {
             frame.fail(CaptureFailureReason::Unknown);
             continue;
         }
@@ -489,6 +490,7 @@ pub fn capture_cursor(
     elapsed: std::time::Duration,
 ) {
     let weak = output.downgrade();
+    let locked = state.locked();
     for cs in &mut state.screencopy.cursor_sessions {
         if cs.output != weak {
             continue;
@@ -496,7 +498,7 @@ pub fn capture_cursor(
         let Some(frame) = cs.pending_frame.take() else {
             continue;
         };
-        if state.locked {
+        if locked {
             frame.fail(CaptureFailureReason::Unknown);
             continue;
         }

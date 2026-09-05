@@ -93,7 +93,7 @@ fn capture_blocked_when_locked() {
     let (width, height) = assert_valid_constraint_batch(&events);
 
     // Lock the session
-    f.mt.state.locked = true;
+    let _lock = super::test_session_lock::lock_session(&mut f);
 
     // Try to capture - should fail
     let buffer = f.client(c).create_shm_buffer(width as i32, height as i32);

@@ -3,7 +3,7 @@
 use crate::{Monotile, shell::OutputExt, state::State};
 use smithay::{
     output::Output,
-    reexports::wayland_server::protocol::wl_output::WlOutput,
+    reexports::wayland_server::{Resource, protocol::wl_output::WlOutput},
     wayland::session_lock::{
         LockSurface, SessionLockHandler, SessionLockManagerState, SessionLocker,
     },
@@ -17,11 +17,18 @@ impl SessionLockHandler for Monotile {
     }
 
     fn lock(&mut self, locker: SessionLocker) {
-        if self.state.locked || self.state.pending_lock.is_some() {
-            return;
+        if let Some(lock) = &self.state.active_lock {
+            if lock.is_alive() {
+                return;
+            }
+            info!("lock client died, allowing new lock client");
+            self.state.pending_lock = None;
+            for mon in self.state.monitors.values_mut() {
+                mon.lock_surface = None;
+            }
         }
 
-        self.state.locked = true;
+        self.state.active_lock = Some(locker.ext_session_lock().clone());
         self.set_focus(None);
         // Output is hashed by identity, the clippy warning is not relevant here.
         #[allow(clippy::mutable_key_type)]
@@ -37,7 +44,7 @@ impl SessionLockHandler for Monotile {
     }
 
     fn unlock(&mut self) {
-        self.state.locked = false;
+        self.state.active_lock = None;
         for mon in self.state.monitors.values_mut() {
             mon.lock_surface = None;
         }
@@ -67,6 +74,10 @@ impl SessionLockHandler for Monotile {
 }
 
 impl State {
+    pub fn locked(&self) -> bool {
+        self.active_lock.is_some()
+    }
+
     pub fn confirm_lock(&mut self, output: &Output) {
         if let Some((_, remaining)) = &mut self.pending_lock {
             remaining.remove(output);

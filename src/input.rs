@@ -84,7 +84,7 @@ impl Monotile {
                             .binds
                             .for_key(&handle.raw_syms(), mods)
                             .filter(|b| {
-                                if monotile.state.locked {
+                                if monotile.state.locked() {
                                     b.allow_when_locked
                                 } else {
                                     monotile.state.seat.exclusive_layer().is_none()
@@ -119,7 +119,7 @@ impl Monotile {
 
                 if button_state == ButtonState::Pressed
                     && !pointer.is_grabbed()
-                    && !self.state.locked
+                    && !self.state.locked()
                 {
                     let mods = Mods::from(&keyboard.modifier_state());
                     if let Some(bind) = self.state.config.binds.for_button(button, mods) {
@@ -278,7 +278,7 @@ impl Monotile {
 
         // TODO: get cursor from seat when multi-seat is implemented
         let output = &under.output;
-        if !self.state.locked {
+        if !self.state.locked() {
             let hotspot = self.state.cursor.hotspot;
             self.state
                 .screencopy

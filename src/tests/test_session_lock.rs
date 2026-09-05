@@ -6,9 +6,10 @@ use wayland_protocols::ext::session_lock::v1::client::{
 
 use super::Fixture;
 
-struct LockClient {
+pub(super) struct LockClient {
     lock_manager: Option<ExtSessionLockManagerV1>,
     locked: bool,
+    finished: bool,
 }
 
 impl Dispatch<wl_registry::WlRegistry, ()> for LockClient {
@@ -54,8 +55,10 @@ impl Dispatch<ExtSessionLockV1, ()> for LockClient {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let ext_session_lock_v1::Event::Locked = event {
-            state.locked = true;
+        match event {
+            ext_session_lock_v1::Event::Locked => state.locked = true,
+            ext_session_lock_v1::Event::Finished => state.finished = true,
+            _ => {}
         }
     }
 }
@@ -77,39 +80,84 @@ fn lock_roundtrip(
     }
 }
 
-#[test]
-fn lock_deferred_until_frame_presented() {
-    let mut f = Fixture::new();
-
-    // set up a raw session lock client
+fn connect_lock_client(
+    f: &mut Fixture,
+) -> (
+    Connection,
+    wayland_client::EventQueue<LockClient>,
+    LockClient,
+) {
     let (server_socket, client_socket) = std::os::unix::net::UnixStream::pair().unwrap();
     f.mt.state.insert_client(server_socket);
 
     let backend = wayland_backend::client::Backend::connect(client_socket).unwrap();
     let conn = Connection::from_backend(backend);
     let mut queue = conn.new_event_queue();
-    let qh = queue.handle();
-    conn.display().get_registry(&qh, ());
+    conn.display().get_registry(&queue.handle(), ());
 
     let mut client = LockClient {
         lock_manager: None,
         locked: false,
+        finished: false,
     };
 
     // initial roundtrip to bind globals
-    lock_roundtrip(&mut f, &conn, &mut client, &mut queue);
+    lock_roundtrip(f, &conn, &mut client, &mut queue);
+    (conn, queue, client)
+}
+
+fn request_lock(
+    f: &mut Fixture,
+    conn: &Connection,
+    client: &mut LockClient,
+    queue: &mut wayland_client::EventQueue<LockClient>,
+) -> ExtSessionLockV1 {
+    let mgr = client
+        .lock_manager
+        .as_ref()
+        .expect("lock manager not bound");
+    let lock = mgr.lock(&queue.handle(), ());
+    let _ = queue.flush();
+    lock_roundtrip(f, conn, client, queue);
+    lock
+}
+
+pub(super) fn lock_session(
+    f: &mut Fixture,
+) -> (
+    Connection,
+    wayland_client::EventQueue<LockClient>,
+    LockClient,
+) {
+    let (conn, mut queue, mut client) = connect_lock_client(f);
+    let _lock = request_lock(f, &conn, &mut client, &mut queue);
+    let outputs: Vec<_> = (0..f.mt.state.monitors.len())
+        .map(|i| f.mt.state.monitors[i].output.clone())
+        .collect();
+    for output in outputs {
+        f.mt.state.confirm_lock(&output);
+    }
+    lock_roundtrip(f, &conn, &mut client, &mut queue);
+    assert!(client.locked, "session lock should be confirmed");
+    (conn, queue, client)
+}
+
+#[test]
+fn lock_deferred_until_frame_presented() {
+    let mut f = Fixture::new();
+    let (conn, mut queue, mut client) = connect_lock_client(&mut f);
 
     let mgr = client
         .lock_manager
         .as_ref()
         .expect("lock manager not bound");
-    let _lock = mgr.lock(&qh, ());
+    let _lock = mgr.lock(&queue.handle(), ());
     let _ = queue.flush();
 
     // dispatch the lock request
     lock_roundtrip(&mut f, &conn, &mut client, &mut queue);
 
-    assert!(f.mt.state.locked, "state.locked should be true");
+    assert!(f.mt.state.locked(), "state should be locked");
     assert!(f.mt.state.pending_lock.is_some(), "lock should be pending");
     assert!(
         !client.locked,
@@ -131,4 +179,56 @@ fn lock_deferred_until_frame_presented() {
         f.mt.state.pending_lock.is_none(),
         "pending_lock should be consumed"
     );
+}
+
+#[test]
+fn second_locker_refused_while_locked() {
+    let mut f = Fixture::new();
+    let output = f.mt.state.monitors[0].output.clone();
+
+    let (conn_a, mut queue_a, mut a) = connect_lock_client(&mut f);
+    let _lock_a = request_lock(&mut f, &conn_a, &mut a, &mut queue_a);
+    f.mt.state.confirm_lock(&output);
+    lock_roundtrip(&mut f, &conn_a, &mut a, &mut queue_a);
+    assert!(a.locked, "first locker should hold the lock");
+
+    let (conn_b, mut queue_b, mut b) = connect_lock_client(&mut f);
+    let _lock_b = request_lock(&mut f, &conn_b, &mut b, &mut queue_b);
+
+    assert!(b.finished, "second locker should be refused with finished");
+    assert!(!b.locked, "second locker should not receive locked");
+    assert!(f.mt.state.locked(), "session should remain locked");
+}
+
+#[test]
+fn locker_takeover_after_disconnect() {
+    let mut f = Fixture::new();
+    let output = f.mt.state.monitors[0].output.clone();
+
+    {
+        let (conn_a, mut queue_a, mut a) = connect_lock_client(&mut f);
+        let _lock_a = request_lock(&mut f, &conn_a, &mut a, &mut queue_a);
+        f.mt.state.confirm_lock(&output);
+        lock_roundtrip(&mut f, &conn_a, &mut a, &mut queue_a);
+        assert!(a.locked, "first locker should hold the lock");
+    }
+
+    for _ in 0..10 {
+        f.dispatch();
+    }
+    assert!(
+        f.mt.state.locked(),
+        "session must stay locked after the locker died"
+    );
+
+    let (conn_b, mut queue_b, mut b) = connect_lock_client(&mut f);
+    let _lock_b = request_lock(&mut f, &conn_b, &mut b, &mut queue_b);
+    f.mt.state.confirm_lock(&output);
+    lock_roundtrip(&mut f, &conn_b, &mut b, &mut queue_b);
+
+    assert!(
+        b.locked,
+        "new locker should take over after the locker died"
+    );
+    assert!(!b.finished, "takeover should not be refused");
 }
