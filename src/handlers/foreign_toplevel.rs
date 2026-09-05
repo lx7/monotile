@@ -2,10 +2,8 @@
 
 use std::collections::HashMap;
 
-use smithay::{
-    wayland::foreign_toplevel_list::{
-        ForeignToplevelHandle, ForeignToplevelListHandler, ForeignToplevelListState,
-    },
+use smithay::wayland::foreign_toplevel_list::{
+    ForeignToplevelHandle, ForeignToplevelListHandler, ForeignToplevelListState,
 };
 use wayland_server::DisplayHandle;
 

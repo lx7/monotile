@@ -933,7 +933,6 @@ dependencies = [
  "regex",
  "ron",
  "serde",
- "slotmap",
  "smithay",
  "smithay-drm-extras",
  "tempfile",

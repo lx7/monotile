@@ -14,10 +14,4 @@ pub use monitor::{Monitor, MonitorSettings, Monitors, MonitorsExt, OutputExt};
 pub use seat::SeatExt;
 pub use tag::Tag;
 pub use view::{Tile, View, Views};
-pub use window::{Placement, ToplevelSurfaceExt, Unmapped, WindowElement, Windows};
-
-use slotmap::new_key_type;
-
-new_key_type! {
-    pub struct WindowId;
-}
+pub use window::{Placement, ToplevelSurfaceExt, Unmapped, WindowElement, WindowId, Windows};

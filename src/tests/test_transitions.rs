@@ -1,4 +1,4 @@
-use smithay::utils::{Logical, Rectangle};
+use smithay::utils::{IsAlive, Logical, Rectangle};
 
 use super::Fixture;
 use crate::shell::{SeatExt, WindowId};
@@ -57,6 +57,7 @@ fn closing_stack_window_holds_view_until_main_commits() {
 
     assert_eq!(views_len(&f), 1, "layout settled");
     let main_id = f.mt.state.seat_mon().views.front().unwrap().tiled[0].id;
+    let stack_id = f.mt.state.seat_mon().views.front().unwrap().tiled[1].id;
     let main_before = front_tiled_rect(&f, main_id).unwrap();
 
     // destroy the stack window
@@ -67,6 +68,15 @@ fn closing_stack_window_holds_view_until_main_commits() {
         views_len(&f),
         2,
         "closing the stack window queues a held view"
+    );
+    let zombie =
+        f.mt.state
+            .windows
+            .get(stack_id)
+            .expect("destroyed window stays in Windows while a view holds it");
+    assert!(
+        !zombie.window.alive(),
+        "destroyed window must report !alive()"
     );
     assert_eq!(
         f.mt.state.seat_mon().views.front().unwrap().tiled.len(),
@@ -83,6 +93,10 @@ fn closing_stack_window_holds_view_until_main_commits() {
     settle(&mut f, c, 0);
 
     assert_eq!(views_len(&f), 1, "queue advanced after main committed");
+    assert!(
+        f.mt.state.windows.get(stack_id).is_none(),
+        "zombie reaped once no view holds it"
+    );
     let main_after = front_tiled_rect(&f, main_id).unwrap();
     assert!(
         main_after.size.w > main_before.size.w,

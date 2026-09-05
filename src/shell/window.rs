@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use std::collections::{BTreeMap, HashMap};
+use std::{
+    collections::BTreeMap,
+    ops::{Index, IndexMut},
+};
 
 use derive_more::{Deref, DerefMut};
 
-use slotmap::SlotMap;
+use indexmap::IndexMap;
 use smithay::{
     backend::renderer::{element::texture::TextureBuffer, gles::GlesTexture},
     desktop::Window,
@@ -13,7 +16,7 @@ use smithay::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::{Resource, backend::ObjectId, protocol::wl_surface::WlSurface},
     },
-    utils::{Logical, Point, Rectangle, Serial, Size},
+    utils::{IsAlive, Logical, Point, Rectangle, Serial, Size},
     wayland::{
         compositor::with_states,
         shell::xdg::{SurfaceCachedState, ToplevelSurface, XdgToplevelSurfaceData},
@@ -22,7 +25,10 @@ use smithay::{
 
 use crate::{config, render::RenderStep};
 
-use super::{Monitors, MonitorsExt, OutputExt, WindowId};
+use super::{Monitors, MonitorsExt, OutputExt};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct WindowId(pub(super) usize);
 
 fn set_tiled(tl: &ToplevelSurface, tiled: bool) {
     tl.with_pending_state(|s| {
@@ -153,10 +159,11 @@ pub struct WindowElement {
 }
 
 impl WindowElement {
-    pub fn new(id: WindowId, unmapped: Unmapped) -> Self {
+    pub fn new(unmapped: Unmapped) -> Self {
         let placement = unmapped.placement.unwrap();
         let rules = unmapped.rules;
         let window = unmapped.window;
+        let id = WindowId(window.id());
         let (app_id, title) = window.toplevel().unwrap().info();
 
         let geom = window.geometry();
@@ -392,41 +399,42 @@ impl WindowElement {
 pub struct Windows {
     #[deref]
     #[deref_mut]
-    inner: SlotMap<WindowId, WindowElement>,
-    by_surface: HashMap<ObjectId, WindowId>,
+    inner: IndexMap<WindowId, WindowElement>,
     pub focused: Option<WindowId>,
-    zombies: Vec<WindowId>,
 }
 
 impl Windows {
-    pub fn insert_with_key(&mut self, f: impl FnOnce(WindowId) -> WindowElement) -> WindowId {
-        let id = self.inner.insert_with_key(f);
-        if let Some(tl) = self.inner[id].window.toplevel() {
-            self.by_surface.insert(tl.wl_surface().id(), id);
-        }
+    pub fn insert(&mut self, we: WindowElement) -> WindowId {
+        let id = we.id;
+        self.inner.insert(id, we);
         id
     }
 
+    pub fn get(&self, id: WindowId) -> Option<&WindowElement> {
+        self.inner.get(&id)
+    }
+
+    pub fn get_mut(&mut self, id: WindowId) -> Option<&mut WindowElement> {
+        self.inner.get_mut(&id)
+    }
+
     pub fn detach(&mut self, surface: &ObjectId) -> Option<WindowId> {
-        let id = self.by_surface.remove(surface)?;
+        let we = self.inner.values().find(|we| {
+            let Some(tl) = we.window.toplevel() else {
+                return false;
+            };
+            tl.wl_surface().id() == *surface
+        })?;
+        let id = we.id;
         if self.focused == Some(id) {
             self.focused = None;
         }
-        self.zombies.push(id);
         Some(id)
     }
 
     pub fn reap(&mut self, is_held: impl Fn(WindowId) -> bool) {
-        let mut i = 0;
-        while i < self.zombies.len() {
-            let id = self.zombies[i];
-            if is_held(id) {
-                i += 1;
-            } else {
-                self.inner.remove(id);
-                self.zombies.swap_remove(i);
-            }
-        }
+        self.inner
+            .retain(|id, we| we.window.alive() || is_held(*id));
     }
 
     pub fn update_rules(&mut self, rules: &[config::WindowRule]) {
@@ -437,11 +445,31 @@ impl Windows {
     }
 
     pub fn find_by_surface(&self, surface: &WlSurface) -> Option<WindowId> {
-        self.by_surface.get(&surface.id()).copied()
+        let we = self.inner.values().find(|we| {
+            let Some(tl) = we.window.toplevel() else {
+                return false;
+            };
+            we.window.alive() && tl.wl_surface() == surface
+        })?;
+        Some(we.id)
     }
 
     pub fn focused_surface(&self) -> Option<WlSurface> {
         let we = self.get(self.focused?)?;
         we.window.toplevel().map(|tl| tl.wl_surface().clone())
+    }
+}
+
+impl Index<WindowId> for Windows {
+    type Output = WindowElement;
+
+    fn index(&self, id: WindowId) -> &WindowElement {
+        &self.inner[&id]
+    }
+}
+
+impl IndexMut<WindowId> for Windows {
+    fn index_mut(&mut self, id: WindowId) -> &mut WindowElement {
+        &mut self.inner[&id]
     }
 }

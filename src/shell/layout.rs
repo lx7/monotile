@@ -198,11 +198,9 @@ impl TilingLayout {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use slotmap::SlotMap;
 
     fn ids(n: usize) -> Vec<WindowId> {
-        let mut sm: SlotMap<WindowId, ()> = SlotMap::with_key();
-        (0..n).map(|_| sm.insert(())).collect()
+        (0..n).map(WindowId).collect()
     }
 
     #[test]
