@@ -7,7 +7,7 @@ use crate::{
     config::{Action, Config, Mods},
     grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
     handlers::Devices,
-    shell::{OutputExt, SeatExt},
+    shell::{MonitorsExt, OutputExt, SeatExt, WindowId},
     spawn::spawn,
 };
 use smithay::{
@@ -285,6 +285,33 @@ impl Monotile {
                 .update_cursor(Some(pos), hotspot, output);
         }
         self.backend.schedule_render(output);
+    }
+
+    pub(crate) fn warp_cursor(&mut self, id: WindowId) {
+        let Some(rect) = self.state.monitors.window_rect(&self.state.windows, id) else {
+            return;
+        };
+        let pointer = self.state.seat.get_pointer().unwrap();
+        if rect.to_f64().contains(pointer.current_location()) {
+            return;
+        }
+
+        let center: Point<f64, Logical> = (
+            rect.loc.x as f64 + rect.size.w as f64 / 2.0,
+            rect.loc.y as f64 + rect.size.h as f64 / 2.0,
+        )
+            .into();
+        let under = self.state.surface_under(center);
+        pointer.motion(
+            self,
+            under.surface,
+            &MotionEvent {
+                location: center,
+                serial: SERIAL_COUNTER.next_serial(),
+                time: InputTime::now(),
+            },
+        );
+        pointer.frame(self);
     }
 
     pub fn handle_action(&mut self, action: Action) {

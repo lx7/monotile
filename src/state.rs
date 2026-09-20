@@ -220,6 +220,7 @@ impl Monotile {
     }
 
     pub fn set_focus(&mut self, id: Option<WindowId>) {
+        let previous = self.state.windows.focused;
         if let Some(old) = self.state.windows.focused
             && Some(old) != id
         {
@@ -258,6 +259,14 @@ impl Monotile {
         let target = self.state.windows.focused_surface();
         if let Some(kb) = self.state.seat.get_keyboard() {
             kb.set_focus(self, target, SERIAL_COUNTER.next_serial());
+        }
+
+        // warp the cursor
+        if self.state.config.seats["seat0"].cursor_warp
+            && previous != id
+            && let Some(id) = id
+        {
+            self.warp_cursor(id);
         }
         self.state.ipc.dirty = true;
     }

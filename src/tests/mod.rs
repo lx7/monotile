@@ -1,6 +1,7 @@
 mod client;
 mod fixture;
 mod ipc_client_protocol;
+mod test_cursor_warp;
 mod test_dnd;
 mod test_dwl_ipc;
 mod test_foreign_toplevel;
