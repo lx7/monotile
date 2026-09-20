@@ -103,6 +103,21 @@ impl Fixture {
             .unwrap();
     }
 
+    pub fn pointer_motion(&mut self, location: Point<f64, Logical>) {
+        let ptr = self.mt.state.seat.get_pointer().unwrap();
+        let under = self.mt.state.surface_under(location);
+        ptr.motion(
+            &mut self.mt,
+            under.surface,
+            &MotionEvent {
+                location,
+                serial: SERIAL_COUNTER.next_serial(),
+                time: InputTime::from_millis(0),
+            },
+        );
+        ptr.frame(&mut self.mt);
+    }
+
     pub fn pointer_press(&mut self, surface: &WlSurface, location: Point<f64, Logical>) {
         let ptr = self.mt.state.seat.get_pointer().unwrap();
         ptr.motion(

@@ -1,6 +1,10 @@
-use wayland_client::{Connection, Dispatch, QueueHandle, protocol::wl_registry};
+use wayland_client::{
+    Connection, Dispatch, QueueHandle, WEnum,
+    protocol::{wl_compositor, wl_output, wl_pointer, wl_registry, wl_seat, wl_surface},
+};
 use wayland_protocols::ext::session_lock::v1::client::{
     ext_session_lock_manager_v1::ExtSessionLockManagerV1,
+    ext_session_lock_surface_v1::{self, ExtSessionLockSurfaceV1},
     ext_session_lock_v1::{self, ExtSessionLockV1},
 };
 
@@ -8,6 +12,11 @@ use super::Fixture;
 
 pub(super) struct LockClient {
     lock_manager: Option<ExtSessionLockManagerV1>,
+    compositor: Option<wl_compositor::WlCompositor>,
+    output: Option<wl_output::WlOutput>,
+    seat: Option<wl_seat::WlSeat>,
+    pointer: Option<wl_pointer::WlPointer>,
+    pointer_positions: Vec<(f64, f64)>,
     locked: bool,
     finished: bool,
 }
@@ -27,9 +36,111 @@ impl Dispatch<wl_registry::WlRegistry, ()> for LockClient {
             version,
         } = event
         {
-            if interface == "ext_session_lock_manager_v1" {
-                state.lock_manager = Some(registry.bind(name, version, qh, ()));
+            match interface.as_str() {
+                "ext_session_lock_manager_v1" => {
+                    state.lock_manager = Some(registry.bind(name, version, qh, ()));
+                }
+                "wl_compositor" => state.compositor = Some(registry.bind(name, version, qh, ())),
+                "wl_output" => state.output = Some(registry.bind(name, version, qh, ())),
+                "wl_seat" => state.seat = Some(registry.bind(name, version, qh, ())),
+                _ => {}
             }
+        }
+    }
+}
+
+impl Dispatch<wl_compositor::WlCompositor, ()> for LockClient {
+    fn event(
+        _: &mut Self,
+        _: &wl_compositor::WlCompositor,
+        _: wl_compositor::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<wl_surface::WlSurface, ()> for LockClient {
+    fn event(
+        _: &mut Self,
+        _: &wl_surface::WlSurface,
+        _: wl_surface::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<wl_output::WlOutput, ()> for LockClient {
+    fn event(
+        _: &mut Self,
+        _: &wl_output::WlOutput,
+        _: wl_output::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<wl_seat::WlSeat, ()> for LockClient {
+    fn event(
+        state: &mut Self,
+        seat: &wl_seat::WlSeat,
+        event: wl_seat::Event,
+        _: &(),
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+    ) {
+        if let wl_seat::Event::Capabilities {
+            capabilities: WEnum::Value(caps),
+        } = event
+            && caps.contains(wl_seat::Capability::Pointer)
+            && state.pointer.is_none()
+        {
+            state.pointer = Some(seat.get_pointer(qh, ()));
+        }
+    }
+}
+
+impl Dispatch<wl_pointer::WlPointer, ()> for LockClient {
+    fn event(
+        state: &mut Self,
+        _: &wl_pointer::WlPointer,
+        event: wl_pointer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            wl_pointer::Event::Enter {
+                surface_x,
+                surface_y,
+                ..
+            }
+            | wl_pointer::Event::Motion {
+                surface_x,
+                surface_y,
+                ..
+            } => state.pointer_positions.push((surface_x, surface_y)),
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<ExtSessionLockSurfaceV1, ()> for LockClient {
+    fn event(
+        _: &mut Self,
+        ls: &ExtSessionLockSurfaceV1,
+        event: ext_session_lock_surface_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let ext_session_lock_surface_v1::Event::Configure { serial, .. } = event {
+            ls.ack_configure(serial);
         }
     }
 }
@@ -97,6 +208,11 @@ fn connect_lock_client(
 
     let mut client = LockClient {
         lock_manager: None,
+        compositor: None,
+        output: None,
+        seat: None,
+        pointer: None,
+        pointer_positions: Vec::new(),
         locked: false,
         finished: false,
     };
@@ -120,6 +236,25 @@ fn request_lock(
     let _ = queue.flush();
     lock_roundtrip(f, conn, client, queue);
     lock
+}
+
+fn create_lock_surface(
+    f: &mut Fixture,
+    conn: &Connection,
+    client: &mut LockClient,
+    queue: &mut wayland_client::EventQueue<LockClient>,
+    lock: &ExtSessionLockV1,
+) {
+    let qh = queue.handle();
+    let surface = client
+        .compositor
+        .as_ref()
+        .expect("compositor not bound")
+        .create_surface(&qh, ());
+    let output = client.output.as_ref().expect("output not bound").clone();
+    lock.get_lock_surface(&surface, &output, &qh, ());
+    let _ = queue.flush();
+    lock_roundtrip(f, conn, client, queue);
 }
 
 pub(super) fn lock_session(
@@ -231,4 +366,26 @@ fn locker_takeover_after_disconnect() {
         "new locker should take over after the locker died"
     );
     assert!(!b.finished, "takeover should not be refused");
+}
+
+#[test]
+fn lock_surface_receives_the_pointer_position() {
+    let mut f = Fixture::new();
+    let output = f.mt.state.monitors[0].output.clone();
+
+    let (conn, mut queue, mut client) = connect_lock_client(&mut f);
+    let lock = request_lock(&mut f, &conn, &mut client, &mut queue);
+    create_lock_surface(&mut f, &conn, &mut client, &mut queue, &lock);
+    f.mt.state.confirm_lock(&output);
+    lock_roundtrip(&mut f, &conn, &mut client, &mut queue);
+
+    for pos in [(100.0, 50.0), (300.0, 200.0)] {
+        f.pointer_motion(pos.into());
+        lock_roundtrip(&mut f, &conn, &mut client, &mut queue);
+        assert_eq!(
+            client.pointer_positions.last().copied(),
+            Some(pos),
+            "the locker must see the pointer where it actually is",
+        );
+    }
 }

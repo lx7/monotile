@@ -529,7 +529,7 @@ impl State {
             let surface = mon
                 .lock_surface
                 .as_ref()
-                .map(|ls| (ls.wl_surface().clone(), pos));
+                .map(|ls| (ls.wl_surface().clone(), Point::default()));
             return SurfaceUnder {
                 surface,
                 window: None,
