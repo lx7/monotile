@@ -230,11 +230,16 @@ impl Monotile {
             self.state.windows.focused = None;
         }
 
-        // if locked, focus lock surface
-        if let Some(ls) = &self.state.seat_mon().lock_surface {
-            let surface = ls.wl_surface().clone();
+        // if locked, focus the lock surface
+        if self.state.locked() {
+            let surface = self
+                .state
+                .seat_mon()
+                .lock_surface
+                .as_ref()
+                .map(|ls| ls.wl_surface().clone());
             if let Some(kb) = self.state.seat.get_keyboard() {
-                kb.set_focus(self, Some(surface), SERIAL_COUNTER.next_serial());
+                kb.set_focus(self, surface, SERIAL_COUNTER.next_serial());
             }
             return;
         }

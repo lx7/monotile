@@ -389,3 +389,30 @@ fn lock_surface_receives_the_pointer_position() {
         );
     }
 }
+
+#[test]
+fn locked_session_does_not_focus_a_window() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    f.client_mut(c).bind_keyboard();
+    f.roundtrip(c);
+
+    let (conn, mut queue, mut client) = connect_lock_client(&mut f);
+    let _lock = request_lock(&mut f, &conn, &mut client, &mut queue);
+    assert!(f.mt.state.locked(), "session should be locked");
+    assert!(
+        f.mt.state.seat_mon().lock_surface.is_none(),
+        "the locker has not created its surface yet",
+    );
+
+    let w = f.client_mut(c).create_window();
+    f.client_mut(c).commit(w);
+    f.roundtrip(c);
+    f.client_mut(c).ack_and_commit(w);
+    f.roundtrip(c);
+
+    assert!(
+        f.client(c).keyboard_focus().is_none(),
+        "a window must not take keyboard focus while the session is locked",
+    );
+}

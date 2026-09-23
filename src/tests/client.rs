@@ -10,8 +10,8 @@ use wayland_client::{
     Connection, Dispatch, EventQueue, QueueHandle,
     protocol::{
         wl_buffer, wl_callback, wl_compositor, wl_data_device, wl_data_device_manager,
-        wl_data_source, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool,
-        wl_surface,
+        wl_data_source, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm,
+        wl_shm_pool, wl_surface,
     },
 };
 use wayland_protocols::ext::foreign_toplevel_list::v1::client::{
@@ -68,6 +68,8 @@ struct ClientData {
     data_device: Option<wl_data_device::WlDataDevice>,
     pointer: Option<wl_pointer::WlPointer>,
     pub pointer_serial: u32,
+    keyboard: Option<wl_keyboard::WlKeyboard>,
+    keyboard_focus: Option<wl_surface::WlSurface>,
     layer_shell: Option<ZwlrLayerShellV1>,
     layers: Vec<LayerState>,
     windows: Vec<WindowState>,
@@ -240,6 +242,8 @@ impl Client {
             data_device: None,
             pointer: None,
             pointer_serial: 0,
+            keyboard: None,
+            keyboard_focus: None,
             layer_shell: None,
             layers: Vec::new(),
             windows: Vec::new(),
@@ -320,12 +324,24 @@ impl Client {
         let _ = self.queue.flush();
     }
 
-    /// Create the seat pointer so the client receives pointer events
+    /// create the pointer for focus events
     pub fn bind_pointer(&mut self) {
         let qh = self.queue.handle();
         let seat = self.data.ipc_seat.as_ref().expect("wl_seat not bound");
         self.data.pointer = Some(seat.get_pointer(&qh, ()));
         let _ = self.queue.flush();
+    }
+
+    /// create the keyboard for focus events
+    pub fn bind_keyboard(&mut self) {
+        let qh = self.queue.handle();
+        let seat = self.data.ipc_seat.as_ref().expect("wl_seat not bound");
+        self.data.keyboard = Some(seat.get_keyboard(&qh, ()));
+        let _ = self.queue.flush();
+    }
+
+    pub fn keyboard_focus(&self) -> Option<&wl_surface::WlSurface> {
+        self.data.keyboard_focus.as_ref()
     }
 
     pub fn bind_data_device(&mut self) {
@@ -942,6 +958,23 @@ impl Dispatch<wl_output::WlOutput, ()> for ClientData {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+    }
+}
+
+impl Dispatch<wl_keyboard::WlKeyboard, ()> for ClientData {
+    fn event(
+        state: &mut Self,
+        _: &wl_keyboard::WlKeyboard,
+        event: wl_keyboard::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            wl_keyboard::Event::Enter { surface, .. } => state.keyboard_focus = Some(surface),
+            wl_keyboard::Event::Leave { .. } => state.keyboard_focus = None,
+            _ => {}
+        }
     }
 }
 
