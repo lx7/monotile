@@ -129,11 +129,11 @@ impl Monotile {
     }
 
     pub fn recompute_layout(&mut self, output: &Output) {
-        self.update_keyboard_focus();
         self.backend.schedule_render(output);
         if let Some(mon) = self.state.monitors.get_mut(output) {
             mon.recompute_layout(&mut self.state.windows);
         }
+        self.update_keyboard_focus();
         self.update_pointer_focus();
     }
 

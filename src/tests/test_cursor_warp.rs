@@ -126,3 +126,21 @@ fn tag_switch_warps_the_cursor() {
         "switching tags must warp the cursor",
     );
 }
+
+#[test]
+fn opening_a_window_warps_the_cursor() {
+    let mut f = Fixture::with_config(warp_enabled());
+    let c = f.add_client();
+    open_window(&mut f, c);
+    let first = f.mt.state.seat_mon().tag().focused_id().expect("focus");
+    set_pointer(&f, window_center(&f, first));
+
+    open_window(&mut f, c);
+    let second = f.mt.state.seat_mon().tag().focused_id().expect("focus");
+
+    assert_eq!(
+        pointer_location(&f),
+        window_center(&f, second),
+        "a newly opened window must take the cursor",
+    );
+}

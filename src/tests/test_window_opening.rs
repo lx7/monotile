@@ -3,8 +3,6 @@ use crate::config::{Action, Config, Rel, WindowInit, WindowRule};
 use smithay::{reexports::wayland_server::Resource, utils::Rectangle};
 use wayland_protocols::xdg::shell::client::xdg_toplevel::State as ToplevelState;
 
-/// Simulate a client that maps to it's own remembered size on first commit
-/// instead of the size the compositor configured.
 #[test]
 fn new_window_not_deactivated_during_open() {
     let mut f = Fixture::new();
