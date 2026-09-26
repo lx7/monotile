@@ -29,8 +29,8 @@ impl SessionLockHandler for Monotile {
         }
 
         self.state.active_lock = Some(locker.ext_session_lock().clone());
-        self.set_focus(None);
-        // Output is hashed by identity, the clippy warning is not relevant here.
+        self.set_keyboard_focus(None);
+        // Output is hashed by identity, it can't change.
         #[allow(clippy::mutable_key_type)]
         let outputs: HashSet<_> = self.state.monitors.keys().cloned().collect();
         if outputs.is_empty() {
@@ -48,7 +48,7 @@ impl SessionLockHandler for Monotile {
         for mon in self.state.monitors.values_mut() {
             mon.lock_surface = None;
         }
-        self.update_focus();
+        self.update_keyboard_focus();
         info!("session unlocked");
         self.backend.schedule_render_all();
     }
@@ -68,7 +68,7 @@ impl SessionLockHandler for Monotile {
         surface.send_configure();
         mon.lock_surface = Some(surface);
 
-        self.update_focus();
+        self.update_keyboard_focus();
         self.backend.schedule_render(&output);
     }
 }

@@ -129,11 +129,12 @@ impl Monotile {
     }
 
     pub fn recompute_layout(&mut self, output: &Output) {
-        self.update_focus();
+        self.update_keyboard_focus();
         self.backend.schedule_render(output);
         if let Some(mon) = self.state.monitors.get_mut(output) {
             mon.recompute_layout(&mut self.state.windows);
         }
+        self.update_pointer_focus();
     }
 
     pub fn with_seat_mon(&mut self, f: impl FnOnce(&mut Monitor, &mut Windows)) {
@@ -210,16 +211,16 @@ impl Monotile {
         for mon in self.state.monitors.values_mut() {
             mon.recompute_layout(&mut self.state.windows);
         }
-        self.update_focus();
+        self.update_keyboard_focus();
         self.backend.schedule_render_all();
         info!("config reloaded");
     }
 
-    pub fn update_focus(&mut self) {
-        self.set_focus(self.state.seat_mon().tag().focused_id());
+    pub fn update_keyboard_focus(&mut self) {
+        self.set_keyboard_focus(self.state.seat_mon().tag().focused_id());
     }
 
-    pub fn set_focus(&mut self, id: Option<WindowId>) {
+    pub fn set_keyboard_focus(&mut self, id: Option<WindowId>) {
         let previous = self.state.windows.focused;
         if let Some(old) = self.state.windows.focused
             && Some(old) != id

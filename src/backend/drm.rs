@@ -607,7 +607,7 @@ pub fn init(
 
                 drm.loop_handle.insert_idle(|mt: &mut Monotile| {
                     device_changed(mt.backend.drm(), &mut mt.state);
-                    mt.update_focus();
+                    mt.update_keyboard_focus();
                 });
             }
         }
@@ -619,7 +619,7 @@ pub fn init(
     loop_handle.insert_source(udev, |event, _, mt| {
         if let UdevEvent::Changed { .. } = event {
             device_changed(mt.backend.drm(), &mut mt.state);
-            mt.update_focus();
+            mt.update_keyboard_focus();
         }
     })?;
 

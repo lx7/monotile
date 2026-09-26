@@ -33,7 +33,7 @@ impl WlrLayerShellHandler for Monotile {
         let layer = LayerSurface::new(surface, namespace);
         map.map_layer(&layer).unwrap();
         drop(map);
-        self.update_focus();
+        self.update_keyboard_focus();
     }
 
     fn new_popup(&mut self, _parent: WlrLayerSurface, popup: PopupSurface) {

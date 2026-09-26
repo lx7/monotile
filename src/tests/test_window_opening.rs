@@ -151,12 +151,11 @@ fn first_window_activated() {
 
     let w = open_window(&mut f, c);
 
-    // the window is activated when it maps, update_focus must not re-send a configure
     assert!(
         is_activated(&mut f, c, w),
         "sole window should be activated"
     );
-    f.mt.update_focus();
+    f.mt.update_keyboard_focus();
     f.roundtrip(c);
     assert!(
         f.client_mut(c).take_configures(w).is_empty(),
@@ -173,7 +172,7 @@ fn second_window_steals_focus() {
     f.client_mut(c).take_configures(w1); // drain
 
     let w2 = open_window(&mut f, c);
-    f.mt.update_focus();
+    f.mt.update_keyboard_focus();
     f.roundtrip(c);
 
     assert!(
@@ -201,7 +200,7 @@ fn focus_cycle() {
     if let Some(cur) = tag.focused_id()
         && let Some(id) = tag.layout.target(cur, Rel::Next)
     {
-        f.mt.set_focus(Some(id));
+        f.mt.set_keyboard_focus(Some(id));
     }
     f.roundtrip(c);
 
@@ -230,7 +229,7 @@ fn focus_after_remove() {
     let surface_id = tl.wl_surface().id();
 
     f.mt.state.destroy_window(&surface_id);
-    f.mt.update_focus();
+    f.mt.update_keyboard_focus();
     f.roundtrip(c);
 
     assert_eq!(

@@ -63,7 +63,7 @@ fn focus_change_warps_the_cursor() {
     let (focused, other) = two_windows(&mut f, c);
 
     set_pointer(&f, window_center(&f, focused));
-    f.mt.set_focus(Some(other));
+    f.mt.set_keyboard_focus(Some(other));
 
     assert_eq!(
         pointer_location(&f),
@@ -80,7 +80,7 @@ fn no_warp_when_the_cursor_is_already_on_the_window() {
 
     let inside = window_center(&f, other) + Point::from((3.0, 3.0));
     set_pointer(&f, inside);
-    f.mt.set_focus(Some(other));
+    f.mt.set_keyboard_focus(Some(other));
 
     assert_eq!(
         pointer_location(&f),
@@ -97,7 +97,7 @@ fn disabled_cursor_warp_leaves_the_cursor() {
 
     let start = window_center(&f, focused);
     set_pointer(&f, start);
-    f.mt.set_focus(Some(other));
+    f.mt.set_keyboard_focus(Some(other));
 
     assert_eq!(
         pointer_location(&f),

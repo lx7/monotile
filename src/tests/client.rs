@@ -70,6 +70,7 @@ struct ClientData {
     pub pointer_serial: u32,
     keyboard: Option<wl_keyboard::WlKeyboard>,
     keyboard_focus: Option<wl_surface::WlSurface>,
+    pointer_focus: Option<wl_surface::WlSurface>,
     layer_shell: Option<ZwlrLayerShellV1>,
     layers: Vec<LayerState>,
     windows: Vec<WindowState>,
@@ -244,6 +245,7 @@ impl Client {
             pointer_serial: 0,
             keyboard: None,
             keyboard_focus: None,
+            pointer_focus: None,
             layer_shell: None,
             layers: Vec::new(),
             windows: Vec::new(),
@@ -338,6 +340,10 @@ impl Client {
         let seat = self.data.ipc_seat.as_ref().expect("wl_seat not bound");
         self.data.keyboard = Some(seat.get_keyboard(&qh, ()));
         let _ = self.queue.flush();
+    }
+
+    pub fn pointer_focus(&self) -> Option<&wl_surface::WlSurface> {
+        self.data.pointer_focus.as_ref()
     }
 
     pub fn keyboard_focus(&self) -> Option<&wl_surface::WlSurface> {
@@ -1410,8 +1416,11 @@ impl Dispatch<wl_pointer::WlPointer, ()> for ClientData {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let wl_pointer::Event::Button { serial, .. } = event {
-            state.pointer_serial = serial;
+        match event {
+            wl_pointer::Event::Button { serial, .. } => state.pointer_serial = serial,
+            wl_pointer::Event::Enter { surface, .. } => state.pointer_focus = Some(surface),
+            wl_pointer::Event::Leave { .. } => state.pointer_focus = None,
+            _ => {}
         }
     }
 }

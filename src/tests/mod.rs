@@ -7,6 +7,7 @@ mod test_dwl_ipc;
 mod test_foreign_toplevel;
 mod test_layer_shell;
 mod test_monotile_ipc;
+mod test_pointer_focus;
 mod test_screencopy;
 mod test_session_lock;
 mod test_transitions;

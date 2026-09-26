@@ -103,7 +103,7 @@ fn urgent_clears_on_focus() {
     assert!(f.mt.state.windows[w1_id].urgent, "w1 should be urgent");
 
     // now focus w1
-    f.mt.set_focus(Some(w1_id));
+    f.mt.set_keyboard_focus(Some(w1_id));
 
     assert!(
         !f.mt.state.windows[w1_id].urgent,
@@ -163,7 +163,7 @@ fn ipc_urgent_tags_clear_on_focus() {
     f.roundtrip(c);
 
     // focus w1 to clear urgency
-    f.mt.set_focus(Some(w1_id));
+    f.mt.set_keyboard_focus(Some(w1_id));
 
     // bind IPC and check
     f.client_mut(c).bind_output_status();

@@ -138,7 +138,7 @@ impl Monotile {
                         if let Some(mon) = self.state.monitors.get_mut(&under.output) {
                             mon.tag_mut().raise(id);
                         }
-                        self.set_focus(Some(id));
+                        self.set_keyboard_focus(Some(id));
                     }
                 }
 
@@ -262,7 +262,7 @@ impl Monotile {
             && under.window.is_some()
             && under.window != self.state.focused_window()
         {
-            self.set_focus(under.window);
+            self.set_keyboard_focus(under.window);
         }
 
         pointer.motion(
@@ -301,12 +301,22 @@ impl Monotile {
             rect.loc.y as f64 + rect.size.h as f64 / 2.0,
         )
             .into();
-        let under = self.state.surface_under(center);
+        self.send_pointer_motion(center);
+    }
+
+    pub(crate) fn update_pointer_focus(&mut self) {
+        let location = self.state.seat.get_pointer().unwrap().current_location();
+        self.send_pointer_motion(location);
+    }
+
+    fn send_pointer_motion(&mut self, location: Point<f64, Logical>) {
+        let pointer = self.state.seat.get_pointer().unwrap();
+        let under = self.state.surface_under(location);
         pointer.motion(
             self,
             under.surface,
             &MotionEvent {
-                location: center,
+                location,
                 serial: SERIAL_COUNTER.next_serial(),
                 time: InputTime::now(),
             },
@@ -366,7 +376,7 @@ impl Monotile {
                 let tag = self.state.seat_mon().tag();
                 let target = tag.focused_id().and_then(|cur| tag.layout.target(cur, pos));
                 if let Some(id) = target {
-                    self.set_focus(Some(id));
+                    self.set_keyboard_focus(Some(id));
                 }
                 self.backend
                     .schedule_render(&self.state.seat.active_output());
