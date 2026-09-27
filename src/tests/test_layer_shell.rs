@@ -13,10 +13,7 @@ fn open_window(f: &mut Fixture, c: usize) -> usize {
 ///
 /// When a layer-shell client re-creates its surface, it may batch the
 /// initial empty commit and a buffer commit in one socket write. The server
-/// processes both before the configure round-trips. Without the pre-set
-/// last_acked fix in handle_layer_commit, smithay's pre_commit_hook sees
-/// last_acked=None on the buffer commit and posts a protocol error,
-/// killing the client.
+/// processes both before the configure round-trips.
 #[test]
 fn batched_initial_commits() {
     let mut f = Fixture::new();
@@ -24,19 +21,46 @@ fn batched_initial_commits() {
 
     let _w = open_window(&mut f, c);
 
-    // Create layer surface (sets size + anchor, does NOT commit yet).
     let ls = f.client_mut(c).create_layer_surface();
-
-    // Simulate batching: initial empty commit followed by buffer commit,
-    // both flushed before the server dispatches.
     f.client_mut(c).layer_commit(ls);
     f.client_mut(c).layer_attach_and_commit(ls);
-
-    // Server processes both commits in one dispatch cycle.
     f.dispatch();
 
-    // If the fix is missing, the server posted a protocol error on the
-    // buffer commit, killing the client. A successful roundtrip proves
-    // the client survived.
+    f.assert_client_alive(c);
+}
+
+#[test]
+fn exclusive_layer_keeps_window_focus_state() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    open_window(&mut f, c);
+    open_window(&mut f, c);
+    let focused = f.mt.state.seat_mon().tag().focused_id().expect("focus");
+    let other =
+        f.mt.state
+            .seat_mon()
+            .tag()
+            .window_ids()
+            .into_iter()
+            .find(|&id| id != focused)
+            .expect("second window");
+
+    let ls = f.client_mut(c).create_layer_surface();
+    f.client_mut(c).layer_exclusive_keyboard(ls);
+    f.client_mut(c).layer_commit(ls);
+    f.client_mut(c).layer_attach_and_commit(ls);
+    f.dispatch();
     f.roundtrip(c);
+
+    f.mt.set_keyboard_focus(Some(other));
+
+    assert!(
+        f.mt.state.windows[focused].focused,
+        "the focused window keeps its border while a launcher holds the keyboard",
+    );
+    assert_eq!(
+        f.mt.state.seat_mon().tag().focused_id(),
+        Some(focused),
+        "the request is ignored, closing the layer restores the same window",
+    );
 }

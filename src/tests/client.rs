@@ -473,6 +473,12 @@ impl Client {
         idx
     }
 
+    pub fn layer_exclusive_keyboard(&self, ls: usize) {
+        self.data.layers[ls]
+            .layer_surface
+            .set_keyboard_interactivity(zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive);
+    }
+
     pub fn layer_commit(&self, ls: usize) {
         self.data.layers[ls].surface.commit();
         let _ = self.queue.flush();

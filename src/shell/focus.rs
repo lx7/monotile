@@ -17,16 +17,6 @@ impl Monotile {
     }
 
     pub fn set_keyboard_focus(&mut self, id: Option<WindowId>) {
-        let previous = self.state.windows.focused;
-        if previous != id
-            && let Some(old) = previous
-        {
-            if let Some(we) = self.state.windows.get_mut(old) {
-                we.set_focused(false);
-            }
-            self.state.windows.focused = None;
-        }
-
         // if locked, focus the lock surface
         if self.state.locked() {
             let surface = self
@@ -47,6 +37,17 @@ impl Monotile {
                 kb.set_focus(self, Some(surface), SERIAL_COUNTER.next_serial());
             }
             return;
+        }
+
+        // unfocus previous
+        let previous = self.state.windows.focused;
+        if previous != id
+            && let Some(old) = previous
+        {
+            if let Some(we) = self.state.windows.get_mut(old) {
+                we.set_focused(false);
+            }
+            self.state.windows.focused = None;
         }
 
         // if none of the above, focus window

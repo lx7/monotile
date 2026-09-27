@@ -97,6 +97,11 @@ impl Fixture {
         panic!("roundtrip for client {client_idx} did not complete in 100 iters");
     }
 
+    pub fn assert_client_alive(&mut self, client_idx: usize) {
+        // use a roundtrip to test if the client is alive and answers
+        self.roundtrip(client_idx);
+    }
+
     pub fn dispatch(&mut self) {
         self.event_loop
             .dispatch(Some(Duration::ZERO), &mut self.mt)

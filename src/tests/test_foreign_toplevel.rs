@@ -201,5 +201,5 @@ fn create_capture_source_from_toplevel() {
     let source = f.client(c).create_toplevel_capture_source(&handles[0]);
     assert!(source.is_some(), "should create capture source");
 
-    f.roundtrip(c);
+    f.assert_client_alive(c);
 }

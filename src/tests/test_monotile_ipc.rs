@@ -331,7 +331,7 @@ fn control_exit() {
     let c = f.add_client();
     f.client(c).control().exit();
     f.client(c).flush();
-    f.roundtrip(c);
+    f.assert_client_alive(c);
 }
 
 // ── Control: tag operations ─────────────────────────
