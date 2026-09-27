@@ -7,7 +7,7 @@ use crate::{
     config::{Action, Config, Mods},
     grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
     handlers::Devices,
-    shell::{MonitorsExt, OutputExt, SeatExt, WindowId},
+    shell::{OutputExt, SeatExt},
     spawn::spawn,
 };
 use smithay::{
@@ -285,43 +285,6 @@ impl Monotile {
                 .update_cursor(Some(pos), hotspot, output);
         }
         self.backend.schedule_render(output);
-    }
-
-    pub(crate) fn warp_cursor(&mut self, id: WindowId) {
-        let Some(rect) = self.state.monitors.window_rect(&self.state.windows, id) else {
-            return;
-        };
-        let pointer = self.state.seat.get_pointer().unwrap();
-        if rect.to_f64().contains(pointer.current_location()) {
-            return;
-        }
-
-        let center: Point<f64, Logical> = (
-            rect.loc.x as f64 + rect.size.w as f64 / 2.0,
-            rect.loc.y as f64 + rect.size.h as f64 / 2.0,
-        )
-            .into();
-        self.send_pointer_motion(center);
-    }
-
-    pub(crate) fn update_pointer_focus(&mut self) {
-        let location = self.state.seat.get_pointer().unwrap().current_location();
-        self.send_pointer_motion(location);
-    }
-
-    fn send_pointer_motion(&mut self, location: Point<f64, Logical>) {
-        let pointer = self.state.seat.get_pointer().unwrap();
-        let under = self.state.surface_under(location);
-        pointer.motion(
-            self,
-            under.surface,
-            &MotionEvent {
-                location,
-                serial: SERIAL_COUNTER.next_serial(),
-                time: InputTime::now(),
-            },
-        );
-        pointer.frame(self);
     }
 
     pub fn handle_action(&mut self, action: Action) {

@@ -29,7 +29,7 @@ use smithay::{
             protocol::wl_surface::WlSurface,
         },
     },
-    utils::{Logical, Point, SERIAL_COUNTER},
+    utils::{Logical, Point},
     wayland::{
         compositor::{CompositorClientState, CompositorState, get_parent},
         cursor_shape::CursorShapeManagerState,
@@ -214,67 +214,6 @@ impl Monotile {
         self.update_keyboard_focus();
         self.backend.schedule_render_all();
         info!("config reloaded");
-    }
-
-    pub fn update_keyboard_focus(&mut self) {
-        self.set_keyboard_focus(self.state.seat_mon().tag().focused_id());
-    }
-
-    pub fn set_keyboard_focus(&mut self, id: Option<WindowId>) {
-        let previous = self.state.windows.focused;
-        if let Some(old) = self.state.windows.focused
-            && Some(old) != id
-        {
-            if let Some(we) = self.state.windows.get_mut(old) {
-                we.set_focused(false);
-            }
-            self.state.windows.focused = None;
-        }
-
-        // if locked, focus the lock surface
-        if self.state.locked() {
-            let surface = self
-                .state
-                .seat_mon()
-                .lock_surface
-                .as_ref()
-                .map(|ls| ls.wl_surface().clone());
-            if let Some(kb) = self.state.seat.get_keyboard() {
-                kb.set_focus(self, surface, SERIAL_COUNTER.next_serial());
-            }
-            return;
-        }
-
-        // if exclusive layer exists, focus it
-        if let Some(surface) = self.state.seat.exclusive_layer() {
-            if let Some(kb) = self.state.seat.get_keyboard() {
-                kb.set_focus(self, Some(surface), SERIAL_COUNTER.next_serial());
-            }
-            return;
-        }
-
-        // if none of the above, focus window
-        if let Some(id) = id {
-            self.state.seat_mon_mut().tag_mut().promote(id);
-            if let Some(we) = self.state.windows.get_mut(id) {
-                we.set_focused(true);
-            }
-            self.state.windows.focused = id.into();
-        }
-
-        let target = self.state.windows.focused_surface();
-        if let Some(kb) = self.state.seat.get_keyboard() {
-            kb.set_focus(self, target, SERIAL_COUNTER.next_serial());
-        }
-
-        // warp the cursor
-        if self.state.config.seats["seat0"].cursor_warp
-            && previous != id
-            && let Some(id) = id
-        {
-            self.warp_cursor(id);
-        }
-        self.state.ipc.dirty = true;
     }
 }
 
