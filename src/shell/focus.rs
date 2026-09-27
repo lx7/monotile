@@ -17,6 +17,10 @@ impl Monotile {
     }
 
     pub fn set_keyboard_focus(&mut self, id: Option<WindowId>) {
+        if id != self.state.windows.focused {
+            self.dismiss_popup_grab();
+        }
+
         // if locked, focus the lock surface
         if self.state.locked() {
             let surface = self

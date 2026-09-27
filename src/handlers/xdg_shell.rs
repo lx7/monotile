@@ -6,9 +6,10 @@ use crate::{
 };
 
 use smithay::{
+    backend::input::InputTime,
     desktop::{
-        PopupKeyboardGrab, PopupKind, PopupPointerGrab, WindowSurfaceType, find_popup_root_surface,
-        get_popup_toplevel_coords, layer_map_for_output,
+        PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy, WindowSurfaceType,
+        find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output,
     },
     input::{Seat, pointer::Focus},
     reexports::{
@@ -19,7 +20,7 @@ use smithay::{
             protocol::{wl_output, wl_seat, wl_surface::WlSurface},
         },
     },
-    utils::Serial,
+    utils::{SERIAL_COUNTER, Serial},
     wayland::shell::{
         kde::decoration::{KdeDecorationHandler, KdeDecorationState},
         xdg::{
@@ -147,6 +148,7 @@ impl XdgShellHandler for Monotile {
         if let Some(ptr) = seat.get_pointer() {
             ptr.set_grab(self, PopupPointerGrab::new(&grab), serial, Focus::Keep);
         }
+        seat.set_popup_grab(grab);
     }
 }
 
@@ -181,6 +183,19 @@ impl Monotile {
         });
         if send_configure && toplevel.is_initial_configure_sent() {
             toplevel.send_pending_configure();
+        }
+    }
+
+    pub(crate) fn dismiss_popup_grab(&mut self) {
+        let Some(mut grab) = self.state.seat.take_popup_grab() else {
+            return;
+        };
+        grab.ungrab(PopupUngrabStrategy::All);
+        if let Some(kb) = self.state.seat.get_keyboard() {
+            kb.unset_grab(self);
+        }
+        if let Some(ptr) = self.state.seat.get_pointer() {
+            ptr.unset_grab(self, SERIAL_COUNTER.next_serial(), InputTime::now());
         }
     }
 

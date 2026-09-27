@@ -34,7 +34,7 @@ use wayland_protocols::xdg::{
         xdg_activation_token_v1::{self, XdgActivationTokenV1},
         xdg_activation_v1::{self, XdgActivationV1},
     },
-    shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base},
+    shell::client::{xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base},
 };
 use wayland_protocols_wlr::layer_shell::v1::client::{
     zwlr_layer_shell_v1::{self, ZwlrLayerShellV1},
@@ -74,6 +74,7 @@ struct ClientData {
     layer_shell: Option<ZwlrLayerShellV1>,
     layers: Vec<LayerState>,
     windows: Vec<WindowState>,
+    popups: Vec<PopupState>,
 
     ipc_output: Option<wl_output::WlOutput>,
     ipc_seat: Option<wl_seat::WlSeat>,
@@ -121,6 +122,12 @@ pub struct LayerState {
     pub surface: wl_surface::WlSurface,
     pub layer_surface: ZwlrLayerSurfaceV1,
     pub last_serial: u32,
+}
+
+pub struct PopupState {
+    pub surface: wl_surface::WlSurface,
+    pub popup: xdg_popup::XdgPopup,
+    pub done: bool,
 }
 
 pub struct WindowState {
@@ -249,6 +256,7 @@ impl Client {
             layer_shell: None,
             layers: Vec::new(),
             windows: Vec::new(),
+            popups: Vec::new(),
             ipc_output: None,
             ipc_seat: None,
             ipc_status_manager: None,
@@ -319,6 +327,49 @@ impl Client {
         });
         let _ = self.queue.flush();
         idx
+    }
+
+    pub fn create_popup(&mut self, win: usize) -> usize {
+        let qh = self.queue.handle();
+        let comp = self.data.compositor.as_ref().expect("compositor not bound");
+        let wm = self.data.wm_base.as_ref().expect("xdg_wm_base not bound");
+
+        let positioner = wm.create_positioner(&qh, ());
+        positioner.set_size(100, 100);
+        positioner.set_anchor_rect(0, 0, 10, 10);
+
+        let surface = comp.create_surface(&qh, ());
+        let xdg = wm.get_xdg_surface(&surface, &qh, ());
+        let popup = xdg.get_popup(
+            Some(&self.data.windows[win].xdg_surface),
+            &positioner,
+            &qh,
+            (),
+        );
+
+        let idx = self.data.popups.len();
+        self.data.popups.push(PopupState {
+            surface,
+            popup,
+            done: false,
+        });
+        let _ = self.queue.flush();
+        idx
+    }
+
+    pub fn popup_grab(&self, popup: usize, serial: u32) {
+        let seat = self.data.ipc_seat.as_ref().expect("wl_seat not bound");
+        self.data.popups[popup].popup.grab(seat, serial);
+        let _ = self.queue.flush();
+    }
+
+    pub fn popup_done(&self, popup: usize) -> bool {
+        self.data.popups[popup].done
+    }
+
+    pub fn popup_commit(&self, popup: usize) {
+        self.data.popups[popup].surface.commit();
+        let _ = self.queue.flush();
     }
 
     pub fn commit(&self, win: usize) {
@@ -813,6 +864,35 @@ impl Dispatch<wl_compositor::WlCompositor, ()> for ClientData {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+    }
+}
+
+impl Dispatch<xdg_positioner::XdgPositioner, ()> for ClientData {
+    fn event(
+        _: &mut Self,
+        _: &xdg_positioner::XdgPositioner,
+        _: xdg_positioner::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<xdg_popup::XdgPopup, ()> for ClientData {
+    fn event(
+        state: &mut Self,
+        popup: &xdg_popup::XdgPopup,
+        event: xdg_popup::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let xdg_popup::Event::PopupDone = event
+            && let Some(p) = state.popups.iter_mut().find(|p| &p.popup == popup)
+        {
+            p.done = true;
+        }
     }
 }
 
