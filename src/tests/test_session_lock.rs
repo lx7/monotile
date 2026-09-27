@@ -9,6 +9,7 @@ use wayland_protocols::ext::session_lock::v1::client::{
 };
 
 use super::Fixture;
+use crate::shell::MonitorsExt;
 
 pub(super) struct LockClient {
     lock_manager: Option<ExtSessionLockManagerV1>,
@@ -414,5 +415,45 @@ fn locked_session_does_not_focus_a_window() {
     assert!(
         f.client(c).keyboard_focus().is_none(),
         "a window must not take keyboard focus while the session is locked",
+    );
+}
+
+#[test]
+fn locking_takes_pointer_focus_from_the_window() {
+    let mut f = Fixture::new();
+    let app = f.add_client();
+    f.client_mut(app).bind_pointer();
+    f.roundtrip(app);
+
+    let w = f.client_mut(app).create_window();
+    f.client_mut(app).commit(w);
+    f.roundtrip(app);
+    f.client_mut(app).ack_and_commit(w);
+    f.roundtrip(app);
+
+    let id = f.mt.state.seat_mon().tag().focused_id().expect("focus");
+    let rect =
+        f.mt.state
+            .monitors
+            .window_rect(&f.mt.state.windows, id)
+            .expect("mapped window");
+    f.pointer_motion((rect.loc.x as f64 + 0.5, rect.loc.y as f64 + 0.5).into());
+    f.roundtrip(app);
+    assert!(
+        f.client(app).pointer_focus().is_some(),
+        "the window should hold pointer focus before locking",
+    );
+
+    let output = f.mt.state.monitors[0].output.clone();
+    let (conn, mut queue, mut client) = connect_lock_client(&mut f);
+    let lock = request_lock(&mut f, &conn, &mut client, &mut queue);
+    create_lock_surface(&mut f, &conn, &mut client, &mut queue, &lock);
+    f.mt.state.confirm_lock(&output);
+    lock_roundtrip(&mut f, &conn, &mut client, &mut queue);
+    f.roundtrip(app);
+
+    assert!(
+        f.client(app).pointer_focus().is_none(),
+        "the lock surface must take pointer focus",
     );
 }

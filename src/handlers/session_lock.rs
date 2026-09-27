@@ -48,7 +48,7 @@ impl SessionLockHandler for Monotile {
         for mon in self.state.monitors.values_mut() {
             mon.lock_surface = None;
         }
-        self.update_keyboard_focus();
+        self.update_focus();
         info!("session unlocked");
         self.backend.schedule_render_all();
     }
@@ -68,7 +68,7 @@ impl SessionLockHandler for Monotile {
         surface.send_configure();
         mon.lock_surface = Some(surface);
 
-        self.update_keyboard_focus();
+        self.update_focus();
         self.backend.schedule_render(&output);
     }
 }

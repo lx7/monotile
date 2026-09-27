@@ -133,8 +133,7 @@ impl Monotile {
         if let Some(mon) = self.state.monitors.get_mut(output) {
             mon.recompute_layout(&mut self.state.windows);
         }
-        self.update_keyboard_focus();
-        self.update_pointer_focus();
+        self.update_focus();
     }
 
     pub fn with_seat_mon(&mut self, f: impl FnOnce(&mut Monitor, &mut Windows)) {
@@ -211,7 +210,7 @@ impl Monotile {
         for mon in self.state.monitors.values_mut() {
             mon.recompute_layout(&mut self.state.windows);
         }
-        self.update_keyboard_focus();
+        self.update_focus();
         self.backend.schedule_render_all();
         info!("config reloaded");
     }

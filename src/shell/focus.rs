@@ -10,14 +10,16 @@ use super::{MonitorsExt, SeatExt, WindowId};
 use crate::Monotile;
 
 impl Monotile {
-    pub fn update_keyboard_focus(&mut self) {
+    pub fn update_focus(&mut self) {
         self.set_keyboard_focus(self.state.seat_mon().tag().focused_id());
+        let location = self.state.seat.get_pointer().unwrap().current_location();
+        self.send_pointer_motion(location);
     }
 
     pub fn set_keyboard_focus(&mut self, id: Option<WindowId>) {
         let previous = self.state.windows.focused;
-        if let Some(old) = self.state.windows.focused
-            && Some(old) != id
+        if previous != id
+            && let Some(old) = previous
         {
             if let Some(we) = self.state.windows.get_mut(old) {
                 we.set_focused(false);
@@ -86,11 +88,6 @@ impl Monotile {
         )
             .into();
         self.send_pointer_motion(center);
-    }
-
-    pub(crate) fn update_pointer_focus(&mut self) {
-        let location = self.state.seat.get_pointer().unwrap().current_location();
-        self.send_pointer_motion(location);
     }
 
     fn send_pointer_motion(&mut self, location: Point<f64, Logical>) {

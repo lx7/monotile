@@ -153,7 +153,7 @@ fn first_window_activated() {
         is_activated(&mut f, c, w),
         "sole window should be activated"
     );
-    f.mt.update_keyboard_focus();
+    f.mt.update_focus();
     f.roundtrip(c);
     assert!(
         f.client_mut(c).take_configures(w).is_empty(),
@@ -170,7 +170,7 @@ fn second_window_steals_focus() {
     f.client_mut(c).take_configures(w1); // drain
 
     let w2 = open_window(&mut f, c);
-    f.mt.update_keyboard_focus();
+    f.mt.update_focus();
     f.roundtrip(c);
 
     assert!(
@@ -227,7 +227,7 @@ fn focus_after_remove() {
     let surface_id = tl.wl_surface().id();
 
     f.mt.state.destroy_window(&surface_id);
-    f.mt.update_keyboard_focus();
+    f.mt.update_focus();
     f.roundtrip(c);
 
     assert_eq!(
