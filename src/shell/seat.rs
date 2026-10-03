@@ -3,8 +3,11 @@
 use std::cell::RefCell;
 
 use smithay::{
-    desktop::PopupGrab, input::Seat, output::Output,
+    desktop::PopupGrab,
+    input::Seat,
+    output::Output,
     reexports::wayland_server::protocol::wl_surface::WlSurface,
+    utils::{Logical, Point},
 };
 
 use super::OutputExt;
@@ -20,6 +23,7 @@ pub trait SeatExt {
     fn set_active_output(&self, output: &Output);
     fn set_popup_grab(&self, grab: PopupGrab<Monotile>);
     fn take_popup_grab(&self) -> Option<PopupGrab<Monotile>>;
+    fn pointer_destination(&self, delta: Point<f64, Logical>) -> Point<f64, Logical>;
 
     // TODO multi-seat: resolve via the pointer's position instead
     fn pointer_output(&self) -> Output {
@@ -55,5 +59,16 @@ impl SeatExt for Seat<Monotile> {
 
     fn take_popup_grab(&self) -> Option<PopupGrab<Monotile>> {
         self.user_data().get::<ActivePopupGrab>()?.0.take()
+    }
+
+    fn pointer_destination(&self, delta: Point<f64, Logical>) -> Point<f64, Logical> {
+        let geo = self.pointer_output().geometry().to_f64();
+        let pos = self.get_pointer().unwrap().current_location() + delta;
+        let far = geo.loc + geo.size;
+        // exclude edge at max y / y
+        Point::new(
+            pos.x.max(geo.loc.x).min(far.x.next_down()),
+            pos.y.max(geo.loc.y).min(far.y.next_down()),
+        )
     }
 }

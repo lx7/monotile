@@ -103,9 +103,7 @@ impl Monotile {
                 }
             }
             InputEvent::PointerMotion { event, .. } => {
-                let geo = self.state.seat.pointer_output().geometry();
-                let pos = pointer.current_location() + event.delta();
-                let pos = pos.constrain(geo.to_f64());
+                let pos = self.state.seat.pointer_destination(event.delta());
                 self.handle_pointer_motion(pos, event.time(), serial);
             }
             InputEvent::PointerMotionAbsolute { event, .. } => {

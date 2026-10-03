@@ -1,5 +1,6 @@
 mod client;
 mod fixture;
+mod input;
 mod ipc_client_protocol;
 mod test_cursor_warp;
 mod test_dnd;
@@ -7,6 +8,7 @@ mod test_dwl_ipc;
 mod test_foreign_toplevel;
 mod test_layer_shell;
 mod test_monotile_ipc;
+mod test_pointer_edge;
 mod test_pointer_focus;
 mod test_popup_grab;
 mod test_screencopy;

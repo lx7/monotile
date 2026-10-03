@@ -1,7 +1,7 @@
 use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
-use smithay::backend::input::{ButtonState, InputTime};
+use smithay::backend::input::{ButtonState, InputEvent, InputTime};
 use smithay::input::pointer::{ButtonEvent, MotionEvent};
 use smithay::output::{Mode, Output, PhysicalProperties, Subpixel};
 use smithay::reexports::calloop::EventLoop;
@@ -9,6 +9,7 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point, SERIAL_COUNTER};
 
 use super::client::Client;
+use super::input::{RelativeMotion, TestInput};
 use crate::{Monotile, config::Config, shell::MonitorSettings};
 
 pub struct Fixture {
@@ -106,6 +107,12 @@ impl Fixture {
         self.event_loop
             .dispatch(Some(Duration::ZERO), &mut self.mt)
             .unwrap();
+    }
+
+    pub fn relative_motion(&mut self, delta: Point<f64, Logical>) {
+        let event = RelativeMotion { delta };
+        self.mt
+            .process_input_event(InputEvent::<TestInput>::PointerMotion { event });
     }
 
     pub fn pointer_motion(&mut self, location: Point<f64, Logical>) {

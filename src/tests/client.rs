@@ -474,6 +474,16 @@ impl Client {
         let _ = self.queue.flush();
     }
 
+    pub fn ack_and_commit_sized(&self, win: usize) {
+        let ws = &self.data.windows[win];
+        let Configure { width, height, .. } = ws.configures.last().expect("configure");
+        let buffer = self.create_shm_buffer(*width, *height);
+        ws.xdg_surface.ack_configure(ws.last_serial);
+        ws.surface.attach(Some(&buffer), 0, 0);
+        ws.surface.commit();
+        let _ = self.queue.flush();
+    }
+
     pub fn destroy_window(&mut self, win: usize) {
         let ws = &self.data.windows[win];
         ws.toplevel.destroy();
