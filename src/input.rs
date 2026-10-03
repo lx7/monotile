@@ -252,23 +252,25 @@ impl Monotile {
     ) {
         let pointer = self.state.seat.get_pointer().unwrap();
         let under = self.state.surface_under(pointer.current_location());
-        let locked = self.state.seat.pointer_locked(under.surface.as_ref());
 
         pointer.relative_motion(
             self,
-            under.surface,
+            under.surface.clone(),
             &RelativeMotionEvent {
                 delta: event.delta(),
                 delta_unaccel: event.delta_unaccel(),
                 time: event.time(),
             },
         );
-        if locked {
+        if self.state.seat.pointer_locked(under.surface.as_ref()) {
             pointer.frame(self);
             return;
         }
 
-        let pos = self.state.seat.pointer_destination(event.delta());
+        let pos = self
+            .state
+            .seat
+            .pointer_destination(event.delta(), under.surface.as_ref());
         let under = self.state.surface_under(pos);
 
         pointer.motion(

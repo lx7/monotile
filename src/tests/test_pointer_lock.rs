@@ -15,7 +15,7 @@ use crate::{
     shell::MonitorsExt,
 };
 
-fn client(f: &mut Fixture) -> usize {
+pub(super) fn client(f: &mut Fixture) -> usize {
     let c = f.add_client();
     f.client_mut(c).bind_pointer();
     f.client_mut(c).bind_relative_pointer();
@@ -32,21 +32,21 @@ fn settle(f: &mut Fixture, c: usize, windows: &[usize]) {
     f.mt.advance_view_queues();
 }
 
-fn open_window(f: &mut Fixture, c: usize) -> usize {
+pub(super) fn open_window(f: &mut Fixture, c: usize) -> usize {
     let w = f.client_mut(c).create_window();
     f.client_mut(c).commit(w);
     settle(f, c, &[w]);
     w
 }
 
-fn open_two_windows(f: &mut Fixture, c: usize) -> (usize, usize) {
+pub(super) fn open_two_windows(f: &mut Fixture, c: usize) -> (usize, usize) {
     let a = open_window(f, c);
     let b = open_window(f, c);
     settle(f, c, &[a, b]);
     (a, b)
 }
 
-fn window_rect(f: &Fixture, c: usize, w: usize) -> Rectangle<i32, Logical> {
+pub(super) fn window_rect(f: &Fixture, c: usize, w: usize) -> Rectangle<i32, Logical> {
     let protocol_id = f.client(c).window(w).surface.id().protocol_id();
     let windows = &f.mt.state.windows;
     let id =
@@ -66,12 +66,12 @@ fn window_rect(f: &Fixture, c: usize, w: usize) -> Rectangle<i32, Logical> {
         .expect("mapped window")
 }
 
-fn window_center(f: &Fixture, c: usize, w: usize) -> Point<f64, Logical> {
+pub(super) fn window_center(f: &Fixture, c: usize, w: usize) -> Point<f64, Logical> {
     let rect = window_rect(f, c, w).to_f64();
     rect.loc + rect.size.to_point().downscale(2.0)
 }
 
-fn pointer_location(f: &Fixture) -> Point<f64, Logical> {
+pub(super) fn pointer_location(f: &Fixture) -> Point<f64, Logical> {
     f.mt.state.seat.get_pointer().unwrap().current_location()
 }
 

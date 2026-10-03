@@ -31,6 +31,7 @@ use wayland_protocols::ext::image_copy_capture::v1::client::{
     ext_image_copy_capture_session_v1::{self, ExtImageCopyCaptureSessionV1},
 };
 use wayland_protocols::wp::pointer_constraints::zv1::client::{
+    zwp_confined_pointer_v1::{self, ZwpConfinedPointerV1},
     zwp_locked_pointer_v1::{self, ZwpLockedPointerV1},
     zwp_pointer_constraints_v1::{self, Lifetime, ZwpPointerConstraintsV1},
 };
@@ -245,6 +246,8 @@ pub enum CaptureFrameEvent {
 pub enum ConstraintEvent {
     Locked,
     Unlocked,
+    Confined,
+    Unconfined,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -483,6 +486,25 @@ impl Client {
     pub fn destroy_lock(&mut self) {
         let locked_pointer = self.data.locked_pointer.take().expect("pointer lock");
         locked_pointer.destroy();
+        let _ = self.queue.flush();
+    }
+
+    pub fn confine_pointer(&mut self, win: usize, lifetime: Lifetime) {
+        let qh = self.queue.handle();
+        let constraints = self
+            .data
+            .pointer_constraints
+            .as_ref()
+            .expect("zwp_pointer_constraints_v1 not bound");
+        let pointer = self.data.pointer.as_ref().expect("wl_pointer not bound");
+        constraints.confine_pointer(
+            &self.data.windows[win].surface,
+            pointer,
+            None,
+            lifetime,
+            &qh,
+            (),
+        );
         let _ = self.queue.flush();
     }
 
@@ -1664,6 +1686,27 @@ impl Dispatch<ZwpLockedPointerV1, ()> for ClientData {
             }
             zwp_locked_pointer_v1::Event::Unlocked => {
                 state.constraint_events.push(ConstraintEvent::Unlocked)
+            }
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<ZwpConfinedPointerV1, ()> for ClientData {
+    fn event(
+        state: &mut Self,
+        _: &ZwpConfinedPointerV1,
+        event: zwp_confined_pointer_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            zwp_confined_pointer_v1::Event::Confined => {
+                state.constraint_events.push(ConstraintEvent::Confined)
+            }
+            zwp_confined_pointer_v1::Event::Unconfined => {
+                state.constraint_events.push(ConstraintEvent::Unconfined)
             }
             _ => {}
         }

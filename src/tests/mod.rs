@@ -8,6 +8,7 @@ mod test_dwl_ipc;
 mod test_foreign_toplevel;
 mod test_layer_shell;
 mod test_monotile_ipc;
+mod test_pointer_confine;
 mod test_pointer_edge;
 mod test_pointer_focus;
 mod test_pointer_lock;
