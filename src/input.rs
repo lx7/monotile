@@ -251,6 +251,18 @@ impl Monotile {
         serial: Serial,
     ) {
         let pointer = self.state.seat.get_pointer().unwrap();
+        let under = self.state.surface_under(pointer.current_location());
+
+        pointer.relative_motion(
+            self,
+            under.surface,
+            &RelativeMotionEvent {
+                delta: event.delta(),
+                delta_unaccel: event.delta_unaccel(),
+                time: event.time(),
+            },
+        );
+
         let pos = self.state.seat.pointer_destination(event.delta());
         let under = self.state.surface_under(pos);
 

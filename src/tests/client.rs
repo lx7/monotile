@@ -29,6 +29,10 @@ use wayland_protocols::ext::image_copy_capture::v1::client::{
     ext_image_copy_capture_manager_v1::{self, ExtImageCopyCaptureManagerV1},
     ext_image_copy_capture_session_v1::{self, ExtImageCopyCaptureSessionV1},
 };
+use wayland_protocols::wp::relative_pointer::zv1::client::{
+    zwp_relative_pointer_manager_v1::{self, ZwpRelativePointerManagerV1},
+    zwp_relative_pointer_v1::{self, ZwpRelativePointerV1},
+};
 use wayland_protocols::xdg::{
     activation::v1::client::{
         xdg_activation_token_v1::{self, XdgActivationTokenV1},
@@ -68,6 +72,10 @@ struct ClientData {
     data_device: Option<wl_data_device::WlDataDevice>,
     pointer: Option<wl_pointer::WlPointer>,
     pub pointer_serial: u32,
+    pointer_motions: u32,
+    relative_pointer_manager: Option<ZwpRelativePointerManagerV1>,
+    relative_pointer: Option<ZwpRelativePointerV1>,
+    relative_motions: Vec<RelativeMotionEvent>,
     keyboard: Option<wl_keyboard::WlKeyboard>,
     keyboard_focus: Option<wl_surface::WlSurface>,
     pointer_focus: Option<wl_surface::WlSurface>,
@@ -225,6 +233,14 @@ pub enum CaptureFrameEvent {
     Failed(u32),
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct RelativeMotionEvent {
+    pub dx: f64,
+    pub dy: f64,
+    pub dx_unaccel: f64,
+    pub dy_unaccel: f64,
+}
+
 #[derive(Debug, Clone)]
 pub struct Configure {
     pub width: i32,
@@ -250,6 +266,10 @@ impl Client {
             data_device: None,
             pointer: None,
             pointer_serial: 0,
+            pointer_motions: 0,
+            relative_pointer_manager: None,
+            relative_pointer: None,
+            relative_motions: Vec::new(),
             keyboard: None,
             keyboard_focus: None,
             pointer_focus: None,
@@ -391,6 +411,26 @@ impl Client {
         let seat = self.data.ipc_seat.as_ref().expect("wl_seat not bound");
         self.data.keyboard = Some(seat.get_keyboard(&qh, ()));
         let _ = self.queue.flush();
+    }
+
+    pub fn bind_relative_pointer(&mut self) {
+        let qh = self.queue.handle();
+        let manager = self
+            .data
+            .relative_pointer_manager
+            .as_ref()
+            .expect("zwp_relative_pointer_manager_v1 not bound");
+        let pointer = self.data.pointer.as_ref().expect("wl_pointer not bound");
+        self.data.relative_pointer = Some(manager.get_relative_pointer(pointer, &qh, ()));
+        let _ = self.queue.flush();
+    }
+
+    pub fn take_relative_motions(&mut self) -> Vec<RelativeMotionEvent> {
+        std::mem::take(&mut self.data.relative_motions)
+    }
+
+    pub fn take_pointer_motions(&mut self) -> u32 {
+        std::mem::take(&mut self.data.pointer_motions)
     }
 
     pub fn pointer_focus(&self) -> Option<&wl_surface::WlSurface> {
@@ -836,6 +876,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientData {
                 }
                 "zmonotile_control_v1" => {
                     state.ipc_control = Some(registry.bind(name, version, qh, ()));
+                }
+                "zwp_relative_pointer_manager_v1" => {
+                    state.relative_pointer_manager = Some(registry.bind(name, version, qh, ()));
                 }
                 "zwlr_layer_shell_v1" => {
                     state.layer_shell = Some(registry.bind(name, version, qh, ()));
@@ -1516,7 +1559,47 @@ impl Dispatch<wl_pointer::WlPointer, ()> for ClientData {
             wl_pointer::Event::Button { serial, .. } => state.pointer_serial = serial,
             wl_pointer::Event::Enter { surface, .. } => state.pointer_focus = Some(surface),
             wl_pointer::Event::Leave { .. } => state.pointer_focus = None,
+            wl_pointer::Event::Motion { .. } => state.pointer_motions += 1,
             _ => {}
+        }
+    }
+}
+
+impl Dispatch<ZwpRelativePointerManagerV1, ()> for ClientData {
+    fn event(
+        _: &mut Self,
+        _: &ZwpRelativePointerManagerV1,
+        _: zwp_relative_pointer_manager_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ZwpRelativePointerV1, ()> for ClientData {
+    fn event(
+        state: &mut Self,
+        _: &ZwpRelativePointerV1,
+        event: zwp_relative_pointer_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let zwp_relative_pointer_v1::Event::RelativeMotion {
+            dx,
+            dy,
+            dx_unaccel,
+            dy_unaccel,
+            ..
+        } = event
+        {
+            state.relative_motions.push(RelativeMotionEvent {
+                dx,
+                dy,
+                dx_unaccel,
+                dy_unaccel,
+            });
         }
     }
 }

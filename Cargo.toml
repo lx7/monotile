@@ -50,7 +50,7 @@ rev = "e3d461a057ba244d213a8498ec372b0799cca103"
 [dev-dependencies]
 wayland-client = "0.31"
 wayland-backend = "0.3"
-wayland-protocols = { version = "0.32", features = ["client"] }
+wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 tempfile = "3.27.0"
 

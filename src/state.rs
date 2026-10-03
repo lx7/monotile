@@ -38,6 +38,7 @@ use smithay::{
         idle_notify::IdleNotifierState,
         output::OutputManagerState,
         pointer_gestures::PointerGesturesState,
+        relative_pointer::RelativePointerManagerState,
         selection::{
             data_device::DataDeviceState,
             ext_data_control::DataControlState as ExtDataControlState,
@@ -305,6 +306,7 @@ impl State {
         );
 
         let pointer_gestures_state = PointerGesturesState::new::<Monotile>(&dh);
+        RelativePointerManagerState::new::<Monotile>(&dh);
         let cursor_shape_state = CursorShapeManagerState::new::<Monotile>(&dh);
         let cursor = CursorManager::new(1.0);
         let screencopy = ScreencopyState::new(&dh);
