@@ -34,7 +34,7 @@ fn tag_switch_refreshes_pointer_focus() {
     f.mt.handle_action(Action::FocusTag(1));
     let w1 = open_window(&mut f, c);
 
-    f.pointer_motion(focused_window_point(&f));
+    f.absolute_motion(focused_window_point(&f));
     f.roundtrip(c);
     assert_eq!(
         f.client(c).pointer_focus(),

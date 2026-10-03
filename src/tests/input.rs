@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use smithay::{
     backend::input::{
-        Device, DeviceCapability, Event, InputBackend, InputTime, PointerMotionEvent, UnusedEvent,
+        AbsolutePositionEvent, Device, DeviceCapability, Event, InputBackend, InputTime,
+        PointerMotionAbsoluteEvent, PointerMotionEvent, UnusedEvent,
     },
     utils::{Logical, Point},
 };
@@ -66,13 +67,47 @@ impl PointerMotionEvent<TestInput> for RelativeMotion {
     }
 }
 
+pub struct AbsoluteMotion {
+    pub position: Point<f64, Logical>,
+}
+
+impl Event<TestInput> for AbsoluteMotion {
+    fn time(&self) -> InputTime {
+        InputTime::from_millis(0)
+    }
+
+    fn device(&self) -> TestDevice {
+        TestDevice
+    }
+}
+
+impl AbsolutePositionEvent<TestInput> for AbsoluteMotion {
+    fn x(&self) -> f64 {
+        self.position.x
+    }
+
+    fn y(&self) -> f64 {
+        self.position.y
+    }
+
+    fn x_transformed(&self, _width: i32) -> f64 {
+        self.position.x
+    }
+
+    fn y_transformed(&self, _height: i32) -> f64 {
+        self.position.y
+    }
+}
+
+impl PointerMotionAbsoluteEvent<TestInput> for AbsoluteMotion {}
+
 impl InputBackend for TestInput {
     type Device = TestDevice;
     type KeyboardKeyEvent = UnusedEvent;
     type PointerAxisEvent = UnusedEvent;
     type PointerButtonEvent = UnusedEvent;
     type PointerMotionEvent = RelativeMotion;
-    type PointerMotionAbsoluteEvent = UnusedEvent;
+    type PointerMotionAbsoluteEvent = AbsoluteMotion;
     type GestureSwipeBeginEvent = UnusedEvent;
     type GestureSwipeUpdateEvent = UnusedEvent;
     type GestureSwipeEndEvent = UnusedEvent;

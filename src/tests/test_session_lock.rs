@@ -381,7 +381,7 @@ fn lock_surface_receives_the_pointer_position() {
     lock_roundtrip(&mut f, &conn, &mut client, &mut queue);
 
     for pos in [(100.0, 50.0), (300.0, 200.0)] {
-        f.pointer_motion(pos.into());
+        f.absolute_motion(pos.into());
         lock_roundtrip(&mut f, &conn, &mut client, &mut queue);
         assert_eq!(
             client.pointer_positions.last().copied(),
@@ -437,7 +437,7 @@ fn locking_takes_pointer_focus_from_the_window() {
             .monitors
             .window_rect(&f.mt.state.windows, id)
             .expect("mapped window");
-    f.pointer_motion((rect.loc.x as f64 + 0.5, rect.loc.y as f64 + 0.5).into());
+    f.absolute_motion((rect.loc.x as f64 + 0.5, rect.loc.y as f64 + 0.5).into());
     f.roundtrip(app);
     assert!(
         f.client(app).pointer_focus().is_some(),

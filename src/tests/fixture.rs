@@ -9,7 +9,7 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point, SERIAL_COUNTER};
 
 use super::client::Client;
-use super::input::{RelativeMotion, TestInput};
+use super::input::{AbsoluteMotion, RelativeMotion, TestInput};
 use crate::{Monotile, config::Config, shell::MonitorSettings};
 
 pub struct Fixture {
@@ -115,19 +115,10 @@ impl Fixture {
             .process_input_event(InputEvent::<TestInput>::PointerMotion { event });
     }
 
-    pub fn pointer_motion(&mut self, location: Point<f64, Logical>) {
-        let ptr = self.mt.state.seat.get_pointer().unwrap();
-        let under = self.mt.state.surface_under(location);
-        ptr.motion(
-            &mut self.mt,
-            under.surface,
-            &MotionEvent {
-                location,
-                serial: SERIAL_COUNTER.next_serial(),
-                time: InputTime::from_millis(0),
-            },
-        );
-        ptr.frame(&mut self.mt);
+    pub fn absolute_motion(&mut self, position: Point<f64, Logical>) {
+        let event = AbsoluteMotion { position };
+        self.mt
+            .process_input_event(InputEvent::<TestInput>::PointerMotionAbsolute { event });
     }
 
     pub fn pointer_press(&mut self, surface: &WlSurface, location: Point<f64, Logical>) {

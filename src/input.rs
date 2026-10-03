@@ -7,20 +7,20 @@ use crate::{
     config::{Action, Config, Mods},
     grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
     handlers::Devices,
-    shell::{OutputExt, SeatExt},
+    shell::{OutputExt, SeatExt, WindowId},
     spawn::spawn,
 };
 use smithay::{
     backend::input::{
         AbsolutePositionEvent, Axis, AxisSource, ButtonState, DeviceCapability, Event,
         GestureBeginEvent, GestureEndEvent, GesturePinchUpdateEvent as _, InputBackend, InputEvent,
-        InputTime, KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
-        PointerMotionEvent,
+        KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
     },
     input::{
         keyboard::{FilterResult, Keysym},
         pointer::*,
     },
+    output::Output,
     reexports::input::{Device, DragLockState},
     utils::{Logical, Point, SERIAL_COUNTER, Serial},
 };
@@ -102,14 +102,9 @@ impl Monotile {
                     self.handle_action(action);
                 }
             }
-            InputEvent::PointerMotion { event, .. } => {
-                let pos = self.state.seat.pointer_destination(event.delta());
-                self.handle_pointer_motion(pos, event.time(), serial);
-            }
+            InputEvent::PointerMotion { event, .. } => self.on_relative_motion::<I>(event, serial),
             InputEvent::PointerMotionAbsolute { event, .. } => {
-                let geo = self.state.seat.pointer_output().geometry();
-                let pos = event.position_transformed(geo.size) + geo.loc.to_f64();
-                self.handle_pointer_motion(pos, event.time(), serial);
+                self.on_absolute_motion::<I>(event, serial)
             }
             InputEvent::PointerButton { event, .. } => {
                 let button = event.button_code();
@@ -250,18 +245,14 @@ impl Monotile {
         }
     }
 
-    fn handle_pointer_motion(&mut self, pos: Point<f64, Logical>, time: InputTime, serial: Serial) {
+    fn on_relative_motion<I: InputBackend>(
+        &mut self,
+        event: I::PointerMotionEvent,
+        serial: Serial,
+    ) {
         let pointer = self.state.seat.get_pointer().unwrap();
-
+        let pos = self.state.seat.pointer_destination(event.delta());
         let under = self.state.surface_under(pos);
-
-        if !pointer.is_grabbed()
-            && self.state.config.seats["seat0"].focus_follows_cursor
-            && under.window.is_some()
-            && under.window != self.state.focused_window()
-        {
-            self.set_keyboard_focus(under.window);
-        }
 
         pointer.motion(
             self,
@@ -269,13 +260,55 @@ impl Monotile {
             &MotionEvent {
                 location: pos,
                 serial,
-                time,
+                time: event.time(),
             },
         );
         pointer.frame(self);
 
+        self.pointer_moved(pos, under.window, &under.output);
+    }
+
+    fn on_absolute_motion<I: InputBackend>(
+        &mut self,
+        event: I::PointerMotionAbsoluteEvent,
+        serial: Serial,
+    ) {
+        let pointer = self.state.seat.get_pointer().unwrap();
+        let geo = self.state.seat.pointer_output().geometry();
+        let pos = event.position_transformed(geo.size) + geo.loc.to_f64();
+        let under = self.state.surface_under(pos);
+
+        pointer.motion(
+            self,
+            under.surface,
+            &MotionEvent {
+                location: pos,
+                serial,
+                time: event.time(),
+            },
+        );
+        pointer.frame(self);
+
+        self.pointer_moved(pos, under.window, &under.output);
+    }
+
+    fn pointer_moved(
+        &mut self,
+        pos: Point<f64, Logical>,
+        window: Option<WindowId>,
+        output: &Output,
+    ) {
+        let pointer = self.state.seat.get_pointer().unwrap();
+
+        if !pointer.is_grabbed()
+            && self.state.config.seats["seat0"].focus_follows_cursor
+            && window.is_some()
+            && window != self.state.focused_window()
+        {
+            self.set_keyboard_focus(window);
+        }
+
         // TODO: get cursor from seat when multi-seat is implemented
-        let output = &under.output;
         if !self.state.locked() {
             let hotspot = self.state.cursor.hotspot;
             self.state
