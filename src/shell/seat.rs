@@ -8,6 +8,7 @@ use smithay::{
     output::Output,
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::{Logical, Point},
+    wayland::pointer_constraints::{PointerConstraint, with_pointer_constraint},
 };
 
 use super::OutputExt;
@@ -24,6 +25,9 @@ pub trait SeatExt {
     fn set_popup_grab(&self, grab: PopupGrab<Monotile>);
     fn take_popup_grab(&self) -> Option<PopupGrab<Monotile>>;
     fn pointer_destination(&self, delta: Point<f64, Logical>) -> Point<f64, Logical>;
+    fn pointer_locked(&self, under: Option<&(WlSurface, Point<f64, Logical>)>) -> bool;
+    fn activate_pointer_constraint(&self, under: Option<&(WlSurface, Point<f64, Logical>)>);
+    fn deactivate_pointer_constraint(&self);
 
     // TODO multi-seat: resolve via the pointer's position instead
     fn pointer_output(&self) -> Output {
@@ -70,5 +74,58 @@ impl SeatExt for Seat<Monotile> {
             pos.x.max(geo.loc.x).min(far.x.next_down()),
             pos.y.max(geo.loc.y).min(far.y.next_down()),
         )
+    }
+
+    fn pointer_locked(&self, under: Option<&(WlSurface, Point<f64, Logical>)>) -> bool {
+        let pointer = self.get_pointer().unwrap();
+        let Some((surface, _)) = under else {
+            return false;
+        };
+        if pointer.current_focus().as_ref() != Some(surface) {
+            return false;
+        }
+        with_pointer_constraint(surface, &pointer, |constraint| {
+            let Some(constraint) = constraint else {
+                return false;
+            };
+            match &*constraint {
+                PointerConstraint::Locked(_) => constraint.is_active(),
+                PointerConstraint::Confined(_) => false,
+            }
+        })
+    }
+
+    fn activate_pointer_constraint(&self, under: Option<&(WlSurface, Point<f64, Logical>)>) {
+        let pointer = self.get_pointer().unwrap();
+        let Some((surface, surface_loc)) = under else {
+            return;
+        };
+        if pointer.current_focus().as_ref() != Some(surface) {
+            return;
+        }
+        let pos = (pointer.current_location() - *surface_loc).to_i32_floor();
+        with_pointer_constraint(surface, &pointer, |constraint| {
+            let Some(constraint) = constraint else {
+                return;
+            };
+            if let Some(region) = constraint.region()
+                && !region.contains(pos)
+            {
+                return;
+            }
+            constraint.activate();
+        })
+    }
+
+    fn deactivate_pointer_constraint(&self) {
+        let pointer = self.get_pointer().unwrap();
+        let Some(surface) = pointer.current_focus() else {
+            return;
+        };
+        with_pointer_constraint(&surface, &pointer, |constraint| {
+            if let Some(constraint) = constraint {
+                constraint.deactivate();
+            }
+        })
     }
 }

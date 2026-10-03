@@ -37,6 +37,7 @@ use smithay::{
         idle_inhibit::IdleInhibitManagerState,
         idle_notify::IdleNotifierState,
         output::OutputManagerState,
+        pointer_constraints::PointerConstraintsState,
         pointer_gestures::PointerGesturesState,
         relative_pointer::RelativePointerManagerState,
         selection::{
@@ -305,6 +306,7 @@ impl State {
         );
 
         PointerGesturesState::new::<Monotile>(&dh);
+        PointerConstraintsState::new::<Monotile>(&dh);
         RelativePointerManagerState::new::<Monotile>(&dh);
         let cursor_shape_state = CursorShapeManagerState::new::<Monotile>(&dh);
         let cursor = CursorManager::new(1.0);

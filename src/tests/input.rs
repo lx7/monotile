@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use smithay::{
     backend::input::{
-        AbsolutePositionEvent, Device, DeviceCapability, Event, InputBackend, InputTime,
-        PointerMotionAbsoluteEvent, PointerMotionEvent, UnusedEvent,
+        AbsolutePositionEvent, ButtonState, Device, DeviceCapability, Event, InputBackend,
+        InputTime, PointerButtonEvent, PointerMotionAbsoluteEvent, PointerMotionEvent, UnusedEvent,
     },
     utils::{Logical, Point},
 };
@@ -67,6 +67,30 @@ impl PointerMotionEvent<TestInput> for RelativeMotion {
     }
 }
 
+pub struct LeftButton {
+    pub state: ButtonState,
+}
+
+impl Event<TestInput> for LeftButton {
+    fn time(&self) -> InputTime {
+        InputTime::from_millis(0)
+    }
+
+    fn device(&self) -> TestDevice {
+        TestDevice
+    }
+}
+
+impl PointerButtonEvent<TestInput> for LeftButton {
+    fn button_code(&self) -> u32 {
+        0x110
+    }
+
+    fn state(&self) -> ButtonState {
+        self.state
+    }
+}
+
 pub struct AbsoluteMotion {
     pub position: Point<f64, Logical>,
 }
@@ -105,7 +129,7 @@ impl InputBackend for TestInput {
     type Device = TestDevice;
     type KeyboardKeyEvent = UnusedEvent;
     type PointerAxisEvent = UnusedEvent;
-    type PointerButtonEvent = UnusedEvent;
+    type PointerButtonEvent = LeftButton;
     type PointerMotionEvent = RelativeMotion;
     type PointerMotionAbsoluteEvent = AbsoluteMotion;
     type GestureSwipeBeginEvent = UnusedEvent;

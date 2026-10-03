@@ -252,6 +252,7 @@ impl Monotile {
     ) {
         let pointer = self.state.seat.get_pointer().unwrap();
         let under = self.state.surface_under(pointer.current_location());
+        let locked = self.state.seat.pointer_locked(under.surface.as_ref());
 
         pointer.relative_motion(
             self,
@@ -262,13 +263,17 @@ impl Monotile {
                 time: event.time(),
             },
         );
+        if locked {
+            pointer.frame(self);
+            return;
+        }
 
         let pos = self.state.seat.pointer_destination(event.delta());
         let under = self.state.surface_under(pos);
 
         pointer.motion(
             self,
-            under.surface,
+            under.surface.clone(),
             &MotionEvent {
                 location: pos,
                 serial,
@@ -278,6 +283,9 @@ impl Monotile {
         pointer.frame(self);
 
         self.pointer_moved(pos, under.window, &under.output);
+        self.state
+            .seat
+            .activate_pointer_constraint(under.surface.as_ref());
     }
 
     fn on_absolute_motion<I: InputBackend>(
@@ -289,6 +297,8 @@ impl Monotile {
         let geo = self.state.seat.pointer_output().geometry();
         let pos = event.position_transformed(geo.size) + geo.loc.to_f64();
         let under = self.state.surface_under(pos);
+
+        self.state.seat.deactivate_pointer_constraint();
 
         pointer.motion(
             self,

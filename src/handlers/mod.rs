@@ -19,7 +19,7 @@ use smithay::{
         Seat, SeatHandler, SeatState,
         dnd::{DnDGrab, DndGrabHandler, DndTarget, GrabType, Source},
         keyboard::LedState,
-        pointer::{CursorImageStatus, Focus},
+        pointer::{CursorImageStatus, Focus, PointerHandle},
         tablet::TabletSeatHandler,
     },
     reexports::input::Device,
@@ -190,4 +190,12 @@ impl TabletSeatHandler for Monotile {
     type ToolFocus = WlSurface;
 }
 
-impl PointerConstraintsHandler for Monotile {}
+impl PointerConstraintsHandler for Monotile {
+    fn new_constraint(&mut self, _surface: &WlSurface, pointer: &PointerHandle<Self>) {
+        // TODO multi-seat: get seat for pointer
+        let under = self.state.surface_under(pointer.current_location());
+        self.state
+            .seat
+            .activate_pointer_constraint(under.surface.as_ref());
+    }
+}

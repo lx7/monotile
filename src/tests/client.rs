@@ -6,12 +6,13 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
+use smithay::utils::{Logical, Rectangle};
 use wayland_client::{
     Connection, Dispatch, EventQueue, QueueHandle,
     protocol::{
         wl_buffer, wl_callback, wl_compositor, wl_data_device, wl_data_device_manager,
-        wl_data_source, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm,
-        wl_shm_pool, wl_surface,
+        wl_data_source, wl_keyboard, wl_output, wl_pointer, wl_region, wl_registry, wl_seat,
+        wl_shm, wl_shm_pool, wl_surface,
     },
 };
 use wayland_protocols::ext::foreign_toplevel_list::v1::client::{
@@ -28,6 +29,10 @@ use wayland_protocols::ext::image_copy_capture::v1::client::{
     ext_image_copy_capture_frame_v1::{self, ExtImageCopyCaptureFrameV1},
     ext_image_copy_capture_manager_v1::{self, ExtImageCopyCaptureManagerV1},
     ext_image_copy_capture_session_v1::{self, ExtImageCopyCaptureSessionV1},
+};
+use wayland_protocols::wp::pointer_constraints::zv1::client::{
+    zwp_locked_pointer_v1::{self, ZwpLockedPointerV1},
+    zwp_pointer_constraints_v1::{self, Lifetime, ZwpPointerConstraintsV1},
 };
 use wayland_protocols::wp::relative_pointer::zv1::client::{
     zwp_relative_pointer_manager_v1::{self, ZwpRelativePointerManagerV1},
@@ -76,6 +81,9 @@ struct ClientData {
     relative_pointer_manager: Option<ZwpRelativePointerManagerV1>,
     relative_pointer: Option<ZwpRelativePointerV1>,
     relative_motions: Vec<RelativeMotionEvent>,
+    pointer_constraints: Option<ZwpPointerConstraintsV1>,
+    locked_pointer: Option<ZwpLockedPointerV1>,
+    constraint_events: Vec<ConstraintEvent>,
     keyboard: Option<wl_keyboard::WlKeyboard>,
     keyboard_focus: Option<wl_surface::WlSurface>,
     pointer_focus: Option<wl_surface::WlSurface>,
@@ -234,6 +242,12 @@ pub enum CaptureFrameEvent {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum ConstraintEvent {
+    Locked,
+    Unlocked,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct RelativeMotionEvent {
     pub dx: f64,
     pub dy: f64,
@@ -270,6 +284,9 @@ impl Client {
             relative_pointer_manager: None,
             relative_pointer: None,
             relative_motions: Vec::new(),
+            pointer_constraints: None,
+            locked_pointer: None,
+            constraint_events: Vec::new(),
             keyboard: None,
             keyboard_focus: None,
             pointer_focus: None,
@@ -431,6 +448,46 @@ impl Client {
 
     pub fn take_pointer_motions(&mut self) -> u32 {
         std::mem::take(&mut self.data.pointer_motions)
+    }
+
+    pub fn lock_pointer(
+        &mut self,
+        win: usize,
+        region: Option<Rectangle<i32, Logical>>,
+        lifetime: Lifetime,
+    ) {
+        let qh = self.queue.handle();
+        let constraints = self
+            .data
+            .pointer_constraints
+            .as_ref()
+            .expect("zwp_pointer_constraints_v1 not bound");
+        let comp = self.data.compositor.as_ref().expect("compositor not bound");
+        let pointer = self.data.pointer.as_ref().expect("wl_pointer not bound");
+        let region = region.map(|rect| {
+            let region = comp.create_region(&qh, ());
+            region.add(rect.loc.x, rect.loc.y, rect.size.w, rect.size.h);
+            region
+        });
+        self.data.locked_pointer = Some(constraints.lock_pointer(
+            &self.data.windows[win].surface,
+            pointer,
+            region.as_ref(),
+            lifetime,
+            &qh,
+            (),
+        ));
+        let _ = self.queue.flush();
+    }
+
+    pub fn destroy_lock(&mut self) {
+        let locked_pointer = self.data.locked_pointer.take().expect("pointer lock");
+        locked_pointer.destroy();
+        let _ = self.queue.flush();
+    }
+
+    pub fn take_constraint_events(&mut self) -> Vec<ConstraintEvent> {
+        std::mem::take(&mut self.data.constraint_events)
     }
 
     pub fn pointer_focus(&self) -> Option<&wl_surface::WlSurface> {
@@ -876,6 +933,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientData {
                 }
                 "zmonotile_control_v1" => {
                     state.ipc_control = Some(registry.bind(name, version, qh, ()));
+                }
+                "zwp_pointer_constraints_v1" => {
+                    state.pointer_constraints = Some(registry.bind(name, version, qh, ()));
                 }
                 "zwp_relative_pointer_manager_v1" => {
                     state.relative_pointer_manager = Some(registry.bind(name, version, qh, ()));
@@ -1560,6 +1620,51 @@ impl Dispatch<wl_pointer::WlPointer, ()> for ClientData {
             wl_pointer::Event::Enter { surface, .. } => state.pointer_focus = Some(surface),
             wl_pointer::Event::Leave { .. } => state.pointer_focus = None,
             wl_pointer::Event::Motion { .. } => state.pointer_motions += 1,
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<wl_region::WlRegion, ()> for ClientData {
+    fn event(
+        _: &mut Self,
+        _: &wl_region::WlRegion,
+        _: wl_region::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ZwpPointerConstraintsV1, ()> for ClientData {
+    fn event(
+        _: &mut Self,
+        _: &ZwpPointerConstraintsV1,
+        _: zwp_pointer_constraints_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ZwpLockedPointerV1, ()> for ClientData {
+    fn event(
+        state: &mut Self,
+        _: &ZwpLockedPointerV1,
+        event: zwp_locked_pointer_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            zwp_locked_pointer_v1::Event::Locked => {
+                state.constraint_events.push(ConstraintEvent::Locked)
+            }
+            zwp_locked_pointer_v1::Event::Unlocked => {
+                state.constraint_events.push(ConstraintEvent::Unlocked)
+            }
             _ => {}
         }
     }

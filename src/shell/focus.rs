@@ -98,6 +98,9 @@ impl Monotile {
     fn send_pointer_motion(&mut self, location: Point<f64, Logical>) {
         let pointer = self.state.seat.get_pointer().unwrap();
         let under = self.state.surface_under(location);
+        if self.state.seat.pointer_locked(under.surface.as_ref()) {
+            return;
+        }
         pointer.motion(
             self,
             under.surface,

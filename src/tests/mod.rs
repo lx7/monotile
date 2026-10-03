@@ -10,6 +10,7 @@ mod test_layer_shell;
 mod test_monotile_ipc;
 mod test_pointer_edge;
 mod test_pointer_focus;
+mod test_pointer_lock;
 mod test_popup_grab;
 mod test_relative_pointer;
 mod test_screencopy;
