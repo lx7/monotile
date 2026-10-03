@@ -245,7 +245,6 @@ pub struct State {
     pub idle_inhibitors: Vec<WlSurface>,
     pub popups: PopupManager,
     pub seat: Seat<Monotile>,
-    pub pointer_gestures_state: PointerGesturesState,
     pub cursor_shape_state: CursorShapeManagerState,
     pub cursor: CursorManager,
     pub windows: Windows,
@@ -305,7 +304,7 @@ impl State {
             kb_conf.layout, kb_conf.variant
         );
 
-        let pointer_gestures_state = PointerGesturesState::new::<Monotile>(&dh);
+        PointerGesturesState::new::<Monotile>(&dh);
         RelativePointerManagerState::new::<Monotile>(&dh);
         let cursor_shape_state = CursorShapeManagerState::new::<Monotile>(&dh);
         let cursor = CursorManager::new(1.0);
@@ -343,7 +342,6 @@ impl State {
             idle_inhibitors: Vec::new(),
             popups: PopupManager::default(),
             seat,
-            pointer_gestures_state,
             cursor_shape_state,
             cursor,
             windows: Windows::default(),
