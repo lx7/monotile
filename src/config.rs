@@ -312,7 +312,13 @@ pub struct SeatMap(HashMap<String, SeatConfig>);
 
 impl<'de> Deserialize<'de> for SeatMap {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        HashMap::<String, SeatConfig>::deserialize(d).map(Self)
+        let seats = HashMap::<String, SeatConfig>::deserialize(d)?;
+        for (name, seat) in &seats {
+            seat.keyboard
+                .validate()
+                .map_err(|e| Error::custom(format!("seat {name}: {e}")))?;
+        }
+        Ok(Self(seats))
     }
 }
 
@@ -324,6 +330,26 @@ impl Keyboard {
             options: Some(self.options.clone()).filter(|s| !s.is_empty()),
             ..Default::default()
         }
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        let XkbConfig {
+            rules,
+            model,
+            layout,
+            variant,
+            options,
+        } = self.xkb_config();
+        let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
+        let flags = xkb::KEYMAP_COMPILE_NO_FLAGS;
+        xkb::Keymap::new_from_names(&context, rules, model, layout, variant, options, flags)
+            .map(drop)
+            .ok_or_else(|| {
+                format!(
+                    "invalid keyboard settings: layout={} variant={} options={:?}",
+                    self.layout, self.variant, self.options
+                )
+            })
     }
 }
 
@@ -698,6 +724,16 @@ mod tests {
     fn color_palette_does_not_leak_between_parses() {
         Config::parse(r##"(colors: {"red": "#ff0000"})"##).unwrap();
         assert!(Config::parse(r##"(colors: {"accent": "red"})"##).is_err());
+    }
+
+    #[test]
+    fn keyboard_layout_unknown() {
+        let ron = r#"(seats: {"seat0": (keyboard: (layout: "nonexistent"))})"#;
+        let err = Config::parse(ron).unwrap_err();
+        assert!(
+            err.contains("invalid keyboard settings: layout=nonexistent"),
+            "{err}"
+        );
     }
 
     #[test]
