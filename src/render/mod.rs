@@ -4,6 +4,7 @@ mod border;
 pub mod clipped_surface;
 pub mod cursor;
 mod shaders;
+mod view;
 pub mod window;
 
 use std::borrow::BorrowMut;

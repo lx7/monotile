@@ -13,6 +13,7 @@ mod test_pointer_edge;
 mod test_pointer_focus;
 mod test_pointer_lock;
 mod test_popup_grab;
+mod test_popup_stacking;
 mod test_relative_pointer;
 mod test_screencopy;
 mod test_session_lock;

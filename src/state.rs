@@ -501,8 +501,10 @@ impl State {
             };
         }
 
-        // windows and popups
-        for id in mon.tag().window_ids().into_iter().rev() {
+        let ids = mon.tag().window_ids();
+
+        // popups
+        for &id in ids.iter().rev() {
             let Some(we) = self.windows.get(id) else {
                 continue;
             };
@@ -511,7 +513,27 @@ impl State {
             };
             let loc = rect.loc - we.content_offset;
             let rel = pos - loc.to_f64();
-            if let Some((s, point)) = we.window.surface_under(rel, WindowSurfaceType::ALL) {
+            if let Some((s, point)) = we.window.surface_under(rel, WindowSurfaceType::POPUP) {
+                return SurfaceUnder {
+                    surface: Some((s, (point + loc).to_f64())),
+                    window: Some(id),
+                    output: output.clone(),
+                };
+            }
+        }
+
+        // windows
+        for &id in ids.iter().rev() {
+            let Some(we) = self.windows.get(id) else {
+                continue;
+            };
+            let Some(rect) = mon.window_rect(&self.windows, id) else {
+                continue;
+            };
+            let loc = rect.loc - we.content_offset;
+            let rel = pos - loc.to_f64();
+            let kind = WindowSurfaceType::TOPLEVEL | WindowSurfaceType::SUBSURFACE;
+            if let Some((s, point)) = we.window.surface_under(rel, kind) {
                 return SurfaceUnder {
                     surface: Some((s, (point + loc).to_f64())),
                     window: Some(id),

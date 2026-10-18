@@ -22,10 +22,7 @@ use super::{
     clipped_surface::{Clippable, Clipped},
     popup_elements,
 };
-use crate::{
-    config,
-    shell::{View, WindowElement, Windows},
-};
+use crate::{config, shell::WindowElement};
 
 #[derive(Debug)]
 pub enum RenderStep {
@@ -244,6 +241,13 @@ impl WindowElement {
         elems
     }
 
+    pub fn render_popups(&self, ctx: &mut RenderCtx, origin: Point<i32, Logical>) {
+        if let Some(wl) = self.window.wl_surface() {
+            let popups = popup_elements(ctx.renderer, &wl, origin, ctx.scale);
+            ctx.elems.extend(popups);
+        }
+    }
+
     pub fn render_elements(
         &mut self,
         ctx: &mut RenderCtx,
@@ -294,11 +298,6 @@ impl WindowElement {
 
         let surface_fills_win = live.is_some() && self.window.geometry().size == win_geo.size;
 
-        if let Some(wl) = &live {
-            let popups = popup_elements(ctx.renderer, wl, win_geo.loc, ctx.scale);
-            ctx.elems.extend(popups);
-        }
-
         for &key in self.render_pipeline.iter().rev() {
             let step = self.render_steps.get_mut(&key).expect("render_step exists");
             let skip = match step {
@@ -328,23 +327,6 @@ impl WindowElement {
         {
             self.last_texture = Some(tex);
             self.texture_dirty = false;
-        }
-    }
-}
-
-impl View {
-    pub fn render_elements(&self, ctx: &mut RenderCtx, windows: &mut Windows) {
-        let lone = self.tiled.len() == 1;
-        for &id in self.floating.iter().rev() {
-            if let Some(we) = windows.get_mut(id) {
-                let geo = we.float_geo;
-                we.render_elements(ctx, geo, false);
-            }
-        }
-        for tile in self.tiled.iter().rev() {
-            if let Some(we) = windows.get_mut(tile.id) {
-                we.render_elements(ctx, tile.rect, lone);
-            }
         }
     }
 }

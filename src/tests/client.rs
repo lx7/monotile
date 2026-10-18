@@ -143,8 +143,10 @@ pub struct LayerState {
 
 pub struct PopupState {
     pub surface: wl_surface::WlSurface,
+    pub xdg_surface: xdg_surface::XdgSurface,
     pub popup: xdg_popup::XdgPopup,
     pub done: bool,
+    last_serial: u32,
 }
 
 pub struct WindowState {
@@ -370,17 +372,28 @@ impl Client {
     }
 
     pub fn create_popup(&mut self, win: usize) -> usize {
+        let anchor = Rectangle::new((0, 0).into(), (10, 10).into());
+        self.create_popup_at(win, anchor, xdg_positioner::Gravity::None)
+    }
+
+    pub fn create_popup_at(
+        &mut self,
+        win: usize,
+        anchor: Rectangle<i32, Logical>,
+        gravity: xdg_positioner::Gravity,
+    ) -> usize {
         let qh = self.queue.handle();
         let comp = self.data.compositor.as_ref().expect("compositor not bound");
         let wm = self.data.wm_base.as_ref().expect("xdg_wm_base not bound");
 
         let positioner = wm.create_positioner(&qh, ());
         positioner.set_size(100, 100);
-        positioner.set_anchor_rect(0, 0, 10, 10);
+        positioner.set_anchor_rect(anchor.loc.x, anchor.loc.y, anchor.size.w, anchor.size.h);
+        positioner.set_gravity(gravity);
 
         let surface = comp.create_surface(&qh, ());
-        let xdg = wm.get_xdg_surface(&surface, &qh, ());
-        let popup = xdg.get_popup(
+        let xdg_surface = wm.get_xdg_surface(&surface, &qh, ());
+        let popup = xdg_surface.get_popup(
             Some(&self.data.windows[win].xdg_surface),
             &positioner,
             &qh,
@@ -390,11 +403,26 @@ impl Client {
         let idx = self.data.popups.len();
         self.data.popups.push(PopupState {
             surface,
+            xdg_surface,
             popup,
             done: false,
+            last_serial: 0,
         });
         let _ = self.queue.flush();
         idx
+    }
+
+    pub fn popup(&self, popup: usize) -> &PopupState {
+        &self.data.popups[popup]
+    }
+
+    pub fn popup_ack_and_commit(&self, popup: usize) {
+        let buffer = self.create_shm_buffer(100, 100);
+        let ps = &self.data.popups[popup];
+        ps.xdg_surface.ack_configure(ps.last_serial);
+        ps.surface.attach(Some(&buffer), 0, 0);
+        ps.surface.commit();
+        let _ = self.queue.flush();
     }
 
     pub fn popup_grab(&self, popup: usize, serial: u32) {
@@ -1071,6 +1099,12 @@ impl Dispatch<xdg_surface::XdgSurface, ()> for ClientData {
             for ws in &mut state.windows {
                 if ws.xdg_surface == *xdg {
                     ws.last_serial = serial;
+                    break;
+                }
+            }
+            for ps in &mut state.popups {
+                if ps.xdg_surface == *xdg {
+                    ps.last_serial = serial;
                     break;
                 }
             }
