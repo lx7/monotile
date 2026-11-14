@@ -435,10 +435,11 @@ impl Monotile {
         let Some(id) = under.window else {
             return;
         };
-        if !self.state.windows[id].floating {
+        let we = &self.state.windows[id];
+        if !we.floating || we.fullscreen {
             return;
         }
-        let geo = self.state.windows[id].float_geo;
+        let geo = we.float_geo;
         self.state.cursor.override_icon = Some(CursorIcon::AllScroll);
         let start = GrabStartData {
             focus: under.surface,
@@ -459,10 +460,11 @@ impl Monotile {
         let Some(id) = self.state.surface_under(pos).window else {
             return;
         };
-        if !self.state.windows[id].floating {
+        let we = &self.state.windows[id];
+        if !we.floating || we.fullscreen {
             return;
         }
-        let geo = self.state.windows[id].float_geo;
+        let geo = we.float_geo;
         self.state.cursor.override_icon = Some(CursorIcon::SeResize);
         let corner = (geo.loc + geo.size - Point::new(2, 2)).to_f64();
         let ptr = self.state.seat.get_pointer().unwrap();

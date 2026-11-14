@@ -120,6 +120,36 @@ fn input_is_clipped_to_the_window_rect_like_the_render() {
 }
 
 #[test]
+fn a_fullscreen_window_is_neither_moved_nor_resized() {
+    for action in ["Move", "Resize"] {
+        let config = format!(r#"(seats: {{"seat0": ()}}, binds: [([], Mouse(Left), {action})])"#);
+        let mut f = Fixture::with_config(Config::parse(&config).expect("config"));
+        let c = client(&mut f);
+        let w = open_window(&mut f, c);
+        f.mt.handle_action(Action::ToggleFloat);
+        f.roundtrip(c);
+        f.client_mut(c).ack_and_commit_sized(w);
+        f.roundtrip(c);
+        f.mt.handle_action(Action::ToggleFullscreen);
+        f.roundtrip(c);
+        f.client_mut(c).ack_and_commit_sized(w);
+        f.roundtrip(c);
+        f.mt.advance_view_queues();
+        let id = f.mt.state.seat_mon().tag().focused_id().expect("focus");
+        let float_geo = f.mt.state.windows[id].float_geo;
+
+        f.absolute_motion((500.0, 400.0).into());
+        f.left_button(ButtonState::Pressed);
+        f.relative_motion((40.0, 30.0).into());
+        f.left_button(ButtonState::Released);
+        assert_eq!(
+            f.mt.state.windows[id].float_geo, float_geo,
+            "{action} leaves the floating rect of a fullscreen window alone",
+        );
+    }
+}
+
+#[test]
 fn a_dropped_window_has_the_pointer_focus() {
     let config = Config::parse(r#"(seats: {"seat0": ()}, binds: [([], Mouse(Left), Move)])"#)
         .expect("config");
