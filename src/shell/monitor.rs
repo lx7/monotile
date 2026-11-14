@@ -221,11 +221,6 @@ impl Monitor {
         self.views.push_back(view);
     }
 
-    pub fn raise(&mut self, ws: &mut Windows, id: WindowId) {
-        self.tag_mut().raise(id);
-        self.recompute_layout(ws);
-    }
-
     pub fn window_ids(&self) -> Vec<WindowId> {
         self.tags
             .iter()

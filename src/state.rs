@@ -132,13 +132,6 @@ impl Monotile {
         self.update_focus();
     }
 
-    pub fn raise(&mut self, id: WindowId) {
-        let output = self.state.seat.pointer_output();
-        if let Some(mon) = self.state.monitors.get_mut(&output) {
-            mon.raise(&mut self.state.windows, id);
-        }
-    }
-
     pub fn with_seat_mon(&mut self, f: impl FnOnce(&mut Monitor, &mut Windows)) {
         let output = self.state.seat.active_output();
         let mon = self

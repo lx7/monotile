@@ -127,7 +127,7 @@ impl Monotile {
                     // raise window and focus
                     let under = self.state.surface_under(pointer.current_location());
                     if let Some(id) = under.window {
-                        self.raise(id);
+                        self.with_seat_mon(|mon, _| mon.tag_mut().raise(id));
                         self.set_keyboard_focus(Some(id));
                     }
                 }
@@ -445,7 +445,7 @@ impl Monotile {
             button: btn,
             location: pos,
         };
-        self.raise(id);
+        self.with_seat_mon(|mon, _| mon.tag_mut().raise(id));
         let ptr = self.state.seat.get_pointer().unwrap();
         ptr.set_grab(
             self,
@@ -472,7 +472,7 @@ impl Monotile {
             button: btn,
             location: corner,
         };
-        self.raise(id);
+        self.with_seat_mon(|mon, _| mon.tag_mut().raise(id));
         ptr.set_grab(
             self,
             ResizeSurfaceGrab::start(start, id, geo),
