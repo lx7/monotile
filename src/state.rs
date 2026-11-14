@@ -10,7 +10,7 @@ use std::{
 use tracing::{info, warn};
 
 use smithay::{
-    desktop::{PopupManager, WindowSurfaceType, layer_map_for_output},
+    desktop::{PopupManager, layer_map_for_output},
     input::{Seat, SeatState},
     output::Output,
     reexports::{
@@ -49,7 +49,7 @@ use smithay::{
         session_lock::{SessionLockManagerState, SessionLocker},
         shell::{
             kde::decoration::KdeDecorationState,
-            wlr_layer::{Layer, WlrLayerShellState},
+            wlr_layer::WlrLayerShellState,
             xdg::{XdgShellState, decoration::XdgDecorationState},
         },
         shm::ShmState,
@@ -67,7 +67,7 @@ use crate::{
         Devices, foreign_toplevel::ForeignToplevelState, output_power, screencopy::ScreencopyState,
     },
     ipc::IpcState,
-    render::cursor::CursorManager,
+    render::{SurfaceUnder, cursor::CursorManager},
     shell::{
         Monitor, MonitorSettings, Monitors, MonitorsExt, SeatExt, Unmapped, WindowElement,
         WindowId, Windows,
@@ -81,12 +81,6 @@ pub struct Monotile {
 }
 
 smithay::delegate_dispatch2!(Monotile);
-
-pub struct SurfaceUnder {
-    pub surface: Option<(WlSurface, Point<f64, Logical>)>,
-    pub window: Option<WindowId>,
-    pub output: Output,
-}
 
 impl Monotile {
     pub fn new(config: Config) -> (EventLoop<'static, Monotile>, Self) {
@@ -138,6 +132,13 @@ impl Monotile {
         self.update_focus();
     }
 
+    pub fn raise(&mut self, id: WindowId) {
+        let output = self.state.seat.pointer_output();
+        if let Some(mon) = self.state.monitors.get_mut(&output) {
+            mon.raise(id);
+        }
+    }
+
     pub fn with_seat_mon(&mut self, f: impl FnOnce(&mut Monitor, &mut Windows)) {
         let output = self.state.seat.active_output();
         let mon = self
@@ -151,14 +152,21 @@ impl Monotile {
 
     pub fn advance_view_queues(&mut self) {
         self.unblock_ready_views();
-        // the render path also pops, this handles the timeout
+        let mut view_changed = false;
         for (output, mon) in self.state.monitors.iter_mut() {
             if mon.views.pop_ready() {
                 self.backend.schedule_render(output);
+                view_changed = true;
             }
         }
         let monitors = &self.state.monitors;
         self.state.windows.reap(|id| monitors.contains_window(id));
+
+        // input follows the displayed layout
+        if view_changed {
+            let location = self.state.seat.get_pointer().unwrap().current_location();
+            self.send_pointer_motion(location);
+        }
     }
 
     fn unblock_ready_views(&mut self) {
@@ -465,97 +473,10 @@ impl State {
         Some(output)
     }
 
+    // TODO: update or remove for multi-seat
     pub fn surface_under(&self, pos: Point<f64, Logical>) -> SurfaceUnder {
-        let output = self.seat.pointer_output();
-        let mon = self
-            .monitors
-            .get(&output)
-            .expect("the seat's pointer output is attached to a monitor");
-        if self.locked() {
-            let surface = mon
-                .lock_surface
-                .as_ref()
-                .map(|ls| (ls.wl_surface().clone(), Point::default()));
-            return SurfaceUnder {
-                surface,
-                window: None,
-                output,
-            };
-        }
-
-        let map = layer_map_for_output(&mon.output);
-        let layer_hit = |layer| {
-            let layer = map.layer_under(layer, pos)?;
-            let geo = map.layer_geometry(layer).unwrap();
-            let rel = pos - geo.loc.to_f64();
-            let (s, point) = layer.surface_under(rel, WindowSurfaceType::ALL)?;
-            Some((s, (point + geo.loc).to_f64()))
-        };
-
-        // overlay / top layers
-        if let Some(hit) = layer_hit(Layer::Overlay).or_else(|| layer_hit(Layer::Top)) {
-            return SurfaceUnder {
-                surface: Some(hit),
-                window: None,
-                output,
-            };
-        }
-
-        let ids = mon.tag().window_ids();
-
-        // popups
-        for &id in ids.iter().rev() {
-            let Some(we) = self.windows.get(id) else {
-                continue;
-            };
-            let Some(rect) = mon.window_rect(&self.windows, id) else {
-                continue;
-            };
-            let loc = rect.loc - we.content_offset;
-            let rel = pos - loc.to_f64();
-            if let Some((s, point)) = we.window.surface_under(rel, WindowSurfaceType::POPUP) {
-                return SurfaceUnder {
-                    surface: Some((s, (point + loc).to_f64())),
-                    window: Some(id),
-                    output: output.clone(),
-                };
-            }
-        }
-
-        // windows
-        for &id in ids.iter().rev() {
-            let Some(we) = self.windows.get(id) else {
-                continue;
-            };
-            let Some(rect) = mon.window_rect(&self.windows, id) else {
-                continue;
-            };
-            let loc = rect.loc - we.content_offset;
-            let rel = pos - loc.to_f64();
-            let kind = WindowSurfaceType::TOPLEVEL | WindowSurfaceType::SUBSURFACE;
-            if let Some((s, point)) = we.window.surface_under(rel, kind) {
-                return SurfaceUnder {
-                    surface: Some((s, (point + loc).to_f64())),
-                    window: Some(id),
-                    output: output.clone(),
-                };
-            }
-            if rect.to_f64().contains(pos) {
-                return SurfaceUnder {
-                    surface: None,
-                    window: Some(id),
-                    output: output.clone(),
-                };
-            }
-        }
-
-        // bottom / background layers
-        let surface = layer_hit(Layer::Bottom).or_else(|| layer_hit(Layer::Background));
-        SurfaceUnder {
-            surface,
-            window: None,
-            output,
-        }
+        let mon = &self.monitors[&self.seat.pointer_output()];
+        mon.surface_under(&self.windows, pos, self.locked())
     }
 
     pub fn insert_client(&mut self, stream: UnixStream) {

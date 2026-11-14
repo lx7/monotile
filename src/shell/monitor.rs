@@ -5,7 +5,7 @@ use smithay::{
     desktop::layer_map_for_output,
     output::{Output, Scale},
     reexports::wayland_server::{backend::GlobalId, protocol::wl_surface::WlSurface},
-    utils::{Logical, Point, Rectangle, Size, Transform},
+    utils::{Logical, Point, Rectangle, Serial, Size, Transform},
     wayland::{
         session_lock::LockSurface,
         shell::wlr_layer::{KeyboardInteractivity, Layer},
@@ -123,6 +123,7 @@ impl Monitor {
         for tag in &mut tags {
             tag.layout.config = layout.clone();
         }
+        let views = Views::new(View::project(&tags[0], output.geometry(), Vec::new()));
         Self {
             output,
             global,
@@ -131,7 +132,7 @@ impl Monitor {
             active_tag: 0,
             prev_tag: 0,
             lock_surface: None,
-            views: Views::default(),
+            views,
         }
     }
 
@@ -218,7 +219,16 @@ impl Monitor {
         let area = self.output.usable_area();
         let fs_geo = self.output.geometry();
         let configured = self.tag_mut().recompute_layout(ws, area, fs_geo);
-        let view = View::project(self.tag(), configured);
+        self.push_view(configured);
+    }
+
+    pub fn raise(&mut self, id: WindowId) {
+        self.tag_mut().raise(id);
+        self.push_view(Vec::new());
+    }
+
+    pub fn push_view(&mut self, configured: Vec<(WlSurface, Serial)>) {
+        let view = View::project(self.tag(), self.output.geometry(), configured);
         self.views.push_back(view);
     }
 
@@ -256,7 +266,7 @@ impl MonitorsExt for Monitors {
         self.keys().find(|o| o.name() == name)
     }
 
-    // TODO: use view geometry instead (also for surface_under and screencopy)
+    // TODO: use view geometry instead (also for screencopy)
     fn window_rect(&self, ws: &Windows, id: WindowId) -> Option<Rectangle<i32, Logical>> {
         self.get(&ws.get(id)?.output)?.window_rect(ws, id)
     }
@@ -267,8 +277,7 @@ impl MonitorsExt for Monitors {
     }
 
     fn shows_window(&self, id: WindowId) -> bool {
-        self.values()
-            .any(|m| m.views.front().is_some_and(|v| v.contains(id)))
+        self.values().any(|m| m.views.front().contains(id))
     }
 
     fn update_rules(&mut self, config: &config::Config) {

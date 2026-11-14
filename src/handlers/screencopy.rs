@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 use smithay::{
-    backend::renderer::{Color32F, damage::OutputDamageTracker, element::Kind, glow::GlowRenderer},
+    backend::renderer::{
+        Color32F, damage::OutputDamageTracker, element::AsRenderElements, glow::GlowRenderer,
+    },
     output::{Output, WeakOutput},
     reexports::wayland_server::{
         DisplayHandle,
@@ -18,7 +20,6 @@ use smithay::{
             BufferConstraints, CaptureFailureReason, CursorSession, CursorSessionRef, Frame,
             ImageCopyCaptureHandler, ImageCopyCaptureState, Session, SessionRef,
         },
-        seat::WaylandFocus,
     },
 };
 
@@ -447,12 +448,11 @@ pub fn capture_frame(
                     frame.fail(CaptureFailureReason::Unknown);
                     continue;
                 };
-                if we.window.wl_surface().is_none() {
-                    frame.fail(CaptureFailureReason::Unknown);
-                    continue;
-                }
-                let mut elems =
-                    we.render_content(renderer, (0, 0).into(), scale, Kind::Unspecified);
+                let loc = we
+                    .surface_loc(Point::default())
+                    .to_physical_precise_round(scale);
+                let mut elems: Vec<MonotileElement> =
+                    we.window.render_elements(renderer, loc, scale, 1.0);
                 if s.session.draw_cursor() {
                     let window_loc = state
                         .monitors

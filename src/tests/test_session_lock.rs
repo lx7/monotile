@@ -430,6 +430,7 @@ fn locking_takes_pointer_focus_from_the_window() {
     f.roundtrip(app);
     f.client_mut(app).ack_and_commit(w);
     f.roundtrip(app);
+    f.mt.advance_view_queues();
 
     let id = f.mt.state.seat_mon().tag().focused_id().expect("focus");
     let rect =
@@ -455,5 +456,23 @@ fn locking_takes_pointer_focus_from_the_window() {
     assert!(
         f.client(app).pointer_focus().is_none(),
         "the lock surface must take pointer focus",
+    );
+}
+
+#[test]
+fn locked_session_without_lock_surface_shows_nothing() {
+    let mut f = Fixture::new();
+    let c = super::test_pointer_lock::client(&mut f);
+    let w = super::test_pointer_lock::open_window(&mut f, c);
+    let center = super::test_pointer_lock::window_center(&f, c, w);
+
+    let (conn, mut queue, mut client) = connect_lock_client(&mut f);
+    let _lock = request_lock(&mut f, &conn, &mut client, &mut queue);
+    assert!(f.mt.state.seat_mon().lock_surface.is_none());
+
+    let under = f.mt.state.surface_under(center);
+    assert!(
+        under.surface.is_none() && under.window.is_none(),
+        "before the locker's surface exists, no normal client takes input",
     );
 }

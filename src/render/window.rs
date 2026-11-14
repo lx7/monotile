@@ -9,18 +9,16 @@ use smithay::{
             texture::{TextureBuffer, TextureRenderElement},
         },
         gles::{Uniform, element::PixelShaderElement},
-        glow::GlowRenderer,
         utils::with_renderer_surface_state,
     },
     reexports::wayland_server::protocol::wl_surface::WlSurface,
-    utils::{IsAlive, Logical, Point, Rectangle, Scale},
+    utils::{IsAlive, Logical, Rectangle},
     wayland::seat::WaylandFocus,
 };
 
 use super::{
     MonotileElement, RenderCtx, border,
     clipped_surface::{Clippable, Clipped},
-    popup_elements,
 };
 use crate::{config, shell::WindowElement};
 
@@ -224,27 +222,15 @@ impl WindowElement {
         }
     }
 
-    pub fn render_content(
-        &self,
-        renderer: &mut GlowRenderer,
-        origin: Point<i32, Logical>,
-        scale: Scale<f64>,
-        kind: Kind,
-    ) -> Vec<MonotileElement> {
-        let Some(wl) = self.window.wl_surface() else {
-            return Vec::new();
-        };
-        let mut elems = popup_elements(renderer, &wl, origin, scale);
-        let surf_loc = self.surface_loc(origin).to_physical_precise_round(scale);
-        let surfs = render_elements_from_surface_tree(renderer, &wl, surf_loc, scale, 1.0, kind);
-        elems.extend(surfs.into_iter().map(MonotileElement::Surface));
-        elems
+    pub fn render_popups(&self, ctx: &mut RenderCtx, win_geo: Rectangle<i32, Logical>) {
+        if let Some(wl) = self.window.wl_surface() {
+            ctx.popups(&wl, win_geo.loc);
+        }
     }
 
-    pub fn render_popups(&self, ctx: &mut RenderCtx, origin: Point<i32, Logical>) {
+    pub fn render_content(&self, ctx: &mut RenderCtx, win_geo: Rectangle<i32, Logical>) {
         if let Some(wl) = self.window.wl_surface() {
-            let popups = popup_elements(ctx.renderer, &wl, origin, ctx.scale);
-            ctx.elems.extend(popups);
+            ctx.surface_tree(&wl, self.surface_loc(win_geo.loc), Kind::ScanoutCandidate);
         }
     }
 

@@ -20,7 +20,6 @@ use smithay::{
         keyboard::{FilterResult, Keysym},
         pointer::*,
     },
-    output::Output,
     reexports::input::{Device, DragLockState},
     utils::{Logical, Point, SERIAL_COUNTER, Serial},
 };
@@ -128,9 +127,7 @@ impl Monotile {
                     // raise window and focus
                     let under = self.state.surface_under(pointer.current_location());
                     if let Some(id) = under.window {
-                        if let Some(mon) = self.state.monitors.get_mut(&under.output) {
-                            mon.tag_mut().raise(id);
-                        }
+                        self.raise(id);
                         self.set_keyboard_focus(Some(id));
                     }
                 }
@@ -284,7 +281,7 @@ impl Monotile {
         );
         pointer.frame(self);
 
-        self.pointer_moved(pos, under.window, &under.output);
+        self.pointer_moved(pos, under.window);
         self.state
             .seat
             .activate_pointer_constraint(under.surface.as_ref());
@@ -313,16 +310,12 @@ impl Monotile {
         );
         pointer.frame(self);
 
-        self.pointer_moved(pos, under.window, &under.output);
+        self.pointer_moved(pos, under.window);
     }
 
-    fn pointer_moved(
-        &mut self,
-        pos: Point<f64, Logical>,
-        window: Option<WindowId>,
-        output: &Output,
-    ) {
+    fn pointer_moved(&mut self, pos: Point<f64, Logical>, window: Option<WindowId>) {
         let pointer = self.state.seat.get_pointer().unwrap();
+        let output = self.state.seat.pointer_output();
 
         if !pointer.is_grabbed()
             && self.state.config.seats["seat0"].focus_follows_cursor
@@ -337,9 +330,9 @@ impl Monotile {
             let hotspot = self.state.cursor.hotspot;
             self.state
                 .screencopy
-                .update_cursor(Some(pos), hotspot, output);
+                .update_cursor(Some(pos), hotspot, &output);
         }
-        self.backend.schedule_render(output);
+        self.backend.schedule_render(&output);
     }
 
     pub fn handle_action(&mut self, action: Action) {
@@ -452,6 +445,7 @@ impl Monotile {
             button: btn,
             location: pos,
         };
+        self.raise(id);
         let ptr = self.state.seat.get_pointer().unwrap();
         ptr.set_grab(
             self,
@@ -478,6 +472,7 @@ impl Monotile {
             button: btn,
             location: corner,
         };
+        self.raise(id);
         ptr.set_grab(
             self,
             ResizeSurfaceGrab::start(start, id, geo),

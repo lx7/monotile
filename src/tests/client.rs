@@ -12,7 +12,7 @@ use wayland_client::{
     protocol::{
         wl_buffer, wl_callback, wl_compositor, wl_data_device, wl_data_device_manager,
         wl_data_source, wl_keyboard, wl_output, wl_pointer, wl_region, wl_registry, wl_seat,
-        wl_shm, wl_shm_pool, wl_surface,
+        wl_shm, wl_shm_pool, wl_subcompositor, wl_subsurface, wl_surface,
     },
 };
 use wayland_protocols::ext::foreign_toplevel_list::v1::client::{
@@ -71,6 +71,7 @@ pub struct Client {
 
 struct ClientData {
     compositor: Option<wl_compositor::WlCompositor>,
+    subcompositor: Option<wl_subcompositor::WlSubcompositor>,
     wm_base: Option<xdg_wm_base::XdgWmBase>,
     shm: Option<wl_shm::WlShm>,
     buffer: Option<wl_buffer::WlBuffer>,
@@ -278,6 +279,7 @@ impl Client {
 
         let data = ClientData {
             compositor: None,
+            subcompositor: None,
             wm_base: None,
             shm: None,
             buffer: None,
@@ -382,6 +384,29 @@ impl Client {
         anchor: Rectangle<i32, Logical>,
         gravity: xdg_positioner::Gravity,
     ) -> usize {
+        let parent = self.data.windows[win].xdg_surface.clone();
+        self.create_positioned_popup(Some(&parent), anchor, gravity)
+    }
+
+    pub fn create_layer_popup_at(
+        &mut self,
+        ls: usize,
+        anchor: Rectangle<i32, Logical>,
+        gravity: xdg_positioner::Gravity,
+    ) -> usize {
+        let p = self.create_positioned_popup(None, anchor, gravity);
+        let popup = &self.data.popups[p].popup;
+        self.data.layers[ls].layer_surface.get_popup(popup);
+        let _ = self.queue.flush();
+        p
+    }
+
+    fn create_positioned_popup(
+        &mut self,
+        parent: Option<&xdg_surface::XdgSurface>,
+        anchor: Rectangle<i32, Logical>,
+        gravity: xdg_positioner::Gravity,
+    ) -> usize {
         let qh = self.queue.handle();
         let comp = self.data.compositor.as_ref().expect("compositor not bound");
         let wm = self.data.wm_base.as_ref().expect("xdg_wm_base not bound");
@@ -393,12 +418,7 @@ impl Client {
 
         let surface = comp.create_surface(&qh, ());
         let xdg_surface = wm.get_xdg_surface(&surface, &qh, ());
-        let popup = xdg_surface.get_popup(
-            Some(&self.data.windows[win].xdg_surface),
-            &positioner,
-            &qh,
-            (),
-        );
+        let popup = xdg_surface.get_popup(parent, &positioner, &qh, ());
 
         let idx = self.data.popups.len();
         self.data.popups.push(PopupState {
@@ -410,6 +430,25 @@ impl Client {
         });
         let _ = self.queue.flush();
         idx
+    }
+
+    pub fn add_popup_subsurface(&self, popup: usize, pos: (i32, i32)) -> wl_surface::WlSurface {
+        let qh = self.queue.handle();
+        let comp = self.data.compositor.as_ref().expect("compositor not bound");
+        let sub = self
+            .data
+            .subcompositor
+            .as_ref()
+            .expect("wl_subcompositor not bound");
+        let parent = &self.data.popups[popup].surface;
+        let surface = comp.create_surface(&qh, ());
+        let subsurface = sub.get_subsurface(&surface, parent, &qh, ());
+        subsurface.set_position(pos.0, pos.1);
+        surface.attach(Some(&self.create_shm_buffer(20, 20)), 0, 0);
+        surface.commit();
+        parent.commit();
+        let _ = self.queue.flush();
+        surface
     }
 
     pub fn popup(&self, popup: usize) -> &PopupState {
@@ -624,8 +663,13 @@ impl Client {
     pub fn ack_and_commit_sized(&self, win: usize) {
         let ws = &self.data.windows[win];
         let Configure { width, height, .. } = ws.configures.last().expect("configure");
-        let buffer = self.create_shm_buffer(*width, *height);
         ws.xdg_surface.ack_configure(ws.last_serial);
+        self.commit_buffer(win, *width, *height);
+    }
+
+    pub fn commit_buffer(&self, win: usize, width: i32, height: i32) {
+        let ws = &self.data.windows[win];
+        let buffer = self.create_shm_buffer(width, height);
         ws.surface.attach(Some(&buffer), 0, 0);
         ws.surface.commit();
         let _ = self.queue.flush();
@@ -650,20 +694,18 @@ impl Client {
     // layer shell
 
     pub fn create_layer_surface(&mut self) -> usize {
+        self.create_layer_surface_on(zwlr_layer_shell_v1::Layer::Top)
+    }
+
+    pub fn create_layer_surface_on(&mut self, layer: zwlr_layer_shell_v1::Layer) -> usize {
         let qh = self.queue.handle();
         let comp = self.data.compositor.as_ref().unwrap();
         let shell = self.data.layer_shell.as_ref().unwrap();
         let output = self.data.ipc_output.as_ref().unwrap();
 
         let surface = comp.create_surface(&qh, ());
-        let ls = shell.get_layer_surface(
-            &surface,
-            Some(output),
-            zwlr_layer_shell_v1::Layer::Top,
-            "test".to_string(),
-            &qh,
-            (),
-        );
+        let ls =
+            shell.get_layer_surface(&surface, Some(output), layer, "test".to_string(), &qh, ());
         ls.set_size(0, 30);
         ls.set_anchor(
             zwlr_layer_surface_v1::Anchor::Top
@@ -704,6 +746,15 @@ impl Client {
         }
         let layer = &self.data.layers[ls];
         layer.surface.attach(self.data.buffer.as_ref(), 0, 0);
+        layer.surface.commit();
+        let _ = self.queue.flush();
+    }
+
+    pub fn layer_ack_and_commit_sized(&self, ls: usize, width: i32, height: i32) {
+        let buffer = self.create_shm_buffer(width, height);
+        let layer = &self.data.layers[ls];
+        layer.layer_surface.ack_configure(layer.last_serial);
+        layer.surface.attach(Some(&buffer), 0, 0);
         layer.surface.commit();
         let _ = self.queue.flush();
     }
@@ -962,6 +1013,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientData {
             match interface.as_str() {
                 "wl_compositor" => {
                     state.compositor = Some(registry.bind(name, version, qh, ()));
+                }
+                "wl_subcompositor" => {
+                    state.subcompositor = Some(registry.bind(name, version, qh, ()));
                 }
                 "xdg_wm_base" => {
                     state.wm_base = Some(registry.bind(name, version, qh, ()));
@@ -1678,6 +1732,30 @@ impl Dispatch<wl_pointer::WlPointer, ()> for ClientData {
             wl_pointer::Event::Motion { .. } => state.pointer_motions += 1,
             _ => {}
         }
+    }
+}
+
+impl Dispatch<wl_subcompositor::WlSubcompositor, ()> for ClientData {
+    fn event(
+        _: &mut Self,
+        _: &wl_subcompositor::WlSubcompositor,
+        _: wl_subcompositor::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<wl_subsurface::WlSubsurface, ()> for ClientData {
+    fn event(
+        _: &mut Self,
+        _: &wl_subsurface::WlSubsurface,
+        _: wl_subsurface::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
     }
 }
 

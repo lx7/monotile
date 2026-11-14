@@ -14,5 +14,5 @@ pub use layout::TilingLayout;
 pub use monitor::{Monitor, MonitorSettings, Monitors, MonitorsExt, OutputExt};
 pub use seat::SeatExt;
 pub use tag::Tag;
-pub use view::{Tile, View, Views};
+pub use view::{Placed, View, Views};
 pub use window::{Placement, ToplevelSurfaceExt, Unmapped, WindowElement, WindowId, Windows};

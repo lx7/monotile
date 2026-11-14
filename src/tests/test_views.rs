@@ -3,7 +3,7 @@ use smithay::utils::Rectangle;
 use super::Fixture;
 use crate::{
     config::Config,
-    shell::{SeatExt, View},
+    shell::{OutputExt, SeatExt, View},
 };
 
 fn open_window(f: &mut Fixture, c: usize) -> usize {
@@ -22,7 +22,11 @@ fn settle(f: &mut Fixture, c: usize, win: usize) {
 }
 
 fn project(f: &Fixture) -> View {
-    View::project(f.mt.state.seat_mon().tag(), Vec::new())
+    View::project(
+        f.mt.state.seat_mon().tag(),
+        f.mt.state.seat_mon().output.geometry(),
+        Vec::new(),
+    )
 }
 
 fn recompute_seat(f: &mut Fixture) {
@@ -88,7 +92,7 @@ fn fullscreen_window_projects_to_fullscreen() {
 
     let v = project(&f);
     assert!(v.tiled.is_empty() && v.floating.is_empty());
-    assert_eq!(v.fullscreen, Some(id));
+    assert_eq!(v.fullscreen.map(|p| p.id), Some(id));
 }
 
 #[test]
@@ -101,7 +105,7 @@ fn smart_gaps_single_window_fills_area() {
     let a = open_window(&mut f, c);
     settle(&mut f, c, a);
 
-    let tile = f.mt.state.seat_mon().views.front().unwrap().tiled[0].rect;
+    let tile = f.mt.state.seat_mon().views.front().tiled[0].rect;
     assert_eq!(
         tile,
         Rectangle::from_size((1000, 800).into()),

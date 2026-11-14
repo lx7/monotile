@@ -207,9 +207,10 @@ fn layout_change_keeping_the_window_under_the_pointer_keeps_the_lock() {
 fn layout_change_moving_the_window_away_ends_the_lock() {
     let mut f = Fixture::new();
     let c = client(&mut f);
-    locked_first_of_two_windows(&mut f, c, Lifetime::Persistent);
+    let (a, b) = locked_first_of_two_windows(&mut f, c, Lifetime::Persistent);
 
     f.mt.handle_action(Action::Swap(Rel::Next));
+    settle(&mut f, c, &[a, b]);
     f.roundtrip(c);
 
     assert_eq!(
@@ -225,6 +226,7 @@ fn tag_switch_ends_the_lock() {
     locked_window(&mut f, c, Lifetime::Persistent);
 
     f.mt.handle_action(Action::FocusTag(1));
+    f.mt.advance_view_queues();
     f.roundtrip(c);
 
     assert_eq!(

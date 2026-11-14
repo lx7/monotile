@@ -58,6 +58,24 @@ fn locking_takes_the_keyboard_from_a_popup_grab() {
 }
 
 #[test]
+fn exclusive_layer_closes_the_popup() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    let (_w, p) = open_window_with_popup(&mut f, c);
+
+    let ls = f.client_mut(c).create_layer_surface();
+    f.client_mut(c).layer_exclusive_keyboard(ls);
+    f.client_mut(c).layer_commit(ls);
+    f.client_mut(c).layer_attach_and_commit(ls);
+    f.roundtrip(c);
+
+    assert!(
+        f.client(c).popup_done(p),
+        "the popup most close when an exclusive layer takes the keyboard",
+    );
+}
+
+#[test]
 fn focus_change_closes_the_popup() {
     let mut f = Fixture::new();
     let c = f.add_client();

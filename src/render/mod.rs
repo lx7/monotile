@@ -3,6 +3,7 @@
 mod border;
 pub mod clipped_surface;
 pub mod cursor;
+mod monitor;
 mod shaders;
 mod view;
 pub mod window;
@@ -30,20 +31,17 @@ use smithay::{
             glow::GlowRenderer,
         },
     },
-    desktop::{PopupManager, layer_map_for_output, utils::send_frames_surface_tree},
+    desktop::{LayerMap, PopupManager, layer_map_for_output, utils::send_frames_surface_tree},
     output::Output,
     reexports::wayland_server::protocol::{wl_buffer, wl_surface::WlSurface},
     utils::{Buffer as BufferCoords, Logical, Physical, Point, Rectangle, Scale, Size, Transform},
     wayland::{dmabuf::get_dmabuf, shell::wlr_layer::Layer, shm::with_buffer_contents_mut},
 };
 
+pub use monitor::SurfaceUnder;
 pub use window::RenderStep;
 
-use crate::{
-    config::{Config, Layout},
-    shell::{Monitor, OutputExt, Windows},
-    state::State,
-};
+use crate::{config::Layout, state::State};
 use clipped_surface::Clipped;
 
 render_elements! {
@@ -113,130 +111,36 @@ pub struct RenderCtx<'a> {
     pub(crate) layout: &'a Layout,
     pub(crate) scale: Scale<f64>,
     pub(crate) elems: Vec<MonotileElement>,
-    output: &'a Output,
 }
 
 impl RenderCtx<'_> {
-    fn layers(&mut self, layers: &[Layer]) {
-        let map = layer_map_for_output(self.output);
-        for layer in layers {
-            for surface in map.layers_on(*layer).rev() {
-                let geo = map.layer_geometry(surface).unwrap();
-                let surfs = render_elements_from_surface_tree(
-                    self.renderer,
-                    surface.wl_surface(),
-                    geo.loc.to_physical_precise_round(self.scale),
-                    self.scale,
-                    1.0,
-                    Kind::Unspecified,
-                );
-                self.elems
-                    .extend(surfs.into_iter().map(MonotileElement::Surface));
-            }
-        }
-    }
-
-    fn layer_popups(&mut self, layers: &[Layer]) {
-        let map = layer_map_for_output(self.output);
-        for layer in layers {
-            for surface in map.layers_on(*layer).rev() {
-                let origin = map.layer_geometry(surface).unwrap().loc;
-                let popups =
-                    popup_elements(self.renderer, surface.wl_surface(), origin, self.scale);
-                self.elems.extend(popups);
-            }
-        }
-    }
-
-    fn surface_tree(&mut self, surface: &WlSurface, loc: Point<i32, Logical>, kind: Kind) {
-        let surfs = render_elements_from_surface_tree(
-            self.renderer,
-            surface,
-            loc.to_physical_precise_round(self.scale),
-            self.scale,
-            1.0,
-            kind,
-        );
+    pub fn surface_tree(&mut self, surface: &WlSurface, loc: Point<i32, Logical>, kind: Kind) {
+        let loc = loc.to_physical_precise_round(self.scale);
+        let elems =
+            render_elements_from_surface_tree(self.renderer, surface, loc, self.scale, 1.0, kind);
         self.elems
-            .extend(surfs.into_iter().map(MonotileElement::Surface));
-    }
-}
-
-pub fn popup_elements(
-    renderer: &mut GlowRenderer,
-    surface: &WlSurface,
-    origin: Point<i32, Logical>,
-    scale: Scale<f64>,
-) -> Vec<MonotileElement> {
-    let mut elems = Vec::new();
-    for (popup, offset) in PopupManager::popups_for_surface(surface) {
-        let pos = origin + offset - popup.geometry().loc;
-        let surfs = render_elements_from_surface_tree(
-            renderer,
-            popup.wl_surface(),
-            pos.to_physical_precise_round(scale),
-            scale,
-            1.0,
-            Kind::Unspecified,
-        );
-        elems.extend(surfs.into_iter().map(MonotileElement::Surface));
-    }
-    elems
-}
-
-pub fn output_elements(
-    renderer: &mut GlowRenderer,
-    mon: &mut Monitor,
-    windows: &mut Windows,
-    shaders: &Shaders,
-    config: &Config,
-    locked: bool,
-) -> Vec<MonotileElement> {
-    let output = &mon.output;
-    let out_scale = output.current_scale().fractional_scale();
-    let scale = Scale::from(out_scale);
-
-    let mut ctx = RenderCtx {
-        renderer,
-        shaders,
-        layout: &config.layout,
-        scale,
-        elems: Vec::with_capacity(windows.len() * 20 + 32),
-        output,
-    };
-
-    if let Some(lock) = &mon.lock_surface {
-        ctx.surface_tree(lock.wl_surface(), (0, 0).into(), Kind::Unspecified);
-        return ctx.elems;
-    }
-    if locked {
-        return ctx.elems;
+            .extend(elems.into_iter().map(MonotileElement::Surface));
     }
 
-    let view = mon.views.front();
-
-    if let Some(we) = view
-        .and_then(|v| v.fullscreen)
-        .and_then(|id| windows.get(id))
-    {
-        let geo = mon.output.geometry();
-        ctx.layer_popups(&[Layer::Overlay]);
-        ctx.layers(&[Layer::Overlay]);
-
-        let content = we.render_content(ctx.renderer, geo.loc, ctx.scale, Kind::ScanoutCandidate);
-        ctx.elems.extend(content);
-    } else {
-        ctx.layer_popups(&[Layer::Overlay, Layer::Top, Layer::Bottom, Layer::Background]);
-        ctx.layers(&[Layer::Overlay, Layer::Top]);
-
-        if let Some(view) = view {
-            view.render_elements(&mut ctx, windows);
+    pub fn popups(&mut self, parent: &WlSurface, origin: Point<i32, Logical>) {
+        for (popup, offset) in PopupManager::popups_for_surface(parent) {
+            let loc = origin + offset - popup.geometry().loc;
+            self.surface_tree(popup.wl_surface(), loc, Kind::Unspecified);
         }
-
-        ctx.layers(&[Layer::Bottom, Layer::Background]);
     }
 
-    ctx.elems
+    pub fn layers(&mut self, map: &LayerMap, layer: Layer) {
+        for ls in map.layers_on(layer).rev() {
+            let loc = map.layer_geometry(ls).unwrap().loc;
+            self.surface_tree(ls.wl_surface(), loc, Kind::Unspecified);
+        }
+    }
+
+    pub fn layer_popups(&mut self, map: &LayerMap, layer: Layer) {
+        for ls in map.layers_on(layer).rev() {
+            self.popups(ls.wl_surface(), map.layer_geometry(ls).unwrap().loc);
+        }
+    }
 }
 
 impl State {

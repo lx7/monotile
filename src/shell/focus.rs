@@ -37,6 +37,7 @@ impl Monotile {
 
         // if exclusive layer exists, focus it
         if let Some(surface) = self.state.seat.exclusive_layer() {
+            self.dismiss_popup_grab();
             if let Some(kb) = self.state.seat.get_keyboard() {
                 kb.set_focus(self, Some(surface), SERIAL_COUNTER.next_serial());
             }
@@ -95,7 +96,7 @@ impl Monotile {
         self.send_pointer_motion(center);
     }
 
-    fn send_pointer_motion(&mut self, location: Point<f64, Logical>) {
+    pub fn send_pointer_motion(&mut self, location: Point<f64, Logical>) {
         let pointer = self.state.seat.get_pointer().unwrap();
         let under = self.state.surface_under(location);
         if self.state.seat.pointer_locked(under.surface.as_ref()) {

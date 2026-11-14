@@ -4,14 +4,14 @@ use smithay::utils::{Logical, Rectangle, Size};
 
 use crate::config::{self, Rel};
 
-use super::{Tile, WindowId};
+use super::{Placed, WindowId};
 
 #[derive(Debug, Clone)]
 pub struct TilingLayout {
     pub main_count: usize,
     pub main_factor: f32,
     pub config: config::Layout,
-    tiles: Vec<Tile>,
+    tiles: Vec<Placed>,
 }
 
 impl Default for TilingLayout {
@@ -34,7 +34,7 @@ impl TilingLayout {
         "[]="
     }
 
-    pub fn tiles(&self) -> &[Tile] {
+    pub fn tiles(&self) -> &[Placed] {
         &self.tiles
     }
 
@@ -56,7 +56,7 @@ impl TilingLayout {
 
     pub fn add(&mut self, id: WindowId) {
         if !self.contains(id) {
-            self.tiles.push(Tile {
+            self.tiles.push(Placed {
                 id,
                 rect: Rectangle::default(),
             });

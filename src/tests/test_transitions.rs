@@ -31,7 +31,7 @@ fn front_tiled_rect(f: &Fixture, id: WindowId) -> Option<Rectangle<i32, Logical>
     f.mt.state
         .seat_mon()
         .views
-        .front()?
+        .front()
         .tiled
         .iter()
         .find(|t| t.id == id)
@@ -39,11 +39,7 @@ fn front_tiled_rect(f: &Fixture, id: WindowId) -> Option<Rectangle<i32, Logical>
 }
 
 fn front_shows(f: &Fixture, id: WindowId) -> bool {
-    f.mt.state
-        .seat_mon()
-        .views
-        .front()
-        .is_some_and(|v| v.contains(id))
+    f.mt.state.seat_mon().views.front().contains(id)
 }
 
 #[test]
@@ -56,8 +52,8 @@ fn closing_stack_window_holds_view_until_main_commits() {
     settle(&mut f, c, 0); // main acks the split
 
     assert_eq!(views_len(&f), 1, "layout settled");
-    let main_id = f.mt.state.seat_mon().views.front().unwrap().tiled[0].id;
-    let stack_id = f.mt.state.seat_mon().views.front().unwrap().tiled[1].id;
+    let main_id = f.mt.state.seat_mon().views.front().tiled[0].id;
+    let stack_id = f.mt.state.seat_mon().views.front().tiled[1].id;
     let main_before = front_tiled_rect(&f, main_id).unwrap();
 
     // destroy the stack window
@@ -79,7 +75,7 @@ fn closing_stack_window_holds_view_until_main_commits() {
         "destroyed window must report !alive()"
     );
     assert_eq!(
-        f.mt.state.seat_mon().views.front().unwrap().tiled.len(),
+        f.mt.state.seat_mon().views.front().tiled.len(),
         2,
         "held view still renders both tiles (destroyed one from its texture)",
     );
@@ -118,13 +114,7 @@ fn closing_lone_window_settles_immediately() {
 
     assert_eq!(views_len(&f), 1, "no survivors to wait on");
     assert!(
-        f.mt.state
-            .seat_mon()
-            .views
-            .front()
-            .unwrap()
-            .tiled
-            .is_empty(),
+        f.mt.state.seat_mon().views.front().tiled.is_empty(),
         "nothing left to draw",
     );
 }
@@ -190,13 +180,7 @@ fn tag_switch_without_resize_settles_immediately() {
 
     assert_eq!(views_len(&f), 1, "empty incoming tag needs no hold");
     assert!(
-        f.mt.state
-            .seat_mon()
-            .views
-            .front()
-            .unwrap()
-            .tiled
-            .is_empty(),
+        f.mt.state.seat_mon().views.front().tiled.is_empty(),
         "the new tag is presented immediately",
     );
 }

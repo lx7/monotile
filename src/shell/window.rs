@@ -19,11 +19,15 @@ use smithay::{
     utils::{IsAlive, Logical, Point, Rectangle, Serial, Size},
     wayland::{
         compositor::with_states,
+        seat::WaylandFocus,
         shell::xdg::{SurfaceCachedState, ToplevelSurface, XdgToplevelSurfaceData},
     },
 };
 
-use crate::{config, render::RenderStep};
+use crate::{
+    config,
+    render::{RenderStep, SurfaceUnder},
+};
 
 use super::{Monitors, MonitorsExt, OutputExt};
 
@@ -303,6 +307,35 @@ impl WindowElement {
 
     pub fn surface_loc(&self, loc: Point<i32, Logical>) -> Point<i32, Logical> {
         loc - self.content_offset
+    }
+
+    pub fn popups_under(
+        &self,
+        rect: Rectangle<i32, Logical>,
+        pos: Point<f64, Logical>,
+    ) -> Option<SurfaceUnder> {
+        let wl = self.window.wl_surface()?;
+        SurfaceUnder::popups(&wl, rect.loc, pos, Some(self.id))
+    }
+
+    pub fn surface_under(
+        &self,
+        rect: Rectangle<i32, Logical>,
+        pos: Point<f64, Logical>,
+    ) -> Option<SurfaceUnder> {
+        if !self.window.alive() {
+            return None;
+        }
+        if !rect.to_f64().contains(pos) {
+            return None;
+        }
+        let wl = self.window.wl_surface()?;
+        let loc = self.surface_loc(rect.loc);
+        let hit = SurfaceUnder::surface_tree(&wl, loc, pos, Some(self.id));
+        Some(hit.unwrap_or(SurfaceUnder {
+            surface: None,
+            window: Some(self.id),
+        }))
     }
 
     pub fn set_app_id(&mut self, app_id: String) {

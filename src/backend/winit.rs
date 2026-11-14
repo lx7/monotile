@@ -27,18 +27,13 @@ impl WinitState {
         let age = self.backend.buffer_age().unwrap_or(0);
         let (renderer, mut fb) = self.backend.bind()?;
         let locked = state.locked();
-        let mon = state
-            .monitors
-            .get_mut(&self.output)
-            .expect("winit always has one output");
-        mon.views.pop_ready();
+        let mon = &state.monitors[&self.output];
         let background = mon.settings.background;
-        let elems = crate::render::output_elements(
+        let elems = mon.render_elements(
             renderer,
-            mon,
             &mut state.windows,
             &self.shaders,
-            &state.config,
+            &state.config.layout,
             locked,
         );
         let rendered = self

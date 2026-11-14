@@ -4,29 +4,25 @@ use super::RenderCtx;
 use crate::shell::{View, Windows};
 
 impl View {
-    pub fn render_elements(&self, ctx: &mut RenderCtx, windows: &mut Windows) {
+    pub fn render_popups(&self, ctx: &mut RenderCtx, ws: &Windows) {
+        for placed in self.stack(ws) {
+            if let Some(we) = ws.get(placed.id) {
+                we.render_popups(ctx, placed.rect);
+            }
+        }
+    }
+
+    pub fn render(&self, ctx: &mut RenderCtx, ws: &mut Windows) {
+        if let Some(placed) = self.fullscreen {
+            if let Some(we) = ws.get(placed.id) {
+                we.render_content(ctx, placed.rect);
+            }
+            return;
+        }
         let lone = self.tiled.len() == 1;
-
-        for &id in self.floating.iter().rev() {
-            if let Some(we) = windows.get(id) {
-                we.render_popups(ctx, we.float_geo.loc);
-            }
-        }
-        for tile in self.tiled.iter().rev() {
-            if let Some(we) = windows.get(tile.id) {
-                we.render_popups(ctx, tile.rect.loc);
-            }
-        }
-
-        for &id in self.floating.iter().rev() {
-            if let Some(we) = windows.get_mut(id) {
-                let geo = we.float_geo;
-                we.render_elements(ctx, geo, false);
-            }
-        }
-        for tile in self.tiled.iter().rev() {
-            if let Some(we) = windows.get_mut(tile.id) {
-                we.render_elements(ctx, tile.rect, lone);
+        for placed in self.stack(ws) {
+            if let Some(we) = ws.get_mut(placed.id) {
+                we.render_elements(ctx, placed.rect, lone && !we.floating);
             }
         }
     }

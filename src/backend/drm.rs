@@ -183,31 +183,30 @@ impl DrmState {
             state.screencopy.fail_pending_for_output(&surface.output);
             return;
         }
-        let locked = state.locked();
-        let Some(mon) = state.monitors.get_mut(&surface.output) else {
+        let Some(mon) = state.monitors.get(&surface.output) else {
             state.screencopy.fail_pending_for_output(&surface.output);
             return;
         };
-        mon.views.pop_ready();
+        let background = mon.settings.background;
 
         let refresh = Self::refresh_duration(&surface.output);
         let ptr = state.seat.get_pointer().unwrap();
         let pos = ptr.current_location();
         let mut elems = state.cursor.elements(&mut self.renderer, pos);
         let cursor_count = elems.len();
-        elems.extend(crate::render::output_elements(
+        let locked = state.locked();
+        elems.extend(mon.render_elements(
             &mut self.renderer,
-            mon,
             &mut state.windows,
             &self.shaders,
-            &state.config,
+            &state.config.layout,
             locked,
         ));
 
         let result = match surface.compositor.render_frame(
             &mut self.renderer,
             &elems,
-            mon.settings.background,
+            background,
             FrameFlags::DEFAULT,
         ) {
             Ok(result) => result,
@@ -222,14 +221,13 @@ impl DrmState {
 
         let elapsed = state.start_time.elapsed();
 
-        let bg = mon.settings.background;
         screencopy::capture_frame(
             &mut self.renderer,
             state,
             &surface.output,
             &elems,
             cursor_count,
-            bg,
+            background,
             elapsed,
         );
         screencopy::capture_cursor(&mut self.renderer, state, &surface.output, elapsed);
