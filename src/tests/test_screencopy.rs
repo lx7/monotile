@@ -1,9 +1,12 @@
+use smithay::utils::{Logical, Point, Rectangle};
 use wayland_client::protocol::wl_shm;
 
 use super::Fixture;
 use super::client::{
     CaptureFrameEvent, CaptureSessionEvent, CursorSessionEvent, ForeignToplevelEvent,
 };
+use super::test_pointer_lock::{client, open_two_windows};
+use crate::shell::MonitorsExt;
 
 // ── Helpers ────────────────────────────────────────
 
@@ -655,5 +658,43 @@ fn cursor_session_stopped_on_destroy() {
             .iter()
             .any(|e| matches!(e, CaptureSessionEvent::Stopped)),
         "inner capture session should receive stopped, got {events:?}",
+    );
+}
+
+#[test]
+fn capture_cursor_belongs_to_the_window_under_the_pointer() {
+    let mut f = Fixture::new();
+    let c = client(&mut f);
+    let (a, b) = open_two_windows(&mut f, c);
+    let tiled = f.mt.state.seat_mon().tag().tiled.clone();
+    let (below, above) = (tiled[0], tiled[1]);
+
+    // float one window over a part of the other
+    let float_geo = Rectangle::new((100, 100).into(), (300, 300).into());
+    f.mt.state.windows[above].set_floating(true);
+    f.mt.state.windows[above].float_geo = float_geo;
+    let output = f.mt.state.seat_mon().output.clone();
+    f.mt.recompute_layout(&output);
+    f.roundtrip(c);
+    f.client_mut(c).ack_and_commit_sized(a);
+    f.client_mut(c).ack_and_commit_sized(b);
+    f.roundtrip(c);
+    f.mt.advance_view_queues();
+
+    let ws = &f.mt.state.windows;
+    let below_rect = f.mt.state.monitors.window_rect(ws, below).unwrap();
+    let covered: Point<f64, Logical> = (250.0, 250.0).into();
+    let uncovered: Point<f64, Logical> = (600.0, 600.0).into();
+    assert!(below_rect.to_f64().contains(covered) && below_rect.to_f64().contains(uncovered));
+
+    assert_eq!(
+        f.mt.state.surface_under(covered).window,
+        Some(above),
+        "where the window below is covered, the pointer is on the floating window",
+    );
+    assert_eq!(
+        f.mt.state.surface_under(uncovered).window,
+        Some(below),
+        "where it is not covered, the pointer is on the window below",
     );
 }

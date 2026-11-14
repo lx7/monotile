@@ -28,7 +28,7 @@ use tracing::warn;
 use crate::{
     Monotile,
     render::MonotileElement,
-    shell::{MonitorsExt, WindowId, Windows},
+    shell::{SeatExt, WindowId, Windows},
     state::State,
 };
 
@@ -454,14 +454,16 @@ pub fn capture_frame(
                 let mut elems: Vec<MonotileElement> =
                     we.window.render_elements(renderer, loc, scale, 1.0);
                 if s.session.draw_cursor() {
-                    let window_loc = state
-                        .monitors
-                        .window_rect(&state.windows, id)
-                        .map(|r| r.loc)
-                        .unwrap_or_default();
                     let ptr_pos = state.seat.get_pointer().unwrap().current_location();
-                    let local_pos = ptr_pos - window_loc.to_f64();
-                    elems.splice(0..0, state.cursor.elements(renderer, local_pos));
+                    let mon = &state.monitors[&state.seat.pointer_output()];
+                    let under = mon.surface_under(&state.windows, ptr_pos, locked);
+                    let shown = mon.views.front().stack(&state.windows);
+                    if under.window == Some(id)
+                        && let Some(element) = shown.iter().find(|e| e.id == id)
+                    {
+                        let local_pos = ptr_pos - element.rect.loc.to_f64();
+                        elems.splice(0..0, state.cursor.elements(renderer, local_pos));
+                    }
                 }
                 match crate::render::render_to_buffer(
                     renderer,
