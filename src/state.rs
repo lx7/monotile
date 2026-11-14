@@ -135,7 +135,7 @@ impl Monotile {
     pub fn raise(&mut self, id: WindowId) {
         let output = self.state.seat.pointer_output();
         if let Some(mon) = self.state.monitors.get_mut(&output) {
-            mon.raise(id);
+            mon.raise(&mut self.state.windows, id);
         }
     }
 

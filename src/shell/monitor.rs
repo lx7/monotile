@@ -5,7 +5,7 @@ use smithay::{
     desktop::layer_map_for_output,
     output::{Output, Scale},
     reexports::wayland_server::{backend::GlobalId, protocol::wl_surface::WlSurface},
-    utils::{Logical, Point, Rectangle, Serial, Size, Transform},
+    utils::{Logical, Point, Rectangle, Size, Transform},
     wayland::{
         session_lock::LockSurface,
         shell::wlr_layer::{KeyboardInteractivity, Layer},
@@ -14,7 +14,7 @@ use smithay::{
 
 use crate::config::{self, ModeConfig};
 
-use super::{Tag, View, Views, WindowId, Windows};
+use super::{Tag, Views, WindowId, Windows};
 
 pub trait OutputExt {
     fn geometry(&self) -> Rectangle<i32, Logical>;
@@ -123,7 +123,8 @@ impl Monitor {
         for tag in &mut tags {
             tag.layout.config = layout.clone();
         }
-        let views = Views::new(View::project(&tags[0], output.geometry(), Vec::new()));
+        let view = tags[0].recompute_layout(&mut Windows::default(), &output);
+        let views = Views::new(view);
         Self {
             output,
             global,
@@ -216,20 +217,13 @@ impl Monitor {
     }
 
     pub fn recompute_layout(&mut self, ws: &mut Windows) {
-        let area = self.output.usable_area();
-        let fs_geo = self.output.geometry();
-        let configured = self.tag_mut().recompute_layout(ws, area, fs_geo);
-        self.push_view(configured);
-    }
-
-    pub fn raise(&mut self, id: WindowId) {
-        self.tag_mut().raise(id);
-        self.push_view(Vec::new());
-    }
-
-    pub fn push_view(&mut self, configured: Vec<(WlSurface, Serial)>) {
-        let view = View::project(self.tag(), self.output.geometry(), configured);
+        let view = self.tags[self.active_tag].recompute_layout(ws, &self.output);
         self.views.push_back(view);
+    }
+
+    pub fn raise(&mut self, ws: &mut Windows, id: WindowId) {
+        self.tag_mut().raise(id);
+        self.recompute_layout(ws);
     }
 
     pub fn window_ids(&self) -> Vec<WindowId> {

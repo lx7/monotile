@@ -3,14 +3,11 @@
 use std::collections::VecDeque;
 
 use derive_more::{Deref, DerefMut};
-use smithay::{
-    reexports::wayland_server::protocol::wl_surface::WlSurface,
-    utils::{Logical, Point, Rectangle, Serial},
-};
+use smithay::utils::{Logical, Point, Rectangle};
 
 use crate::render::SurfaceUnder;
 
-use super::{LayoutBlocker, Tag, WindowId, Windows};
+use super::{LayoutBlocker, WindowId, Windows};
 
 #[derive(Debug, Deref, DerefMut)]
 pub struct Views(VecDeque<View>);
@@ -48,28 +45,6 @@ pub struct View {
 }
 
 impl View {
-    pub fn project(
-        tag: &Tag,
-        output_geo: Rectangle<i32, Logical>,
-        configured: Vec<(WlSurface, Serial)>,
-    ) -> Self {
-        let fullscreen = tag.fullscreen.map(|id| Placed {
-            id,
-            rect: output_geo,
-        });
-        let (tiled, floating) = if fullscreen.is_some() {
-            (Vec::new(), Vec::new())
-        } else {
-            (tag.layout.tiles().to_vec(), tag.floating.clone())
-        };
-        Self {
-            fullscreen,
-            tiled,
-            floating,
-            blocker: LayoutBlocker::install(configured),
-        }
-    }
-
     pub fn stack(&self, ws: &Windows) -> Vec<Placed> {
         let floating = self.floating.iter().rev().filter_map(|&id| {
             let rect = ws.get(id)?.float_geo;

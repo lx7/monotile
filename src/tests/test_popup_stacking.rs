@@ -224,6 +224,10 @@ fn clicked_floating_window_is_raised_in_the_view() {
         Some(lower),
         "the clicked window is on top in the view that will be drawn next",
     );
+    assert!(
+        newest.blocker.is_committed(),
+        "a raise changes no size, so its view waits for no client",
+    );
 }
 
 #[test]

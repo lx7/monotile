@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 use smithay::{
-    reexports::wayland_server::protocol::wl_surface::WlSurface,
-    utils::{Logical, Rectangle, Serial},
+    output::Output,
+    utils::{Logical, Rectangle},
 };
 
-use super::{TilingLayout, WindowElement, WindowId, Windows};
+use super::{
+    LayoutBlocker, OutputExt, Placed, TilingLayout, View, WindowElement, WindowId, Windows,
+};
 
 #[derive(Debug, Default, Clone)]
 pub struct Tag {
@@ -81,12 +83,7 @@ impl Tag {
         }
     }
 
-    pub fn recompute_layout(
-        &mut self,
-        ws: &mut Windows,
-        area: Rectangle<i32, Logical>,
-        fs_geo: Rectangle<i32, Logical>,
-    ) -> Vec<(WlSurface, Serial)> {
+    pub fn recompute_layout(&mut self, ws: &mut Windows, output: &Output) -> View {
         self.layout
             .retain(|id| ws.get(id).is_some_and(|we| !we.floating));
         self.floating
@@ -108,7 +105,8 @@ impl Tag {
             .copied()
             .find(|&id| ws.get(id).is_some_and(|we| we.fullscreen));
 
-        self.layout.recompute(area);
+        let fs_geo = output.geometry();
+        self.layout.recompute(output.usable_area());
         let mut configured = Vec::new();
         for &id in &self.focus_stack {
             let Some(we) = ws.get_mut(id) else { continue };
@@ -121,6 +119,18 @@ impl Tag {
                 configured.push((tl.wl_surface().clone(), serial));
             }
         }
-        configured
+
+        let fullscreen = self.fullscreen.map(|id| Placed { id, rect: fs_geo });
+        let (tiled, floating) = if fullscreen.is_some() {
+            (Vec::new(), Vec::new())
+        } else {
+            (self.layout.tiles().to_vec(), self.floating.clone())
+        };
+        View {
+            fullscreen,
+            tiled,
+            floating,
+            blocker: LayoutBlocker::install(configured),
+        }
     }
 }

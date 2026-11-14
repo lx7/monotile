@@ -3,7 +3,7 @@ use smithay::utils::Rectangle;
 use super::Fixture;
 use crate::{
     config::Config,
-    shell::{OutputExt, SeatExt, View},
+    shell::{SeatExt, View},
 };
 
 fn open_window(f: &mut Fixture, c: usize) -> usize {
@@ -21,12 +21,8 @@ fn settle(f: &mut Fixture, c: usize, win: usize) {
     f.mt.advance_view_queues();
 }
 
-fn project(f: &Fixture) -> View {
-    View::project(
-        f.mt.state.seat_mon().tag(),
-        f.mt.state.seat_mon().output.geometry(),
-        Vec::new(),
-    )
+fn newest_view(f: &Fixture) -> &View {
+    f.mt.state.seat_mon().views.back().unwrap()
 }
 
 fn recompute_seat(f: &mut Fixture) {
@@ -41,7 +37,7 @@ fn single_tiled_window_projects_one_tile() {
     let a = open_window(&mut f, c);
     settle(&mut f, c, a);
 
-    let v = project(&f);
+    let v = newest_view(&f);
     assert_eq!(v.tiled.len(), 1, "one tiled window");
     assert!(v.floating.is_empty(), "nothing floating");
     assert!(v.fullscreen.is_none(), "not fullscreen");
@@ -56,7 +52,7 @@ fn two_tiled_windows_project_in_layout_order() {
     settle(&mut f, c, a);
 
     let order: Vec<_> = f.mt.state.seat_mon().tag().layout.ids().collect();
-    let v = project(&f);
+    let v = newest_view(&f);
     assert_eq!(v.tiled.len(), 2);
     assert_eq!(
         v.tiled.iter().map(|t| t.id).collect::<Vec<_>>(),
@@ -75,7 +71,7 @@ fn floating_window_lands_in_floating_group() {
     recompute_seat(&mut f);
     settle(&mut f, c, a);
 
-    let v = project(&f);
+    let v = newest_view(&f);
     assert!(v.tiled.is_empty(), "floating window not tiled");
     assert_eq!(v.floating, vec![id]);
 }
@@ -90,7 +86,7 @@ fn fullscreen_window_projects_to_fullscreen() {
     recompute_seat(&mut f);
     settle(&mut f, c, a);
 
-    let v = project(&f);
+    let v = newest_view(&f);
     assert!(v.tiled.is_empty() && v.floating.is_empty());
     assert_eq!(v.fullscreen.map(|p| p.id), Some(id));
 }
@@ -119,9 +115,9 @@ fn lone_tiled_is_derivable_from_tiled_len() {
     let c = f.add_client();
     let a = open_window(&mut f, c);
     settle(&mut f, c, a);
-    assert_eq!(project(&f).tiled.len(), 1);
+    assert_eq!(newest_view(&f).tiled.len(), 1);
 
     let _b = open_window(&mut f, c);
     settle(&mut f, c, a);
-    assert_eq!(project(&f).tiled.len(), 2);
+    assert_eq!(newest_view(&f).tiled.len(), 2);
 }
