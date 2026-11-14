@@ -12,6 +12,10 @@ use crate::Monotile;
 impl Monotile {
     pub fn update_focus(&mut self) {
         self.set_keyboard_focus(self.state.seat_mon().tag().focused_id());
+        self.refresh_pointer_focus();
+    }
+
+    pub fn refresh_pointer_focus(&mut self) {
         let location = self.state.seat.get_pointer().unwrap().current_location();
         self.send_pointer_motion(location);
     }
@@ -96,7 +100,7 @@ impl Monotile {
         self.send_pointer_motion(center);
     }
 
-    pub fn send_pointer_motion(&mut self, location: Point<f64, Logical>) {
+    fn send_pointer_motion(&mut self, location: Point<f64, Logical>) {
         let pointer = self.state.seat.get_pointer().unwrap();
         let under = self.state.surface_under(location);
         if self.state.seat.pointer_locked(under.surface.as_ref()) {

@@ -162,10 +162,8 @@ impl Monotile {
         let monitors = &self.state.monitors;
         self.state.windows.reap(|id| monitors.contains_window(id));
 
-        // input follows the displayed layout
         if view_changed {
-            let location = self.state.seat.get_pointer().unwrap().current_location();
-            self.send_pointer_motion(location);
+            self.refresh_pointer_focus();
         }
     }
 
