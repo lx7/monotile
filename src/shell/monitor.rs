@@ -208,12 +208,8 @@ impl Monitor {
         std::mem::swap(&mut self.active_tag, &mut self.prev_tag);
     }
 
-    pub fn window_rect(&self, ws: &Windows, id: WindowId) -> Option<Rectangle<i32, Logical>> {
-        self.tag().window_rect(ws.get(id)?, self.output.geometry())
-    }
-
     pub fn next_tiled_size(&self) -> Size<i32, Logical> {
-        self.tag().layout.next_size(self.output.usable_area())
+        self.tag().next_tiled_size(self.output.usable_area())
     }
 
     pub fn recompute_layout(&mut self, ws: &mut Windows) {
@@ -255,9 +251,10 @@ impl MonitorsExt for Monitors {
         self.keys().find(|o| o.name() == name)
     }
 
-    // TODO: use view geometry instead (also for screencopy)
     fn window_rect(&self, ws: &Windows, id: WindowId) -> Option<Rectangle<i32, Logical>> {
-        self.get(&ws.get(id)?.output)?.window_rect(ws, id)
+        let newest = self.values().filter_map(|mon| mon.views.back());
+        let mut placed = newest.flat_map(|view| view.stack(ws));
+        placed.find(|p| p.id == id).map(|p| p.rect)
     }
 
     fn contains_window(&self, id: WindowId) -> bool {

@@ -385,7 +385,7 @@ impl Monotile {
             // seat-monitor actions
             Focus(pos) => {
                 let tag = self.state.seat_mon().tag();
-                let target = tag.focused_id().and_then(|cur| tag.layout.target(cur, pos));
+                let target = tag.focused_id().and_then(|cur| tag.target(cur, pos));
                 if let Some(id) = target {
                     self.set_keyboard_focus(Some(id));
                 }
@@ -394,7 +394,7 @@ impl Monotile {
             }
             Swap(pos) => self.with_seat_mon(|mon, _| {
                 if let Some(cur) = mon.tag().focused_id() {
-                    mon.tag_mut().layout.swap(cur, pos);
+                    mon.tag_mut().swap(cur, pos);
                 }
             }),
             FocusTag(tag) => self.with_seat_mon(|mon, _| mon.set_active_tag(tag)),

@@ -401,14 +401,15 @@ impl WindowElement {
         }
     }
 
-    pub fn configure(&mut self, size: Size<i32, Logical>) -> Option<Serial> {
+    pub fn configure(&mut self, size: Size<i32, Logical>) -> Option<(WlSurface, Serial)> {
         if size == self.configured_size {
             return None;
         }
         let tl = self.window.toplevel()?;
         self.configured_size = size;
         tl.with_pending_state(|s| s.size = Some(size));
-        tl.send_pending_configure()
+        let serial = tl.send_pending_configure()?;
+        Some((tl.wl_surface().clone(), serial))
     }
 
     pub fn on_commit(&mut self) {

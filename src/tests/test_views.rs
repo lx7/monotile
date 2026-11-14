@@ -2,8 +2,8 @@ use smithay::utils::Rectangle;
 
 use super::Fixture;
 use crate::{
-    config::Config,
-    shell::{SeatExt, View},
+    config::{Action, Config},
+    shell::{MonitorsExt, SeatExt, View},
 };
 
 fn open_window(f: &mut Fixture, c: usize) -> usize {
@@ -51,7 +51,7 @@ fn two_tiled_windows_project_in_layout_order() {
     let _b = open_window(&mut f, c);
     settle(&mut f, c, a);
 
-    let order: Vec<_> = f.mt.state.seat_mon().tag().layout.ids().collect();
+    let order = f.mt.state.seat_mon().tag().tiled.clone();
     let v = newest_view(&f);
     assert_eq!(v.tiled.len(), 2);
     assert_eq!(
@@ -120,4 +120,84 @@ fn lone_tiled_is_derivable_from_tiled_len() {
     let _b = open_window(&mut f, c);
     settle(&mut f, c, a);
     assert_eq!(newest_view(&f).tiled.len(), 2);
+}
+
+#[test]
+fn layout_change_configures_windows_to_their_view_rects() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    let a = open_window(&mut f, c);
+    let b = open_window(&mut f, c);
+    f.roundtrip(c);
+
+    let mut configured: Vec<(i32, i32)> = [a, b]
+        .into_iter()
+        .map(|w| {
+            let last = f.client(c).window(w).configures.last().expect("configure");
+            (last.width, last.height)
+        })
+        .collect();
+    let mut shown: Vec<(i32, i32)> = newest_view(&f)
+        .tiled
+        .iter()
+        .map(|p| (p.rect.size.w, p.rect.size.h))
+        .collect();
+    configured.sort();
+    shown.sort();
+    assert_eq!(
+        configured, shown,
+        "each window is configured to the size of its rect in the view",
+    );
+}
+
+#[test]
+fn window_rect_follows_the_newest_view() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    let a = open_window(&mut f, c);
+    settle(&mut f, c, a);
+    let id = f.mt.state.seat_mon().tag().focused_id().unwrap();
+
+    // a second window shrinks the first; the first has not committed its new size
+    let _b = open_window(&mut f, c);
+    let mon = f.mt.state.seat_mon();
+    let rect_in = |view: &View| view.tiled.iter().find(|p| p.id == id).map(|p| p.rect);
+    let shown = rect_in(mon.views.front());
+    let newest = rect_in(newest_view(&f));
+    assert_ne!(shown, newest, "the transaction is still pending");
+    assert_eq!(
+        f.mt.state.monitors.window_rect(&f.mt.state.windows, id),
+        newest,
+        "window_rect answers from the newest layout",
+    );
+}
+
+#[test]
+fn window_hidden_by_fullscreen_is_configured_when_shown_again() {
+    let mut f = Fixture::new();
+    let c = f.add_client();
+    let main = open_window(&mut f, c);
+    let stacked = open_window(&mut f, c);
+    let newest = open_window(&mut f, c);
+    settle(&mut f, c, main);
+    settle(&mut f, c, stacked);
+
+    f.mt.handle_action(Action::ToggleFullscreen);
+    f.roundtrip(c);
+    settle(&mut f, c, newest);
+    f.client_mut(c).take_configures(stacked);
+
+    let _hidden = open_window(&mut f, c);
+    f.roundtrip(c);
+    assert!(
+        f.client_mut(c).take_configures(stacked).is_empty(),
+        "a window hidden by a fullscreen window is not configured",
+    );
+
+    f.mt.handle_action(Action::ToggleFullscreen);
+    f.roundtrip(c);
+    assert!(
+        !f.client_mut(c).take_configures(stacked).is_empty(),
+        "it is configured to its new size when it is shown again",
+    );
 }

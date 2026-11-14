@@ -1,17 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use smithay::utils::{Logical, Rectangle, Size};
+use smithay::utils::{Logical, Rectangle};
 
-use crate::config::{self, Rel};
-
-use super::{Placed, WindowId};
+use crate::config;
 
 #[derive(Debug, Clone)]
 pub struct TilingLayout {
     pub main_count: usize,
     pub main_factor: f32,
     pub config: config::Layout,
-    tiles: Vec<Placed>,
 }
 
 impl Default for TilingLayout {
@@ -20,7 +17,6 @@ impl Default for TilingLayout {
             main_count: config::TileConfig::default().main_count,
             main_factor: config::TileConfig::default().main_factor,
             config: config::Layout::default(),
-            tiles: Vec::new(),
         }
     }
 }
@@ -32,72 +28,6 @@ impl TilingLayout {
 
     pub fn symbol(&self) -> &str {
         "[]="
-    }
-
-    pub fn tiles(&self) -> &[Placed] {
-        &self.tiles
-    }
-
-    pub fn len(&self) -> usize {
-        self.tiles.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.tiles.is_empty()
-    }
-
-    pub fn contains(&self, id: WindowId) -> bool {
-        self.tiles.iter().any(|t| t.id == id)
-    }
-
-    pub fn position_of(&self, id: WindowId) -> Option<Rectangle<i32, Logical>> {
-        self.tiles.iter().find(|t| t.id == id).map(|t| t.rect)
-    }
-
-    pub fn add(&mut self, id: WindowId) {
-        if !self.contains(id) {
-            self.tiles.push(Placed {
-                id,
-                rect: Rectangle::default(),
-            });
-        }
-    }
-
-    pub fn remove(&mut self, id: WindowId) {
-        self.tiles.retain(|t| t.id != id);
-    }
-
-    pub fn retain(&mut self, mut keep: impl FnMut(WindowId) -> bool) {
-        self.tiles.retain(|t| keep(t.id));
-    }
-
-    pub fn ids(&self) -> impl DoubleEndedIterator<Item = WindowId> + '_ {
-        self.tiles.iter().map(|t| t.id)
-    }
-
-    fn resolve_index(&self, cur: usize, to: Rel) -> usize {
-        let n = self.tiles.len();
-        match to {
-            Rel::Next => (cur + 1) % n,
-            Rel::Prev => (cur + n - 1) % n,
-            Rel::First => 0,
-            Rel::Last => n - 1,
-        }
-    }
-
-    pub fn target(&self, from: WindowId, to: Rel) -> Option<WindowId> {
-        let cur = self.tiles.iter().position(|t| t.id == from)?;
-        Some(self.tiles[self.resolve_index(cur, to)].id)
-    }
-
-    pub fn swap(&mut self, from: WindowId, to: Rel) {
-        let Some(cur) = self.tiles.iter().position(|t| t.id == from) else {
-            return;
-        };
-        let target = self.resolve_index(cur, to);
-        if cur != target {
-            self.tiles.swap(cur, target);
-        }
     }
 
     pub fn adjust_main_factor(&mut self, delta: f32) {
@@ -114,20 +44,6 @@ impl TilingLayout {
 
     pub fn set_main_count(&mut self, count: usize) {
         self.main_count = count.max(1);
-    }
-
-    pub fn recompute(&mut self, area: Rectangle<i32, Logical>) {
-        let rects = self.compute_rects(self.tiles.len(), area);
-        for (tile, rect) in self.tiles.iter_mut().zip(rects) {
-            tile.rect = rect;
-        }
-    }
-
-    pub fn next_size(&self, area: Rectangle<i32, Logical>) -> Size<i32, Logical> {
-        self.compute_rects(self.tiles.len() + 1, area)
-            .last()
-            .map(|r| r.size)
-            .unwrap_or(area.size)
     }
 
     pub fn compute_rects(
@@ -198,65 +114,6 @@ impl TilingLayout {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn ids(n: usize) -> Vec<WindowId> {
-        (0..n).map(WindowId).collect()
-    }
-
-    #[test]
-    fn add_appends_in_order() {
-        let mut l = TilingLayout::default();
-        let [a, b, c] = ids(3).try_into().unwrap();
-        l.add(a);
-        l.add(b);
-        l.add(c);
-        assert_eq!(l.ids().collect::<Vec<_>>(), vec![a, b, c]);
-    }
-
-    #[test]
-    fn add_is_idempotent() {
-        let mut l = TilingLayout::default();
-        let [a, b] = ids(2).try_into().unwrap();
-        l.add(a);
-        l.add(b);
-        l.add(a);
-        assert_eq!(l.len(), 2);
-        assert_eq!(l.ids().collect::<Vec<_>>(), vec![a, b]);
-    }
-
-    #[test]
-    fn target_cycles_with_rel() {
-        let mut l = TilingLayout::default();
-        let v = ids(3);
-        for &id in &v {
-            l.add(id);
-        }
-        assert_eq!(l.target(v[0], Rel::Next), Some(v[1]));
-        assert_eq!(l.target(v[2], Rel::Next), Some(v[0]));
-        assert_eq!(l.target(v[0], Rel::Prev), Some(v[2]));
-        assert_eq!(l.target(v[1], Rel::First), Some(v[0]));
-        assert_eq!(l.target(v[1], Rel::Last), Some(v[2]));
-    }
-
-    #[test]
-    fn swap_reorders_tiles() {
-        let mut l = TilingLayout::default();
-        let v = ids(3);
-        for &id in &v {
-            l.add(id);
-        }
-        l.swap(v[0], Rel::Next);
-        assert_eq!(l.ids().collect::<Vec<_>>(), vec![v[1], v[0], v[2]]);
-    }
-
-    #[test]
-    fn swap_self_is_noop() {
-        let mut l = TilingLayout::default();
-        let a = ids(1)[0];
-        l.add(a);
-        l.swap(a, Rel::First);
-        assert_eq!(l.ids().collect::<Vec<_>>(), vec![a]);
-    }
 
     #[test]
     fn main_factor_clamps_above_and_below() {
