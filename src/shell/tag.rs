@@ -7,7 +7,7 @@ use smithay::{
 
 use crate::config::Rel;
 
-use super::{LayoutBlocker, OutputExt, Placed, TilingLayout, View, WindowId, Windows};
+use super::{LayoutBlocker, OutputExt, TilingLayout, View, ViewElement, WindowId, Windows};
 
 #[derive(Debug, Default, Clone)]
 pub struct Tag {
@@ -117,20 +117,21 @@ impl Tag {
 
         let mut configured = Vec::new();
         let rect = output.geometry();
-        let fullscreen = self.fullscreen.map(|id| Placed { id, rect });
-        let (tiled, floating) = if let Some(placed) = fullscreen {
-            if let Some(we) = ws.get_mut(placed.id) {
-                configured.extend(we.configure(placed.rect.size));
+        let fullscreen = self.fullscreen.map(|id| ViewElement { id, rect });
+        let (tiled, floating) = if let Some(element) = fullscreen {
+            if let Some(we) = ws.get_mut(element.id) {
+                configured.extend(we.configure(element.rect.size));
             }
             (Vec::new(), Vec::new())
         } else {
             let area = output.usable_area();
             let rects = self.layout.compute_rects(self.tiled.len(), area);
             let tiled = self.tiled.iter().zip(rects);
-            let tiled: Vec<Placed> = tiled.map(|(&id, rect)| Placed { id, rect }).collect();
-            for placed in &tiled {
-                if let Some(we) = ws.get_mut(placed.id) {
-                    configured.extend(we.configure(placed.rect.size));
+            let tiled = tiled.map(|(&id, rect)| ViewElement { id, rect });
+            let tiled: Vec<ViewElement> = tiled.collect();
+            for element in &tiled {
+                if let Some(we) = ws.get_mut(element.id) {
+                    configured.extend(we.configure(element.rect.size));
                 }
             }
             for &id in &self.floating {

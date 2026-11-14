@@ -31,24 +31,24 @@ impl Views {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Placed {
+pub struct ViewElement {
     pub id: WindowId,
     pub rect: Rectangle<i32, Logical>,
 }
 
 #[derive(Debug)]
 pub struct View {
-    pub fullscreen: Option<Placed>,
-    pub tiled: Vec<Placed>,
+    pub fullscreen: Option<ViewElement>,
+    pub tiled: Vec<ViewElement>,
     pub floating: Vec<WindowId>,
     pub blocker: LayoutBlocker,
 }
 
 impl View {
-    pub fn stack(&self, ws: &Windows) -> Vec<Placed> {
+    pub fn stack(&self, ws: &Windows) -> Vec<ViewElement> {
         let floating = self.floating.iter().rev().filter_map(|&id| {
             let rect = ws.get(id)?.float_geo;
-            Some(Placed { id, rect })
+            Some(ViewElement { id, rect })
         });
         let tiled = self.tiled.iter().rev().copied();
         let fullscreen = self.fullscreen.into_iter();
@@ -59,19 +59,19 @@ impl View {
         let stack = self.stack(ws);
         stack
             .iter()
-            .find_map(|p| ws.get(p.id)?.popups_under(p.rect, pos))
+            .find_map(|e| ws.get(e.id)?.popups_under(e.rect, pos))
     }
 
     pub fn surface_under(&self, ws: &Windows, pos: Point<f64, Logical>) -> Option<SurfaceUnder> {
         let stack = self.stack(ws);
         stack
             .iter()
-            .find_map(|p| ws.get(p.id)?.surface_under(p.rect, pos))
+            .find_map(|e| ws.get(e.id)?.surface_under(e.rect, pos))
     }
 
     pub fn contains(&self, id: WindowId) -> bool {
-        self.fullscreen.map(|p| p.id) == Some(id)
-            || self.tiled.iter().any(|p| p.id == id)
+        self.fullscreen.map(|e| e.id) == Some(id)
+            || self.tiled.iter().any(|e| e.id == id)
             || self.floating.contains(&id)
     }
 }

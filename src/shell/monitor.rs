@@ -253,8 +253,8 @@ impl MonitorsExt for Monitors {
 
     fn window_rect(&self, ws: &Windows, id: WindowId) -> Option<Rectangle<i32, Logical>> {
         let newest = self.values().filter_map(|mon| mon.views.back());
-        let mut placed = newest.flat_map(|view| view.stack(ws));
-        placed.find(|p| p.id == id).map(|p| p.rect)
+        let mut elements = newest.flat_map(|view| view.stack(ws));
+        elements.find(|e| e.id == id).map(|e| e.rect)
     }
 
     fn contains_window(&self, id: WindowId) -> bool {

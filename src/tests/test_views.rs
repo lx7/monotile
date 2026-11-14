@@ -88,7 +88,7 @@ fn fullscreen_window_projects_to_fullscreen() {
 
     let v = newest_view(&f);
     assert!(v.tiled.is_empty() && v.floating.is_empty());
-    assert_eq!(v.fullscreen.map(|p| p.id), Some(id));
+    assert_eq!(v.fullscreen.map(|e| e.id), Some(id));
 }
 
 #[test]
@@ -161,7 +161,7 @@ fn window_rect_follows_the_newest_view() {
     // a second window shrinks the first; the first has not committed its new size
     let _b = open_window(&mut f, c);
     let mon = f.mt.state.seat_mon();
-    let rect_in = |view: &View| view.tiled.iter().find(|p| p.id == id).map(|p| p.rect);
+    let rect_in = |view: &View| view.tiled.iter().find(|e| e.id == id).map(|e| e.rect);
     let shown = rect_in(mon.views.front());
     let newest = rect_in(newest_view(&f));
     assert_ne!(shown, newest, "the transaction is still pending");
