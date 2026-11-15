@@ -1,6 +1,11 @@
+use std::os::fd::AsFd;
+
 use wayland_client::{
-    Connection, Dispatch, QueueHandle, WEnum,
-    protocol::{wl_compositor, wl_output, wl_pointer, wl_registry, wl_seat, wl_surface},
+    Connection, Dispatch, QueueHandle, WEnum, delegate_noop,
+    protocol::{
+        wl_buffer, wl_compositor, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool,
+        wl_surface,
+    },
 };
 use wayland_protocols::ext::session_lock::v1::client::{
     ext_session_lock_manager_v1::ExtSessionLockManagerV1,
@@ -16,7 +21,9 @@ use crate::shell::MonitorsExt;
 pub(super) struct LockClient {
     lock_manager: Option<ExtSessionLockManagerV1>,
     compositor: Option<wl_compositor::WlCompositor>,
+    shm: Option<wl_shm::WlShm>,
     output: Option<wl_output::WlOutput>,
+    entered: Vec<wl_output::WlOutput>,
     seat: Option<wl_seat::WlSeat>,
     pointer: Option<wl_pointer::WlPointer>,
     pointer_positions: Vec<(f64, f64)>,
@@ -45,6 +52,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for LockClient {
                     state.lock_manager = Some(registry.bind(name, version, qh, ()));
                 }
                 "wl_compositor" => state.compositor = Some(registry.bind(name, version, qh, ())),
+                "wl_shm" => state.shm = Some(registry.bind(name, version, qh, ())),
                 "wl_output" => state.output = Some(registry.bind(name, version, qh, ())),
                 "wl_seat" => state.seat = Some(registry.bind(name, version, qh, ())),
                 _ => {}
@@ -67,15 +75,22 @@ impl Dispatch<wl_compositor::WlCompositor, ()> for LockClient {
 
 impl Dispatch<wl_surface::WlSurface, ()> for LockClient {
     fn event(
-        _: &mut Self,
+        state: &mut Self,
         _: &wl_surface::WlSurface,
-        _: wl_surface::Event,
+        event: wl_surface::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+        if let wl_surface::Event::Enter { output } = event {
+            state.entered.push(output);
+        }
     }
 }
+
+delegate_noop!(LockClient: ignore wl_shm::WlShm);
+delegate_noop!(LockClient: ignore wl_shm_pool::WlShmPool);
+delegate_noop!(LockClient: ignore wl_buffer::WlBuffer);
 
 impl Dispatch<wl_output::WlOutput, ()> for LockClient {
     fn event(
@@ -219,7 +234,9 @@ fn connect_lock_client(
     let mut client = LockClient {
         lock_manager: None,
         compositor: None,
+        shm: None,
         output: None,
+        entered: Vec::new(),
         seat: None,
         pointer: None,
         pointer_positions: Vec::new(),
@@ -255,7 +272,7 @@ fn create_lock_surface(
     client: &mut LockClient,
     queue: &mut wayland_client::EventQueue<LockClient>,
     lock: &ExtSessionLockV1,
-) {
+) -> wl_surface::WlSurface {
     let qh = queue.handle();
     let surface = client
         .compositor
@@ -266,6 +283,7 @@ fn create_lock_surface(
     lock.get_lock_surface(&surface, &output, &qh, ());
     let _ = queue.flush();
     lock_roundtrip(f, conn, client, queue);
+    surface
 }
 
 pub(super) fn lock_session(
@@ -389,6 +407,34 @@ fn lock_surface_covers_a_rotated_and_scaled_output() {
     create_lock_surface(&mut f, &conn, &mut client, &mut queue, &lock);
 
     assert_eq!(client.surface_sizes, [(400, 500)]);
+}
+
+#[test]
+fn lock_surface_enters_its_output() {
+    let mut f = Fixture::new();
+    f.add_output("second", (1920, 1080));
+
+    // the lock client binds the output announced last
+    let (conn, mut queue, mut client) = connect_lock_client(&mut f);
+    let lock = request_lock(&mut f, &conn, &mut client, &mut queue);
+    let surface = create_lock_surface(&mut f, &conn, &mut client, &mut queue, &lock);
+    assert!(client.entered.is_empty());
+
+    let qh = queue.handle();
+    let (width, height) = client.surface_sizes[0];
+    let (width, height) = (width as i32, height as i32);
+    let file = tempfile::tempfile().unwrap();
+    file.set_len((width * height * 4) as u64).unwrap();
+    let shm = client.shm.as_ref().expect("shm not bound");
+    let pool = shm.create_pool(file.as_fd(), width * height * 4, &qh, ());
+    let format = wl_shm::Format::Argb8888;
+    let buffer = pool.create_buffer(0, width, height, width * 4, format, &qh, ());
+    surface.attach(Some(&buffer), 0, 0);
+    surface.commit();
+    let _ = queue.flush();
+    lock_roundtrip(&mut f, &conn, &mut client, &mut queue);
+
+    assert_eq!(client.entered, [client.output.clone().unwrap()]);
 }
 
 #[test]

@@ -2,7 +2,7 @@
 
 use crate::{
     Monotile,
-    shell::{Placement, SeatExt},
+    shell::{OutputExt, Placement, SeatExt},
     state::ClientState,
 };
 use smithay::{
@@ -82,7 +82,9 @@ impl Monotile {
             && let Some(id) = self.state.windows.find_by_surface(&popup_root)
         {
             self.state.windows[id].buffer_committed = true;
-            return Some((self.state.windows[id].output.clone(), false));
+            let output = self.state.windows[id].output.clone();
+            output.enter_tree(root);
+            return Some((output, false));
         }
 
         // layer-shell popup
@@ -177,6 +179,7 @@ impl Monotile {
                 .as_ref()
                 .is_some_and(|ls| ls.wl_surface() == root)
         })?;
+        output.enter_tree(root);
         Some((output.clone(), false))
     }
 

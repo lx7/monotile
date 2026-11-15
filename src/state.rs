@@ -69,8 +69,8 @@ use crate::{
     ipc::IpcState,
     render::{SurfaceUnder, cursor::CursorManager},
     shell::{
-        Monitor, MonitorSettings, Monitors, MonitorsExt, SeatExt, Unmapped, WindowElement,
-        WindowId, Windows,
+        Monitor, MonitorSettings, Monitors, MonitorsExt, OutputExt, SeatExt, Unmapped,
+        WindowElement, WindowId, Windows,
     },
     spawn::notify,
 };
@@ -449,6 +449,9 @@ impl State {
             .get_mut(&output)
             .expect("window monitor resolved at init")
             .map(id, tags);
+        if let Some(toplevel) = self.windows[id].window.toplevel() {
+            output.enter_tree(toplevel.wl_surface());
+        }
         id
     }
 

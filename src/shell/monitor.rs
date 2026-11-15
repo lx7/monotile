@@ -2,7 +2,10 @@
 
 use indexmap::IndexMap;
 use smithay::{
-    desktop::layer_map_for_output,
+    desktop::{
+        layer_map_for_output,
+        utils::{bbox_from_surface_tree, output_update},
+    },
     output::{Output, Scale},
     reexports::wayland_server::{backend::GlobalId, protocol::wl_surface::WlSurface},
     utils::{Logical, Point, Rectangle, Size, Transform},
@@ -20,6 +23,7 @@ pub trait OutputExt {
     fn geometry(&self) -> Rectangle<i32, Logical>;
     fn usable_area(&self) -> Rectangle<i32, Logical>;
     fn exclusive_layer(&self) -> Option<WlSurface>;
+    fn enter_tree(&self, root: &WlSurface);
 }
 
 impl OutputExt for Output {
@@ -44,6 +48,11 @@ impl OutputExt for Output {
                 })
                 .map(|s| s.wl_surface().clone())
         })
+    }
+
+    fn enter_tree(&self, root: &WlSurface) {
+        let bbox = bbox_from_surface_tree(root, (0, 0));
+        output_update(self, Some(bbox), root);
     }
 }
 

@@ -4,11 +4,17 @@ use smithay::{
     utils::Transform,
 };
 
+use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
+
 use super::{
     Fixture,
     client::{Configure, CursorSessionEvent, OutputState},
+    test_pointer_lock::{client, open_window},
 };
-use crate::{config::Action, shell::SeatExt};
+use crate::{
+    config::{Action, Config, WindowInit, WindowRule},
+    shell::SeatExt,
+};
 
 fn summary(outputs: &[OutputState]) -> Vec<(&str, (i32, i32))> {
     outputs.iter().map(|o| (o.name.as_str(), o.mode)).collect()
@@ -121,4 +127,73 @@ fn output_added_later_is_announced_once() {
         summary(f.client(c).outputs()),
         [("test", (1000, 800)), ("second", (1920, 1080))]
     );
+}
+
+fn two_outputs(config: Config) -> Fixture {
+    let mut f = Fixture::with_config(config);
+    f.add_output("second", (1920, 1080));
+    f
+}
+
+fn windows_open_on_second() -> Config {
+    let mut config = Config::new();
+    config.windows.push(WindowRule {
+        init: Some(WindowInit {
+            output: Some("second".into()),
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    config
+}
+
+#[test]
+fn window_enters_the_output_it_is_mapped_on() {
+    let mut f = two_outputs(Config::new());
+    let c = client(&mut f);
+    let w = open_window(&mut f, c);
+
+    let surface = &f.client(c).window(w).surface;
+    assert_eq!(f.client(c).entered_outputs(surface), ["test"]);
+}
+
+#[test]
+fn window_placed_by_a_rule_enters_that_output() {
+    let mut f = two_outputs(windows_open_on_second());
+    let c = client(&mut f);
+    let w = open_window(&mut f, c);
+
+    let surface = &f.client(c).window(w).surface;
+    assert_eq!(f.client(c).entered_outputs(surface), ["second"]);
+}
+
+#[test]
+fn popup_enters_the_output_of_its_window() {
+    let mut f = two_outputs(windows_open_on_second());
+    let c = client(&mut f);
+    let w = open_window(&mut f, c);
+    let p = f.client_mut(c).create_popup(w);
+    f.client(c).popup_commit(p);
+    f.roundtrip(c);
+    f.client(c).popup_ack_and_commit(p);
+    f.roundtrip(c);
+
+    let surface = &f.client(c).popup(p).surface;
+    assert_eq!(f.client(c).entered_outputs(surface), ["second"]);
+}
+
+#[test]
+fn layer_surface_enters_its_output() {
+    let mut f = two_outputs(Config::new());
+    let c = client(&mut f);
+    let ls = f
+        .client_mut(c)
+        .create_layer_surface_on_output(Layer::Top, 1);
+    f.client_mut(c).layer_commit(ls);
+    f.roundtrip(c);
+    f.client(c).layer_ack_and_commit_sized(ls, 1920, 30);
+    f.roundtrip(c);
+
+    let surface = &f.client(c).layer(ls).surface;
+    assert_eq!(f.client(c).entered_outputs(surface), ["second"]);
 }

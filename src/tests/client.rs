@@ -95,6 +95,7 @@ struct ClientData {
     popups: Vec<PopupState>,
 
     outputs: Vec<OutputState>,
+    entered: Vec<(wl_surface::WlSurface, wl_output::WlOutput)>,
     ipc_seat: Option<wl_seat::WlSeat>,
     ipc_status_manager: Option<ZmonotileStatusManagerV1>,
     ipc_control: Option<ZmonotileControlV1>,
@@ -309,6 +310,7 @@ impl Client {
             windows: Vec::new(),
             popups: Vec::new(),
             outputs: Vec::new(),
+            entered: Vec::new(),
             ipc_seat: None,
             ipc_status_manager: None,
             ipc_control: None,
@@ -704,11 +706,23 @@ impl Client {
         self.create_layer_surface_on(zwlr_layer_shell_v1::Layer::Top)
     }
 
+    pub fn layer(&self, ls: usize) -> &LayerState {
+        &self.data.layers[ls]
+    }
+
     pub fn create_layer_surface_on(&mut self, layer: zwlr_layer_shell_v1::Layer) -> usize {
+        self.create_layer_surface_on_output(layer, 0)
+    }
+
+    pub fn create_layer_surface_on_output(
+        &mut self,
+        layer: zwlr_layer_shell_v1::Layer,
+        output: usize,
+    ) -> usize {
         let qh = self.queue.handle();
         let comp = self.data.compositor.as_ref().unwrap();
         let shell = self.data.layer_shell.as_ref().unwrap();
-        let output = &self.data.outputs[0].wl_output;
+        let output = &self.data.outputs[output].wl_output;
 
         let surface = comp.create_surface(&qh, ());
         let ls =
@@ -908,6 +922,14 @@ impl Client {
 
     pub fn outputs(&self) -> &[OutputState] {
         &self.data.outputs
+    }
+
+    pub fn entered_outputs(&self, surface: &wl_surface::WlSurface) -> Vec<&str> {
+        let entered = self.data.entered.iter().filter(|(s, _)| s == surface);
+        let outputs = entered.filter_map(|(_, wl_output)| {
+            self.data.outputs.iter().find(|o| o.wl_output == *wl_output)
+        });
+        outputs.map(|o| o.name.as_str()).collect()
     }
 
     // screencopy
@@ -1144,13 +1166,20 @@ impl Dispatch<xdg_wm_base::XdgWmBase, ()> for ClientData {
 
 impl Dispatch<wl_surface::WlSurface, ()> for ClientData {
     fn event(
-        _: &mut Self,
-        _: &wl_surface::WlSurface,
-        _: wl_surface::Event,
+        state: &mut Self,
+        surface: &wl_surface::WlSurface,
+        event: wl_surface::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+        match event {
+            wl_surface::Event::Enter { output } => state.entered.push((surface.clone(), output)),
+            wl_surface::Event::Leave { output } => state
+                .entered
+                .retain(|(s, o)| !(s == surface && *o == output)),
+            _ => {}
+        }
     }
 }
 

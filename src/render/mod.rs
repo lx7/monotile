@@ -174,6 +174,7 @@ impl State {
         }
         self.popups.cleanup();
         map.cleanup();
+        output.cleanup();
     }
 }
 
