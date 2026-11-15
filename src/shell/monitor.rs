@@ -3,7 +3,7 @@
 use indexmap::IndexMap;
 use smithay::{
     desktop::{
-        layer_map_for_output,
+        WindowSurfaceType, layer_map_for_output,
         utils::{bbox_from_surface_tree, output_update},
     },
     output::{Output, Scale},
@@ -244,6 +244,11 @@ pub trait MonitorsExt {
     fn fallback_output(&self) -> Option<&Output>;
     fn output_named(&self, name: &str) -> Option<&Output>;
     fn window_rect(&self, ws: &Windows, id: WindowId) -> Option<Rectangle<i32, Logical>>;
+    fn surface_location<'a>(
+        &'a self,
+        ws: &'a Windows,
+        surface: &WlSurface,
+    ) -> Option<(&'a Output, Point<i32, Logical>)>;
     fn contains_window(&self, id: WindowId) -> bool;
     fn shows_window(&self, id: WindowId) -> bool;
     fn update_rules(&mut self, config: &config::Config);
@@ -266,6 +271,26 @@ impl MonitorsExt for Monitors {
         let newest = self.values().filter_map(|mon| mon.views.back());
         let mut elements = newest.flat_map(|view| view.stack(ws));
         elements.find(|e| e.id == id).map(|e| e.rect)
+    }
+
+    fn surface_location<'a>(
+        &'a self,
+        ws: &'a Windows,
+        surface: &WlSurface,
+    ) -> Option<(&'a Output, Point<i32, Logical>)> {
+        match ws.find_by_surface(surface) {
+            Some(id) => {
+                let we = &ws[id];
+                // TODO: more straightforward location lookup
+                let rect = self.window_rect(ws, id).unwrap_or_default();
+                Some((&we.output, we.surface_loc(rect.loc)))
+            }
+            None => self.keys().find_map(|output| {
+                let map = layer_map_for_output(output);
+                let layer = map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)?;
+                Some((output, map.layer_geometry(layer)?.loc))
+            }),
+        }
     }
 
     fn contains_window(&self, id: WindowId) -> bool {

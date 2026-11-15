@@ -8,8 +8,8 @@ use crate::{
 use smithay::{
     backend::input::InputTime,
     desktop::{
-        PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy, WindowSurfaceType,
-        find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output,
+        PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy,
+        find_popup_root_surface, get_popup_toplevel_coords,
     },
     input::{Seat, pointer::Focus},
     reexports::{
@@ -206,32 +206,12 @@ impl Monotile {
             return;
         };
 
-        // constraint rect depends on whether parent is a window or layer surface
+        let windows = &self.state.windows;
+        let Some((output, parent_loc)) = self.state.monitors.surface_location(windows, &root)
+        else {
+            return;
+        };
         let popup_offset = get_popup_toplevel_coords(&kind);
-        let parent_id = self.state.windows.find_by_surface(&root);
-        let output = match parent_id {
-            Some(id) => self.state.windows[id].output.clone(),
-            // TODO for multi-monitor: resolve the layer surface's output
-            None => self.state.seat.active_output(),
-        };
-
-        let parent_loc = if let Some(id) = parent_id {
-            let rect = self
-                .state
-                .monitors
-                .window_rect(&self.state.windows, id)
-                .unwrap_or_default();
-            self.state.windows[id].surface_loc(rect.loc)
-        } else {
-            let map = layer_map_for_output(&output);
-            let Some(l) = map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL) else {
-                return;
-            };
-            let Some(geo) = map.layer_geometry(l) else {
-                return;
-            };
-            geo.loc
-        };
 
         // convert output rect to popup-local coordinates
         let mut target = output.geometry();

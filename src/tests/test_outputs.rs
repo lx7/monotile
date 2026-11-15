@@ -1,15 +1,15 @@
 use smithay::{
     desktop::layer_map_for_output,
     output::{Output, Scale},
-    utils::Transform,
+    utils::{Rectangle, Transform},
 };
-
+use wayland_protocols::xdg::shell::client::xdg_positioner::Gravity;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
 
 use super::{
     Fixture,
     client::{Configure, CursorSessionEvent, OutputState},
-    test_pointer_lock::{client, open_window},
+    test_pointer_lock::{client, open_window, window_rect},
 };
 use crate::{
     config::{Action, Config, WindowInit, WindowRule},
@@ -196,4 +196,52 @@ fn layer_surface_enters_its_output() {
 
     let surface = &f.client(c).layer(ls).surface;
     assert_eq!(f.client(c).entered_outputs(surface), ["second"]);
+}
+
+#[test]
+fn layer_popup_is_constrained_to_the_output_of_its_layer_surface() {
+    let mut f = two_outputs(Config::new());
+    let c = client(&mut f);
+    let ls = f
+        .client_mut(c)
+        .create_layer_surface_on_output(Layer::Top, 1);
+    f.client_mut(c).layer_commit(ls);
+    f.roundtrip(c);
+    let output_width = 1920;
+    f.client(c).layer_ack_and_commit_sized(ls, output_width, 30);
+    f.roundtrip(c);
+
+    let popup_width = 100;
+    let half_over_the_right_edge = output_width - popup_width / 2;
+    let anchor = Rectangle::new((half_over_the_right_edge, 29).into(), (1, 1).into());
+    let p = f
+        .client_mut(c)
+        .create_layer_popup_at(ls, anchor, Gravity::BottomRight);
+    f.client(c).popup_commit(p);
+    f.roundtrip(c);
+
+    let popup_x = f.client(c).popup(p).position.0;
+    assert_eq!(popup_x + popup_width, output_width);
+}
+
+#[test]
+fn window_popup_is_constrained_to_a_rotated_output() {
+    let mut f = Fixture::new();
+    set_output_state(&mut f, Transform::_90, 1.0);
+    let c = client(&mut f);
+    let w = open_window(&mut f, c);
+    let window = window_rect(&f, c, w);
+
+    let rotated_output_height = 1000;
+    let popup_height = 100;
+    let half_below_the_window = window.size.h - popup_height / 2;
+    let anchor = Rectangle::new((10, half_below_the_window).into(), (1, 1).into());
+    let p = f
+        .client_mut(c)
+        .create_popup_at(w, anchor, Gravity::BottomRight);
+    f.client(c).popup_commit(p);
+    f.roundtrip(c);
+
+    let popup_y = window.loc.y + f.client(c).popup(p).position.1;
+    assert_eq!(popup_y + popup_height, rotated_output_height);
 }

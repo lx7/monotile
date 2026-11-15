@@ -154,6 +154,7 @@ pub struct PopupState {
     pub surface: wl_surface::WlSurface,
     pub xdg_surface: xdg_surface::XdgSurface,
     pub popup: xdg_popup::XdgPopup,
+    pub position: (i32, i32),
     pub done: bool,
     last_serial: u32,
 }
@@ -424,6 +425,10 @@ impl Client {
         positioner.set_size(100, 100);
         positioner.set_anchor_rect(anchor.loc.x, anchor.loc.y, anchor.size.w, anchor.size.h);
         positioner.set_gravity(gravity);
+        positioner.set_constraint_adjustment(
+            xdg_positioner::ConstraintAdjustment::SlideX
+                | xdg_positioner::ConstraintAdjustment::SlideY,
+        );
 
         let surface = comp.create_surface(&qh, ());
         let xdg_surface = wm.get_xdg_surface(&surface, &qh, ());
@@ -434,6 +439,7 @@ impl Client {
             surface,
             xdg_surface,
             popup,
+            position: (0, 0),
             done: false,
             last_serial: 0,
         });
@@ -1141,10 +1147,13 @@ impl Dispatch<xdg_popup::XdgPopup, ()> for ClientData {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let xdg_popup::Event::PopupDone = event
-            && let Some(p) = state.popups.iter_mut().find(|p| &p.popup == popup)
-        {
-            p.done = true;
+        let Some(p) = state.popups.iter_mut().find(|p| &p.popup == popup) else {
+            return;
+        };
+        match event {
+            xdg_popup::Event::Configure { x, y, .. } => p.position = (x, y),
+            xdg_popup::Event::PopupDone => p.done = true,
+            _ => {}
         }
     }
 }

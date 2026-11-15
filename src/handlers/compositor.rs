@@ -2,7 +2,7 @@
 
 use crate::{
     Monotile,
-    shell::{OutputExt, Placement, SeatExt},
+    shell::{MonitorsExt, OutputExt, Placement, SeatExt},
     state::ClientState,
 };
 use smithay::{
@@ -77,10 +77,10 @@ impl Monotile {
             xdg.send_configure().expect("initial configure");
         }
 
+        let popup_root = find_popup_root_surface(&popup).ok()?;
+
         // window popup
-        if let Ok(popup_root) = find_popup_root_surface(&popup)
-            && let Some(id) = self.state.windows.find_by_surface(&popup_root)
-        {
+        if let Some(id) = self.state.windows.find_by_surface(&popup_root) {
             self.state.windows[id].buffer_committed = true;
             let output = self.state.windows[id].output.clone();
             output.enter_tree(root);
@@ -88,8 +88,9 @@ impl Monotile {
         }
 
         // layer-shell popup
-        // TODO for multi-monitor: resolve the layer surface's monitor
-        Some((self.state.seat.active_output(), false))
+        let windows = &self.state.windows;
+        let (output, _) = self.state.monitors.surface_location(windows, &popup_root)?;
+        Some((output.clone(), false))
     }
 
     /// Unmapped toplevel: two-phase configure/map state machine.
