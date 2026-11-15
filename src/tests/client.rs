@@ -94,7 +94,7 @@ struct ClientData {
     windows: Vec<WindowState>,
     popups: Vec<PopupState>,
 
-    ipc_output: Option<wl_output::WlOutput>,
+    outputs: Vec<OutputState>,
     ipc_seat: Option<wl_seat::WlSeat>,
     ipc_status_manager: Option<ZmonotileStatusManagerV1>,
     ipc_control: Option<ZmonotileControlV1>,
@@ -140,6 +140,13 @@ pub struct LayerState {
     pub surface: wl_surface::WlSurface,
     pub layer_surface: ZwlrLayerSurfaceV1,
     pub last_serial: u32,
+}
+
+pub struct OutputState {
+    pub wl_output: wl_output::WlOutput,
+    pub name: String,
+    pub position: (i32, i32),
+    pub mode: (i32, i32),
 }
 
 pub struct PopupState {
@@ -301,7 +308,7 @@ impl Client {
             layers: Vec::new(),
             windows: Vec::new(),
             popups: Vec::new(),
-            ipc_output: None,
+            outputs: Vec::new(),
             ipc_seat: None,
             ipc_status_manager: None,
             ipc_control: None,
@@ -701,7 +708,7 @@ impl Client {
         let qh = self.queue.handle();
         let comp = self.data.compositor.as_ref().unwrap();
         let shell = self.data.layer_shell.as_ref().unwrap();
-        let output = self.data.ipc_output.as_ref().unwrap();
+        let output = &self.data.outputs[0].wl_output;
 
         let surface = comp.create_surface(&qh, ());
         let ls =
@@ -768,7 +775,7 @@ impl Client {
             .ipc_status_manager
             .as_ref()
             .expect("ipc_status_manager");
-        let output = self.data.ipc_output.as_ref().expect("ipc_output");
+        let output = &self.data.outputs[0].wl_output;
         self.data.ipc_output_status = Some(mgr.get_output_status(output, &qh, ()));
         let _ = self.queue.flush();
     }
@@ -859,7 +866,7 @@ impl Client {
     pub fn bind_dwl_output(&mut self) {
         let qh = self.queue.handle();
         let mgr = self.data.ipc_dwl_manager.as_ref().expect("dwl_manager");
-        let output = self.data.ipc_output.as_ref().expect("ipc_output");
+        let output = &self.data.outputs[0].wl_output;
         self.data.ipc_dwl_output = Some(mgr.get_output(output, &qh, ()));
         let _ = self.queue.flush();
     }
@@ -899,6 +906,10 @@ impl Client {
         Some(mgr.create_source(handle, &self.queue.handle(), ()))
     }
 
+    pub fn outputs(&self) -> &[OutputState] {
+        &self.data.outputs
+    }
+
     // screencopy
 
     pub fn has_output_capture_source_manager(&self) -> bool {
@@ -911,7 +922,7 @@ impl Client {
 
     pub fn create_output_capture_source(&self) -> Option<ExtImageCaptureSourceV1> {
         let mgr = self.data.output_capture_source_manager.as_ref()?;
-        let output = self.data.ipc_output.as_ref()?;
+        let output = &self.data.outputs.first()?.wl_output;
         let source = mgr.create_source(output, &self.queue.handle(), ());
         let _ = self.queue.flush();
         Some(source)
@@ -1026,9 +1037,12 @@ impl Dispatch<wl_registry::WlRegistry, ()> for ClientData {
                 "wl_data_device_manager" => {
                     state.data_device_manager = Some(registry.bind(name, version, qh, ()));
                 }
-                "wl_output" => {
-                    state.ipc_output = Some(registry.bind(name, version, qh, ()));
-                }
+                "wl_output" => state.outputs.push(OutputState {
+                    wl_output: registry.bind(name, version, qh, ()),
+                    name: String::new(),
+                    position: (0, 0),
+                    mode: (0, 0),
+                }),
                 "wl_seat" => {
                     state.ipc_seat = Some(registry.bind(name, version, qh, ()));
                 }
@@ -1266,13 +1280,24 @@ impl Dispatch<wl_buffer::WlBuffer, ()> for ClientData {
 
 impl Dispatch<wl_output::WlOutput, ()> for ClientData {
     fn event(
-        _: &mut Self,
-        _: &wl_output::WlOutput,
-        _: wl_output::Event,
+        state: &mut Self,
+        wl_output: &wl_output::WlOutput,
+        event: wl_output::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+        let output = state
+            .outputs
+            .iter_mut()
+            .find(|o| o.wl_output == *wl_output)
+            .expect("event for a bound output");
+        match event {
+            wl_output::Event::Name { name } => output.name = name,
+            wl_output::Event::Geometry { x, y, .. } => output.position = (x, y),
+            wl_output::Event::Mode { width, height, .. } => output.mode = (width, height),
+            _ => {}
+        }
     }
 }
 

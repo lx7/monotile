@@ -30,11 +30,11 @@ impl Fixture {
             mt,
             clients: Vec::new(),
         };
-        f.add_output("test");
+        f.add_output("test", (1000, 800));
         f
     }
 
-    pub fn add_output(&mut self, name: &str) -> Output {
+    pub fn add_output(&mut self, name: &str, size: (i32, i32)) -> Output {
         let output = Output::new(
             name.into(),
             PhysicalProperties {
@@ -46,10 +46,9 @@ impl Fixture {
             },
         );
         let mode = Mode {
-            size: (1000, 800).into(),
+            size: size.into(),
             refresh: 60_000,
         };
-        output.create_global::<Monotile>(&self.mt.state.display_handle);
         output.change_current_state(Some(mode), None, None, Some((0, 0).into()));
         output.set_preferred(mode);
         self.mt

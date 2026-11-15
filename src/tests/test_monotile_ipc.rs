@@ -695,7 +695,7 @@ fn removed_output_cleaned_from_registry() {
         "binding should register the output"
     );
 
-    f.add_output("test2");
+    f.add_output("test2", (1000, 800));
     f.mt.state.remove_monitor(&dead);
     assert!(
         !f.mt.state.ipc.monotile.outputs.contains_key(&dead),
