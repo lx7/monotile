@@ -20,6 +20,7 @@ use smithay::{
         keyboard::{FilterResult, Keysym},
         pointer::*,
     },
+    output::Output,
     reexports::input::{Device, DragLockState},
     utils::{Logical, Point, SERIAL_COUNTER, Serial},
 };
@@ -98,7 +99,8 @@ impl Monotile {
                 );
 
                 if let Some(Some(action)) = action {
-                    self.handle_action(action);
+                    let output = self.state.seat.active_output();
+                    self.handle_action(action, &output);
                 }
             }
             InputEvent::PointerMotion { event, .. } => self.on_relative_motion::<I>(event, serial),
@@ -127,7 +129,9 @@ impl Monotile {
                     // raise window and focus
                     let under = self.state.surface_under(pointer.current_location());
                     if let Some(id) = under.window {
-                        self.with_seat_mon(|mon, _| mon.tag_mut().raise(id));
+                        let output = self.state.windows[id].output.clone();
+                        self.state.monitors[&output].tag_mut().raise(id);
+                        self.recompute_layout(&output);
                         self.set_keyboard_focus(Some(id));
                     }
                 }
@@ -335,9 +339,15 @@ impl Monotile {
         self.backend.schedule_render(&output);
     }
 
-    pub fn handle_action(&mut self, action: Action) {
+    pub fn handle_action(&mut self, action: Action, output: &Output) {
         use Action::*;
 
+        let mon = self
+            .state
+            .monitors
+            .get_mut(output)
+            .expect("the output is attached to a monitor");
+        let focused = mon.tag().focused_id();
         match action {
             // mouse actions
             Noop | Move | Resize => {}
@@ -359,61 +369,47 @@ impl Monotile {
 
             // focused-window actions
             Close => {
-                if let Some(id) = self.state.focused_window()
+                if let Some(id) = focused
                     && let Some(tl) = self.state.windows[id].window.toplevel()
                 {
-                    tl.send_close(); // recompute happens in toplevel_destroyed
+                    tl.send_close();
                 }
             }
             ToggleFloat => {
-                if let Some(id) = self.state.focused_window() {
+                if let Some(id) = focused {
                     let floating = !self.state.windows[id].floating;
                     self.state.windows[id].set_floating(floating);
-                    let output = self.state.windows[id].output.clone();
-                    self.recompute_layout(&output);
                 }
             }
             ToggleFullscreen => {
-                if let Some(id) = self.state.focused_window() {
+                if let Some(id) = focused {
                     let on = !self.state.windows[id].fullscreen;
                     self.state.windows[id].set_fullscreen(on);
-                    let output = self.state.windows[id].output.clone();
-                    self.recompute_layout(&output);
                 }
             }
 
-            // seat-monitor actions
+            // monitor actions
             Focus(pos) => {
-                let tag = self.state.seat_mon().tag();
-                let target = tag.focused_id().and_then(|cur| tag.target(cur, pos));
+                let target = focused.and_then(|cur| mon.tag().target(cur, pos));
                 if let Some(id) = target {
                     self.set_keyboard_focus(Some(id));
                 }
-                self.backend
-                    .schedule_render(&self.state.seat.active_output());
             }
-            Swap(pos) => self.with_seat_mon(|mon, _| {
-                if let Some(cur) = mon.tag().focused_id() {
+            Swap(pos) => {
+                if let Some(cur) = focused {
                     mon.tag_mut().swap(cur, pos);
                 }
-            }),
-            FocusTag(tag) => self.with_seat_mon(|mon, _| mon.set_active_tag(tag)),
-            FocusPrevTag => self.with_seat_mon(|mon, _| mon.toggle_prev_tag()),
-            SetTag(tag) => self.with_seat_mon(|mon, ws| mon.move_to_tag(ws, tag)),
-            ToggleTag(tag) => self.with_seat_mon(|mon, _| mon.toggle_tag(tag)),
-            AdjustMainCount(delta) => {
-                self.with_seat_mon(|mon, _| mon.tag_mut().layout.adjust_main_count(delta))
             }
-            SetMainCount(count) => {
-                self.with_seat_mon(|mon, _| mon.tag_mut().layout.set_main_count(count))
-            }
-            AdjustMainRatio(delta) => {
-                self.with_seat_mon(|mon, _| mon.tag_mut().layout.adjust_main_factor(delta))
-            }
-            SetMainRatio(ratio) => {
-                self.with_seat_mon(|mon, _| mon.tag_mut().layout.set_main_factor(ratio))
-            }
+            FocusTag(tag) => mon.set_active_tag(tag),
+            FocusPrevTag => mon.toggle_prev_tag(),
+            SetTag(tag) => mon.move_to_tag(&mut self.state.windows, tag),
+            ToggleTag(tag) => mon.toggle_tag(tag),
+            AdjustMainCount(delta) => mon.tag_mut().layout.adjust_main_count(delta),
+            SetMainCount(count) => mon.tag_mut().layout.set_main_count(count),
+            AdjustMainRatio(delta) => mon.tag_mut().layout.adjust_main_factor(delta),
+            SetMainRatio(ratio) => mon.tag_mut().layout.set_main_factor(ratio),
         }
+        self.recompute_layout(output);
     }
 
     fn handle_mouse_action(
@@ -426,7 +422,10 @@ impl Monotile {
         match action {
             Action::Move => self.start_move_grab(btn, pos, serial),
             Action::Resize => self.start_resize_grab(btn, pos, serial),
-            other => self.handle_action(other),
+            other => {
+                let output = self.state.seat.pointer_output();
+                self.handle_action(other, &output);
+            }
         }
     }
 
@@ -440,13 +439,15 @@ impl Monotile {
             return;
         }
         let geo = we.float_geo;
+        let output = we.output.clone();
         self.state.cursor.override_icon = Some(CursorIcon::AllScroll);
         let start = GrabStartData {
             focus: under.surface,
             button: btn,
             location: pos,
         };
-        self.with_seat_mon(|mon, _| mon.tag_mut().raise(id));
+        self.state.monitors[&output].tag_mut().raise(id);
+        self.recompute_layout(&output);
         let ptr = self.state.seat.get_pointer().unwrap();
         ptr.set_grab(
             self,
@@ -465,6 +466,7 @@ impl Monotile {
             return;
         }
         let geo = we.float_geo;
+        let output = we.output.clone();
         self.state.cursor.override_icon = Some(CursorIcon::SeResize);
         let corner = (geo.loc + geo.size - Point::new(2, 2)).to_f64();
         let ptr = self.state.seat.get_pointer().unwrap();
@@ -474,7 +476,8 @@ impl Monotile {
             button: btn,
             location: corner,
         };
-        self.with_seat_mon(|mon, _| mon.tag_mut().raise(id));
+        self.state.monitors[&output].tag_mut().raise(id);
+        self.recompute_layout(&output);
         ptr.set_grab(
             self,
             ResizeSurfaceGrab::start(start, id, geo),

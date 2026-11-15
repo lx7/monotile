@@ -18,6 +18,7 @@ use super::monotile_ipc_protocol::{
 };
 use crate::Monotile;
 use crate::config::{Action, Direction, Rel};
+use crate::shell::SeatExt;
 use crate::spawn::spawn_shell;
 
 // -- State --
@@ -228,10 +229,10 @@ impl Dispatch<ZmonotileControlV1, ()> for Monotile {
                 spawn_shell(&command);
             }
             Request::ReloadConfig => {
-                monotile.handle_action(Action::ReloadConfig);
+                monotile.reload_config();
             }
             Request::Exit => {
-                monotile.handle_action(Action::Exit);
+                monotile.state.loop_signal.stop();
             }
             Request::Destroy => {}
         }
@@ -290,7 +291,8 @@ impl Dispatch<ZmonotileSeatControlV1, ()> for Monotile {
             Request::SetMainRatio { ratio } => Action::SetMainRatio(ratio as f32),
             Request::Destroy => return,
         };
-        monotile.handle_action(action);
+        let output = monotile.state.seat.active_output();
+        monotile.handle_action(action, &output);
     }
 }
 

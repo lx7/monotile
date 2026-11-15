@@ -113,12 +113,12 @@ fn tag_switch_warps_the_cursor() {
     open_window(&mut f, c);
     let first = f.mt.state.seat_mon().tag().focused_id().expect("focus");
 
-    f.mt.handle_action(Action::FocusTag(1));
+    f.action(Action::FocusTag(1));
     open_window(&mut f, c);
     let second = f.mt.state.seat_mon().tag().focused_id().expect("focus");
     set_pointer(&f, window_center(&f, second));
 
-    f.mt.handle_action(Action::FocusTag(0));
+    f.action(Action::FocusTag(0));
 
     assert_eq!(
         pointer_location(&f),

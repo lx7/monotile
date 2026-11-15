@@ -182,7 +182,7 @@ fn window_hidden_by_fullscreen_is_configured_when_shown_again() {
     settle(&mut f, c, main);
     settle(&mut f, c, stacked);
 
-    f.mt.handle_action(Action::ToggleFullscreen);
+    f.action(Action::ToggleFullscreen);
     f.roundtrip(c);
     settle(&mut f, c, newest);
     f.client_mut(c).take_configures(stacked);
@@ -194,7 +194,7 @@ fn window_hidden_by_fullscreen_is_configured_when_shown_again() {
         "a window hidden by a fullscreen window is not configured",
     );
 
-    f.mt.handle_action(Action::ToggleFullscreen);
+    f.action(Action::ToggleFullscreen);
     f.roundtrip(c);
     assert!(
         !f.client_mut(c).take_configures(stacked).is_empty(),

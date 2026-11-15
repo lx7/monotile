@@ -37,7 +37,7 @@ fn fullscreen_size(f: &mut Fixture) -> (i32, i32) {
     f.roundtrip(c);
     f.mt.advance_view_queues();
 
-    f.mt.handle_action(Action::ToggleFullscreen);
+    f.action(Action::ToggleFullscreen);
     f.roundtrip(c);
     let configures = f.client_mut(c).take_configures(w);
     let Configure { width, height, .. } = configures.last().expect("fullscreen configure");

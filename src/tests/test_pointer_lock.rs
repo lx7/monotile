@@ -196,7 +196,7 @@ fn layout_change_keeping_the_window_under_the_pointer_keeps_the_lock() {
     let c = client(&mut f);
     locked_window(&mut f, c, Lifetime::Persistent);
 
-    f.mt.handle_action(Action::ToggleFullscreen);
+    f.action(Action::ToggleFullscreen);
     f.roundtrip(c);
 
     assert_eq!(f.client_mut(c).take_constraint_events(), vec![]);
@@ -209,7 +209,7 @@ fn layout_change_moving_the_window_away_ends_the_lock() {
     let c = client(&mut f);
     let (a, b) = locked_first_of_two_windows(&mut f, c, Lifetime::Persistent);
 
-    f.mt.handle_action(Action::Swap(Rel::Next));
+    f.action(Action::Swap(Rel::Next));
     settle(&mut f, c, &[a, b]);
     f.roundtrip(c);
 
@@ -225,7 +225,7 @@ fn tag_switch_ends_the_lock() {
     let c = client(&mut f);
     locked_window(&mut f, c, Lifetime::Persistent);
 
-    f.mt.handle_action(Action::FocusTag(1));
+    f.action(Action::FocusTag(1));
     f.mt.advance_view_queues();
     f.roundtrip(c);
 
@@ -242,7 +242,7 @@ fn cursor_warp_on_a_focus_change_ends_the_lock() {
     let c = client(&mut f);
     locked_first_of_two_windows(&mut f, c, Lifetime::Persistent);
 
-    f.mt.handle_action(Action::Focus(Rel::Next));
+    f.action(Action::Focus(Rel::Next));
     f.roundtrip(c);
 
     assert_eq!(
@@ -299,7 +299,7 @@ fn lock_does_not_activate_during_a_move_grab() {
     let mut f = Fixture::with_config(config);
     let c = client(&mut f);
     let w = open_window(&mut f, c);
-    f.mt.handle_action(Action::ToggleFloat);
+    f.action(Action::ToggleFloat);
     settle(&mut f, c, &[w]);
     f.absolute_motion(window_center(&f, c, w));
 

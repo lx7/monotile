@@ -132,17 +132,6 @@ impl Monotile {
         self.update_focus();
     }
 
-    pub fn with_seat_mon(&mut self, f: impl FnOnce(&mut Monitor, &mut Windows)) {
-        let output = self.state.seat.active_output();
-        let mon = self
-            .state
-            .monitors
-            .get_mut(&output)
-            .expect("the seat's active output is attached to a monitor");
-        f(mon, &mut self.state.windows);
-        self.recompute_layout(&output);
-    }
-
     pub fn advance_view_queues(&mut self) {
         self.unblock_ready_views();
         let mut view_changed = false;

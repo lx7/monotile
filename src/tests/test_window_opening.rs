@@ -308,7 +308,7 @@ fn floating_window_gets_configure() {
     let w = open_window(&mut f, c);
     f.client_mut(c).take_configures(w);
 
-    f.mt.handle_action(Action::ToggleFloat);
+    f.action(Action::ToggleFloat);
     f.roundtrip(c);
 
     let cfgs = f.client_mut(c).take_configures(w);
@@ -326,7 +326,7 @@ fn fullscreen_configure_has_state_and_output_size() {
     let w = open_window(&mut f, c);
     f.client_mut(c).take_configures(w);
 
-    f.mt.handle_action(Action::ToggleFullscreen);
+    f.action(Action::ToggleFullscreen);
     f.roundtrip(c);
 
     let cfgs = f.client_mut(c).take_configures(w);

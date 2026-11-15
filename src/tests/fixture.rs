@@ -10,7 +10,11 @@ use smithay::utils::{Logical, Point, SERIAL_COUNTER};
 
 use super::client::Client;
 use super::input::{AbsoluteMotion, LeftButton, RelativeMotion, TestInput};
-use crate::{Monotile, config::Config, shell::MonitorSettings};
+use crate::{
+    Monotile,
+    config::{Action, Config},
+    shell::{MonitorSettings, SeatExt},
+};
 
 pub struct Fixture {
     pub event_loop: EventLoop<'static, Monotile>,
@@ -106,6 +110,11 @@ impl Fixture {
         self.event_loop
             .dispatch(Some(Duration::ZERO), &mut self.mt)
             .unwrap();
+    }
+
+    pub fn action(&mut self, action: Action) {
+        let output = self.mt.state.seat.active_output();
+        self.mt.handle_action(action, &output);
     }
 
     pub fn relative_motion(&mut self, delta: Point<f64, Logical>) {

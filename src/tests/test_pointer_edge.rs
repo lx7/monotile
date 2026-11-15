@@ -9,7 +9,7 @@ fn open_fullscreen_window(f: &mut Fixture, c: usize) -> usize {
     f.roundtrip(c);
     f.mt.advance_view_queues();
 
-    f.mt.handle_action(Action::ToggleFullscreen);
+    f.action(Action::ToggleFullscreen);
     f.roundtrip(c);
     f.client_mut(c).ack_and_commit_sized(w);
     f.roundtrip(c);

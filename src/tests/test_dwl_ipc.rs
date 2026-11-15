@@ -234,7 +234,7 @@ fn fullscreen_floating_flags() {
     f.client_mut(c).take_dwl_events();
 
     // toggle fullscreen
-    f.mt.handle_action(Action::ToggleFullscreen);
+    f.action(Action::ToggleFullscreen);
     f.mt.state.flush_clients();
     f.roundtrip(c);
 
@@ -245,7 +245,7 @@ fn fullscreen_floating_flags() {
     );
 
     // unfullscreen
-    f.mt.handle_action(Action::ToggleFullscreen);
+    f.action(Action::ToggleFullscreen);
     f.mt.state.flush_clients();
     f.roundtrip(c);
 
@@ -255,7 +255,7 @@ fn fullscreen_floating_flags() {
         "fullscreen should be 0 after untoggle, got {events:?}"
     );
 
-    f.mt.handle_action(Action::ToggleFloat);
+    f.action(Action::ToggleFloat);
     f.mt.state.flush_clients();
     f.roundtrip(c);
 

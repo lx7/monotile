@@ -151,17 +151,18 @@ impl Dispatch<ZdwlIpcOutputV2, ()> for Monotile {
         _data_init: &mut DataInit<'_, Self>,
     ) {
         use super::dwl_ipc_protocol::zdwl_ipc_output_v2::Request;
+        let output = monotile.state.seat.active_output();
         match request {
             Request::SetTags { tagmask, .. } => {
                 let tag = tagmask.trailing_zeros() as usize;
-                monotile.handle_action(Action::FocusTag(tag));
+                monotile.handle_action(Action::FocusTag(tag), &output);
             }
             Request::SetClientTags { and_tags, xor_tags } => {
                 let tag = xor_tags.trailing_zeros() as usize;
                 if and_tags == 0 {
-                    monotile.handle_action(Action::SetTag(tag));
+                    monotile.handle_action(Action::SetTag(tag), &output);
                 } else {
-                    monotile.handle_action(Action::ToggleTag(tag));
+                    monotile.handle_action(Action::ToggleTag(tag), &output);
                 }
             }
             // TODO: implement layout switching

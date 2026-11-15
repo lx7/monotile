@@ -45,7 +45,7 @@ fn pointer_focus_follows_the_displayed_layout() {
     f.absolute_motion(window_center(&f, c, under));
     f.roundtrip(c);
 
-    f.mt.handle_action(Action::Swap(Rel::Next));
+    f.action(Action::Swap(Rel::Next));
     f.roundtrip(c);
     assert_eq!(
         f.client(c).pointer_focus(),
@@ -73,7 +73,7 @@ fn tag_switch_refreshes_pointer_focus() {
     f.roundtrip(c);
 
     let w0 = open_window(&mut f, c);
-    f.mt.handle_action(Action::FocusTag(1));
+    f.action(Action::FocusTag(1));
     let w1 = open_window(&mut f, c);
 
     f.absolute_motion(focused_window_point(&f));
@@ -84,7 +84,7 @@ fn tag_switch_refreshes_pointer_focus() {
         "the pointer starts on the window of the active tag",
     );
 
-    f.mt.handle_action(Action::FocusTag(0));
+    f.action(Action::FocusTag(0));
     f.mt.advance_view_queues();
     f.roundtrip(c);
     assert_eq!(
@@ -126,11 +126,11 @@ fn a_fullscreen_window_is_neither_moved_nor_resized() {
         let mut f = Fixture::with_config(Config::parse(&config).expect("config"));
         let c = client(&mut f);
         let w = open_window(&mut f, c);
-        f.mt.handle_action(Action::ToggleFloat);
+        f.action(Action::ToggleFloat);
         f.roundtrip(c);
         f.client_mut(c).ack_and_commit_sized(w);
         f.roundtrip(c);
-        f.mt.handle_action(Action::ToggleFullscreen);
+        f.action(Action::ToggleFullscreen);
         f.roundtrip(c);
         f.client_mut(c).ack_and_commit_sized(w);
         f.roundtrip(c);
@@ -156,7 +156,7 @@ fn a_dropped_window_has_the_pointer_focus() {
     let mut f = Fixture::with_config(config);
     let c = client(&mut f);
     let w = open_window(&mut f, c);
-    f.mt.handle_action(Action::ToggleFloat);
+    f.action(Action::ToggleFloat);
     f.roundtrip(c);
     f.client_mut(c).ack_and_commit_sized(w);
     f.roundtrip(c);

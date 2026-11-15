@@ -276,7 +276,7 @@ fn seat_status_fullscreen_floating() {
     f.client_mut(c).take_ipc_events();
 
     // toggle fullscreen
-    f.mt.handle_action(Action::ToggleFullscreen);
+    f.action(Action::ToggleFullscreen);
     f.mt.state.flush_clients();
     f.roundtrip(c);
 
@@ -293,7 +293,7 @@ fn seat_status_fullscreen_floating() {
     );
 
     // unfullscreen
-    f.mt.handle_action(Action::ToggleFullscreen);
+    f.action(Action::ToggleFullscreen);
     f.mt.state.flush_clients();
     f.roundtrip(c);
 
@@ -310,7 +310,7 @@ fn seat_status_fullscreen_floating() {
     );
 
     // toggle floating
-    f.mt.handle_action(Action::ToggleFloat);
+    f.action(Action::ToggleFloat);
     f.mt.state.flush_clients();
     f.roundtrip(c);
 

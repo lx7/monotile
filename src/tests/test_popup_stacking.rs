@@ -140,7 +140,7 @@ fn top_layer_is_hidden_from_input_over_fullscreen() {
     let w = open_window(&mut f, c);
     open_layer_bar(&mut f, c, Layer::Top);
 
-    f.mt.handle_action(Action::ToggleFullscreen);
+    f.action(Action::ToggleFullscreen);
     f.roundtrip(c);
     f.client_mut(c).ack_and_commit_sized(w);
     f.roundtrip(c);
@@ -170,7 +170,7 @@ fn top_layer_popup_is_hidden_from_input_over_fullscreen() {
     f.client(c).popup_ack_and_commit(p);
     f.roundtrip(c);
 
-    f.mt.handle_action(Action::ToggleFullscreen);
+    f.action(Action::ToggleFullscreen);
     f.roundtrip(c);
     f.client_mut(c).ack_and_commit_sized(w);
     f.roundtrip(c);
