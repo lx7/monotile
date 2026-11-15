@@ -24,8 +24,10 @@ pub trait OutputExt {
 
 impl OutputExt for Output {
     fn geometry(&self) -> Rectangle<i32, Logical> {
-        let size = self.current_mode().expect("output has a mode").size;
-        Rectangle::from_size(size.to_logical(1))
+        let mode = self.current_mode().expect("output has a mode");
+        let scale = self.current_scale().fractional_scale();
+        let size = mode.size.to_f64().to_logical(scale).to_i32_round();
+        Rectangle::from_size(self.current_transform().transform_size(size))
     }
 
     fn usable_area(&self) -> Rectangle<i32, Logical> {
@@ -302,6 +304,8 @@ impl MonitorsExt for Monitors {
 
 #[cfg(test)]
 mod tests {
+    use smithay::output::{Mode, PhysicalProperties, Subpixel};
+
     use super::*;
     use crate::config::{Color, OutputMatch, OutputRule, OutputTransform};
 
@@ -312,6 +316,44 @@ mod tests {
                 ..Default::default()
             },
             ..Default::default()
+        }
+    }
+
+    fn output(transform: Transform, scale: f64) -> Output {
+        let output = Output::new(
+            "test".into(),
+            PhysicalProperties {
+                size: (0, 0).into(),
+                subpixel: Subpixel::Unknown,
+                make: "test".into(),
+                model: "test".into(),
+                serial_number: "0".into(),
+            },
+        );
+        let mode = Mode {
+            size: (1000, 800).into(),
+            refresh: 60_000,
+        };
+        let scale = Scale::Fractional(scale);
+        output.change_current_state(Some(mode), Some(transform), Some(scale), None);
+        output
+    }
+
+    #[test]
+    fn geometry_is_the_logical_output_size() {
+        let cases = [
+            (Transform::Normal, 1.0, (1000, 800)),
+            (Transform::_90, 1.0, (800, 1000)),
+            (Transform::Flipped180, 1.0, (1000, 800)),
+            (Transform::Normal, 2.0, (500, 400)),
+            (Transform::_270, 2.0, (400, 500)),
+            (Transform::Normal, 1.5, (667, 533)),
+        ];
+        for (transform, scale, size) in cases {
+            let output = output(transform, scale);
+            let expected = Rectangle::from_size(size.into());
+            assert_eq!(output.geometry(), expected, "{transform:?} at {scale}");
+            assert_eq!(output.usable_area(), expected, "{transform:?} at {scale}");
         }
     }
 

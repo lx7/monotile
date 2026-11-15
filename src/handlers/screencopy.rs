@@ -28,7 +28,7 @@ use tracing::warn;
 use crate::{
     Monotile,
     render::MonotileElement,
-    shell::{SeatExt, WindowId, Windows},
+    shell::{OutputExt, SeatExt, WindowId, Windows},
     state::State,
 };
 
@@ -162,10 +162,7 @@ impl ScreencopyState {
         let weak = output.downgrade();
         let scale = output.current_scale().fractional_scale();
         let transform = output.current_transform();
-        let output_size = output
-            .current_mode()
-            .map(|m| m.size.to_f64().to_logical(scale))
-            .unwrap_or_default();
+        let output_size = output.geometry().size.to_f64();
         let buf_pos = pos.map(|p| p.to_buffer(scale, transform, &output_size).to_i32_round());
         let buf_hotspot: Point<i32, BufferCoords> = (hotspot.x, hotspot.y).into();
         for cs in &self.cursor_sessions {

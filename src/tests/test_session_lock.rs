@@ -8,7 +8,9 @@ use wayland_protocols::ext::session_lock::v1::client::{
     ext_session_lock_v1::{self, ExtSessionLockV1},
 };
 
-use super::Fixture;
+use smithay::utils::Transform;
+
+use super::{Fixture, test_outputs::set_output_state};
 use crate::shell::MonitorsExt;
 
 pub(super) struct LockClient {
@@ -18,6 +20,7 @@ pub(super) struct LockClient {
     seat: Option<wl_seat::WlSeat>,
     pointer: Option<wl_pointer::WlPointer>,
     pointer_positions: Vec<(f64, f64)>,
+    surface_sizes: Vec<(u32, u32)>,
     locked: bool,
     finished: bool,
 }
@@ -133,14 +136,20 @@ impl Dispatch<wl_pointer::WlPointer, ()> for LockClient {
 
 impl Dispatch<ExtSessionLockSurfaceV1, ()> for LockClient {
     fn event(
-        _: &mut Self,
+        state: &mut Self,
         ls: &ExtSessionLockSurfaceV1,
         event: ext_session_lock_surface_v1::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let ext_session_lock_surface_v1::Event::Configure { serial, .. } = event {
+        if let ext_session_lock_surface_v1::Event::Configure {
+            serial,
+            width,
+            height,
+        } = event
+        {
+            state.surface_sizes.push((width, height));
             ls.ack_configure(serial);
         }
     }
@@ -214,6 +223,7 @@ fn connect_lock_client(
         seat: None,
         pointer: None,
         pointer_positions: Vec::new(),
+        surface_sizes: Vec::new(),
         locked: false,
         finished: false,
     };
@@ -367,6 +377,18 @@ fn locker_takeover_after_disconnect() {
         "new locker should take over after the locker died"
     );
     assert!(!b.finished, "takeover should not be refused");
+}
+
+#[test]
+fn lock_surface_covers_a_rotated_and_scaled_output() {
+    let mut f = Fixture::new();
+    set_output_state(&mut f, Transform::_90, 2.0);
+
+    let (conn, mut queue, mut client) = connect_lock_client(&mut f);
+    let lock = request_lock(&mut f, &conn, &mut client, &mut queue);
+    create_lock_surface(&mut f, &conn, &mut client, &mut queue, &lock);
+
+    assert_eq!(client.surface_sizes, [(400, 500)]);
 }
 
 #[test]
