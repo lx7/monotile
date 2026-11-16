@@ -398,6 +398,48 @@ fn locker_takeover_after_disconnect() {
 }
 
 #[test]
+fn lock_waits_for_a_locked_frame_on_every_output() {
+    let mut f = Fixture::new();
+    let first = f.mt.state.monitors[0].output.clone();
+    let second = f.add_output("second", (1920, 1080));
+
+    let (conn, mut queue, mut client) = connect_lock_client(&mut f);
+    let _lock = request_lock(&mut f, &conn, &mut client, &mut queue);
+
+    f.mt.state.confirm_lock(&first);
+    lock_roundtrip(&mut f, &conn, &mut client, &mut queue);
+    assert!(
+        !client.locked,
+        "the second output has not shown a locked frame"
+    );
+
+    f.mt.state.confirm_lock(&second);
+    lock_roundtrip(&mut f, &conn, &mut client, &mut queue);
+    assert!(client.locked);
+}
+
+#[test]
+fn output_removed_while_the_lock_is_pending_does_not_block_it() {
+    let mut f = Fixture::new();
+    let first = f.mt.state.monitors[0].output.clone();
+    let second = f.add_output("second", (1920, 1080));
+
+    let (conn, mut queue, mut client) = connect_lock_client(&mut f);
+    let _lock = request_lock(&mut f, &conn, &mut client, &mut queue);
+
+    f.mt.state.remove_monitor(&second);
+    lock_roundtrip(&mut f, &conn, &mut client, &mut queue);
+    assert!(
+        !client.locked,
+        "the first output has not shown a locked frame"
+    );
+
+    f.mt.state.confirm_lock(&first);
+    lock_roundtrip(&mut f, &conn, &mut client, &mut queue);
+    assert!(client.locked);
+}
+
+#[test]
 fn lock_surface_covers_a_rotated_and_scaled_output() {
     let mut f = Fixture::new();
     set_output_state(&mut f, Transform::_90, 2.0);
