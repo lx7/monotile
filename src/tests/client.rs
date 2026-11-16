@@ -884,9 +884,13 @@ impl Client {
     // dwl-ipc
 
     pub fn bind_dwl_output(&mut self) {
+        self.bind_dwl_output_on(0);
+    }
+
+    pub fn bind_dwl_output_on(&mut self, output: usize) {
         let qh = self.queue.handle();
         let mgr = self.data.ipc_dwl_manager.as_ref().expect("dwl_manager");
-        let output = &self.data.outputs[0].wl_output;
+        let output = &self.data.outputs[output].wl_output;
         self.data.ipc_dwl_output = Some(mgr.get_output(output, &qh, ()));
         let _ = self.queue.flush();
     }

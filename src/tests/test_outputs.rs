@@ -129,13 +129,13 @@ fn output_added_later_is_announced_once() {
     );
 }
 
-fn two_outputs(config: Config) -> Fixture {
+pub(super) fn two_outputs(config: Config) -> Fixture {
     let mut f = Fixture::with_config(config);
     f.add_output("second", (1920, 1080));
     f
 }
 
-fn windows_open_on_second() -> Config {
+pub(super) fn windows_open_on_second() -> Config {
     let mut config = Config::new();
     config.windows.push(WindowRule {
         init: Some(WindowInit {

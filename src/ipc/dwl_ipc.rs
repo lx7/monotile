@@ -125,7 +125,7 @@ impl Dispatch<ZdwlIpcManagerV2, ()> for Monotile {
                 let Some(output) = Output::from_resource(&output) else {
                     return;
                 };
-                let handle = data_init.init(id, ());
+                let handle = data_init.init(id, output.clone());
                 monotile.state.ipc.dwl.add_output(&output, &handle);
 
                 // send initial state
@@ -140,29 +140,31 @@ impl Dispatch<ZdwlIpcManagerV2, ()> for Monotile {
     }
 }
 
-impl Dispatch<ZdwlIpcOutputV2, ()> for Monotile {
+impl Dispatch<ZdwlIpcOutputV2, Output> for Monotile {
     fn request(
         monotile: &mut Self,
         _client: &Client,
         _resource: &ZdwlIpcOutputV2,
         request: <ZdwlIpcOutputV2 as Resource>::Request,
-        _data: &(),
+        output: &Output,
         _dh: &DisplayHandle,
         _data_init: &mut DataInit<'_, Self>,
     ) {
         use super::dwl_ipc_protocol::zdwl_ipc_output_v2::Request;
-        let output = monotile.state.seat.active_output();
+        if !monotile.state.monitors.contains_key(output) {
+            return;
+        }
         match request {
             Request::SetTags { tagmask, .. } => {
                 let tag = tagmask.trailing_zeros() as usize;
-                monotile.handle_action(Action::FocusTag(tag), &output);
+                monotile.handle_action(Action::FocusTag(tag), output);
             }
             Request::SetClientTags { and_tags, xor_tags } => {
                 let tag = xor_tags.trailing_zeros() as usize;
                 if and_tags == 0 {
-                    monotile.handle_action(Action::SetTag(tag), &output);
+                    monotile.handle_action(Action::SetTag(tag), output);
                 } else {
-                    monotile.handle_action(Action::ToggleTag(tag), &output);
+                    monotile.handle_action(Action::ToggleTag(tag), output);
                 }
             }
             // TODO: implement layout switching

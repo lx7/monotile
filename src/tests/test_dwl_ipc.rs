@@ -1,6 +1,7 @@
 use super::Fixture;
 use super::client::DwlEvent;
-use crate::config::Action;
+use super::test_outputs::{two_outputs, windows_open_on_second};
+use crate::config::{Action, Config};
 use crate::shell::SeatExt;
 
 fn open_window(f: &mut Fixture, c: usize) -> usize {
@@ -412,6 +413,59 @@ fn set_client_tags_toggle() {
         Some(1),
         "tag 2 should have 1 client after toggle, got {events:?}"
     );
+}
+
+fn bar_on_second_output(f: &mut Fixture) -> usize {
+    let c = f.add_client();
+    f.client_mut(c).bind_dwl_output_on(1);
+    f.roundtrip(c);
+    c
+}
+
+#[test]
+fn set_tags_acts_on_the_output_of_the_request() {
+    let mut f = two_outputs(Config::new());
+    let c = bar_on_second_output(&mut f);
+    let active = f.mt.state.seat.active_output();
+
+    f.client(c).dwl_output().set_tags(1 << 3, 0);
+    f.client(c).flush();
+    f.roundtrip(c);
+
+    assert_eq!(f.mt.state.monitors[0].active_tag, 0);
+    assert_eq!(f.mt.state.monitors[1].active_tag, 3);
+    assert_eq!(f.mt.state.seat.active_output(), active);
+}
+
+#[test]
+fn set_client_tags_moves_the_window_of_the_output_of_the_request() {
+    let mut f = two_outputs(windows_open_on_second());
+    let c = bar_on_second_output(&mut f);
+    open_window(&mut f, c);
+    let active = f.mt.state.seat.active_output();
+
+    f.client(c).dwl_output().set_client_tags(0, 1 << 2);
+    f.client(c).flush();
+    f.roundtrip(c);
+
+    let second = &f.mt.state.monitors[1];
+    assert!(second.tags[0].focus_stack.is_empty());
+    assert_eq!(second.tags[2].focus_stack.len(), 1);
+    assert_eq!(f.mt.state.seat.active_output(), active);
+}
+
+#[test]
+fn request_for_a_removed_output_is_ignored() {
+    let mut f = two_outputs(Config::new());
+    let c = bar_on_second_output(&mut f);
+    let second = f.mt.state.monitors[1].output.clone();
+    f.mt.state.remove_monitor(&second);
+
+    f.client(c).dwl_output().set_tags(1 << 3, 0);
+    f.client(c).flush();
+    f.assert_client_alive(c);
+
+    assert_eq!(f.mt.state.monitors[0].active_tag, 0);
 }
 
 // ── E. Lifecycle ────────────────────────────────────
