@@ -53,11 +53,11 @@ impl Fixture {
             size: size.into(),
             refresh: 60_000,
         };
-        output.change_current_state(Some(mode), None, None, Some((0, 0).into()));
+        output.change_current_state(Some(mode), None, None, None);
         output.set_preferred(mode);
-        self.mt
-            .state
-            .add_monitor(output.clone(), MonitorSettings::default());
+        let rules = &self.mt.state.config.outputs;
+        let settings = MonitorSettings::resolve(rules, name, "test", "test", "0");
+        self.mt.state.add_monitor(output.clone(), settings);
         output
     }
 

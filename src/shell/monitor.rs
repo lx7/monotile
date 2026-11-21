@@ -60,7 +60,7 @@ impl OutputExt for Output {
 pub struct MonitorSettings {
     pub tags: Vec<String>,
     pub scale: Option<Scale>,
-    pub pos: Point<i32, Logical>,
+    pub pos: Option<Point<i32, Logical>>,
     pub mode: Option<ModeConfig>,
     pub transform: Option<Transform>,
     pub background: [f32; 4],
@@ -71,7 +71,7 @@ impl Default for MonitorSettings {
         Self {
             tags: config::default_tags(),
             scale: None,
-            pos: Point::default(),
+            pos: None,
             mode: None,
             transform: None,
             background: [0.0; 4],
@@ -96,9 +96,7 @@ impl MonitorSettings {
                 s.tags = t.clone();
             }
             s.scale = rule.scale.map(Scale::Fractional).or(s.scale);
-            if let Some((x, y)) = rule.pos {
-                s.pos = (x, y).into();
-            }
+            s.pos = rule.pos.map(Point::from).or(s.pos);
             s.mode = rule.mode.or(s.mode);
             s.transform = rule.transform.map(Transform::from).or(s.transform);
             s.background = rule.background.map_or(s.background, |c| c.0);
@@ -241,6 +239,8 @@ pub type Monitors = IndexMap<Output, Monitor>;
 
 pub trait MonitorsExt {
     fn add(&mut self, mon: Monitor);
+    fn remove_output(&mut self, output: &Output) -> Option<Monitor>;
+    fn arrange_outputs(&self);
     fn fallback_output(&self) -> Option<&Output>;
     fn output_named(&self, name: &str) -> Option<&Output>;
     fn window_rect(&self, ws: &Windows, id: WindowId) -> Option<Rectangle<i32, Logical>>;
@@ -257,6 +257,34 @@ pub trait MonitorsExt {
 impl MonitorsExt for Monitors {
     fn add(&mut self, mon: Monitor) {
         self.insert(mon.output.clone(), mon);
+        self.arrange_outputs();
+    }
+
+    fn remove_output(&mut self, output: &Output) -> Option<Monitor> {
+        let mon = self.shift_remove(output)?;
+        self.arrange_outputs();
+        Some(mon)
+    }
+
+    fn arrange_outputs(&self) {
+        let width = |mon: &Monitor| mon.output.geometry().size.w;
+        let configured_right_edge = |mon: &Monitor| Some(mon.settings.pos?.x + width(mon));
+        let right_edges = self.values().filter_map(configured_right_edge);
+        let mut next_x = right_edges.max().unwrap_or(0);
+
+        for mon in self.values() {
+            let pos = match mon.settings.pos {
+                Some(pos) => pos,
+                None => {
+                    let pos = Point::new(next_x, 0);
+                    next_x += width(mon);
+                    pos
+                }
+            };
+            if mon.output.current_location() != pos {
+                mon.output.change_current_state(None, None, None, Some(pos));
+            }
+        }
     }
 
     fn fallback_output(&self) -> Option<&Output> {
@@ -407,7 +435,7 @@ mod tests {
 
         let s = MonitorSettings::resolve(&[r], "DP-1", "Dell", "U2720Q", "ABC123");
         assert!(matches!(s.scale, Some(Scale::Fractional(v)) if v == 2.0));
-        assert_eq!(s.pos, Point::from((100, 200)));
+        assert_eq!(s.pos, Some(Point::from((100, 200))));
         assert_eq!(s.transform, Some(Transform::_90));
         assert_eq!(s.background, [1.0, 0.0, 0.0, 1.0]);
     }
@@ -448,7 +476,7 @@ mod tests {
 
         let s = MonitorSettings::resolve(&[r1, r2], "DP-1", "Dell", "U2720Q", "ABC123");
         assert!(matches!(s.scale, Some(Scale::Fractional(v)) if v == 2.0));
-        assert_eq!(s.pos, Point::from((10, 20)));
+        assert_eq!(s.pos, Some(Point::from((10, 20))));
     }
 
     #[test]

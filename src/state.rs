@@ -196,6 +196,7 @@ impl Monotile {
         self.state.windows.update_rules(&self.state.config.windows);
         self.state.monitors.update_rules(&self.state.config);
         self.backend.apply_output_settings(&self.state.monitors);
+        self.state.monitors.arrange_outputs();
         self.reconfigure_devices();
         for mon in self.state.monitors.values_mut() {
             mon.recompute_layout(&mut self.state.windows);
@@ -376,7 +377,7 @@ impl State {
         self.screencopy.remove_output(output);
         self.ipc.remove_output(output);
 
-        let Some(dead) = self.monitors.shift_remove(output) else {
+        let Some(dead) = self.monitors.remove_output(output) else {
             return;
         };
         // clean up layer surfaces on this output

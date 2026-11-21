@@ -245,3 +245,50 @@ fn window_popup_is_constrained_to_a_rotated_output() {
     let popup_y = window.loc.y + f.client(c).popup(p).position.1;
     assert_eq!(popup_y + popup_height, rotated_output_height);
 }
+
+fn positions(outputs: &[OutputState]) -> Vec<(&str, (i32, i32))> {
+    let positions = outputs.iter().map(|o| (o.name.as_str(), o.position));
+    positions.collect()
+}
+
+#[test]
+fn outputs_without_a_position_are_placed_side_by_side() {
+    let mut f = two_outputs(Config::new());
+    let c = f.add_client();
+    f.roundtrip(c);
+
+    assert_eq!(
+        positions(f.client(c).outputs()),
+        [("test", (0, 0)), ("second", (1000, 0))]
+    );
+}
+
+#[test]
+fn configured_position_is_used_and_the_others_go_to_its_right() {
+    let config = r#"(
+        seats: {"seat0": ()},
+        outputs: [(match: (name: Some("test")), pos: Some((100, 50)))],
+    )"#;
+    let mut f = two_outputs(Config::parse(config).expect("config"));
+    let c = f.add_client();
+    f.roundtrip(c);
+
+    assert_eq!(
+        positions(f.client(c).outputs()),
+        [("test", (100, 50)), ("second", (1100, 0))]
+    );
+}
+
+#[test]
+fn removing_an_output_closes_the_gap() {
+    let mut f = two_outputs(Config::new());
+    let c = f.add_client();
+    f.roundtrip(c);
+    let first = f.mt.state.monitors[0].output.clone();
+
+    f.mt.state.remove_monitor(&first);
+    f.roundtrip(c);
+
+    let second = &f.client(c).outputs()[1];
+    assert_eq!((second.name.as_str(), second.position), ("second", (0, 0)));
+}

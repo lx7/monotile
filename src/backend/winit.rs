@@ -75,12 +75,7 @@ pub fn init(
         },
     );
 
-    output.change_current_state(
-        Some(mode),
-        Some(Transform::Flipped180),
-        None,
-        Some((0, 0).into()),
-    );
+    output.change_current_state(Some(mode), Some(Transform::Flipped180), None, None);
     output.set_preferred(mode);
 
     monotile

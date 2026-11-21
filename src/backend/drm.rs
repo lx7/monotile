@@ -348,16 +348,10 @@ impl DrmState {
 
             let changed = output.current_mode() != Some(mode)
                 || output.current_transform() != transform
-                || output.current_scale().fractional_scale() != scale.fractional_scale()
-                || output.current_location() != settings.pos;
+                || output.current_scale().fractional_scale() != scale.fractional_scale();
 
             if changed {
-                output.change_current_state(
-                    Some(mode),
-                    Some(transform),
-                    Some(scale),
-                    Some(settings.pos),
-                );
+                output.change_current_state(Some(mode), Some(transform), Some(scale), None);
                 layer_map_for_output(&surface.output).arrange();
             }
         }
@@ -428,7 +422,7 @@ fn connector_connected(
         },
     );
     output.set_preferred(preferred.into());
-    output.change_current_state(Some(selected.into()), s.transform, s.scale, Some(s.pos));
+    output.change_current_state(Some(selected.into()), s.transform, s.scale, None);
 
     let (mw, mh) = (selected.size().0, selected.size().1);
     info!("{}: {mw}x{mh}@{}Hz", output.name(), selected.vrefresh());
